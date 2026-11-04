@@ -42,8 +42,29 @@ Arguments: channel, note, velocity, flag.
 
 **For the mod:** pitch bend, aftertouch and CC1 should take exactly this routing: auto → the active track; otherwise tracks whose TRACK CHANNEL matches; keep MIDI tracks (8–15) with CHAN on. CC Recall documents `channel(track)` at 0x400e09d8 (−1 when CHAN is off).
 
+## 4. Control change routing (0x400d4cb8)
+
+Gated by RECEIVE CC/NRPN (0x4197c77c). Same routing as notes: if the channel is FX CONTROL CH (0x4197c740), the effects handler 0x400d6c80(0x10, cc, value, auto, 0); then 0x400d6c80(track, cc, value, auto, 0) for the active track on the auto channel, or for every track whose TRACK CHANNEL matches.
+
+## 5. From a live note to MIDI OUT
+
+Traced with `scripts/trace-calls.py` (a note on the auto channel, MIDI track A selected):
+
+1. The MIDI input task (stack around 0x421a90xx): router → live note 0x400d5604(track 8, note, velocity, flag 0x10, 0, −1, −1).
+2. The live note posts a record to the **MIDI tracks' task**: a 20-byte slot in a 64-entry ring at 0x421b5210 (type word 1 for a note, +16 a pointer to an event from the pool 0x400e0cb0), sent with `queue_send(0x421b51f0, slot)` at 0x400e1fb6. Other record types are posted at 0x400e0cde (type 4), 0x400e0d1e (4) and 0x400e0d56 (5).
+3. The MIDI tracks' task (stack around 0x421cd7xx), about 6 ms later: 0x400e1dd4 → **midi_out(len, bytes)** at 0x400e0992.
+4. midi_out sends to DIN when OUTPUT TO (0x421c9560) bit 0 is set, through **din_send(len, bytes)** at 0x400028c6, and to USB when bit 1 is set, through 0x40004990.
+
+Other functions of the MIDI tracks' task: append(len, bytes) 0x400e0dac copies into a buffer at 0x421b6a22 with its length byte at 0x421b6a21 and no locking, so only the MIDI tracks' task may call it. channel(track) 0x400e09d8 returns the MIDI track's CHAN, or −1 when off (as CC Recall documents).
+
+## 6. The DIN transmit driver
+
+- **din_send(len, bytes), 0x400028c6.** A 4 KB ring at *(0x4060f7d4), write index 0x4060f7e4, bytes not yet handed to the DMA at 0x4060f7e8, DMA-busy flag 0x4060f7cc, DMA position from eDMA registers 0xfc0454b4 and 0xfc0454bc and 0x4060f7e0/0x4060f7ec. It first busy-waits until the ring has room for the message, then copies and starts DMA channel 37 with **all interrupts masked** (SR = 0x2700). So it is safe from any task, one whole message per call, but it spins when the ring is full: the mod checks the free space the same way before calling, and only sends while the ring is nearly empty.
+- **Single bytes, 0x400029fa.** Writes the UART data register directly when idle, otherwise queues to a 1 KB byte queue (count 0x4060f7f8) that UART9's interrupt drains. This is the path for single real-time bytes.
+- **USB, 0x40004990.** Busy-waits on its own ring (0x40610478 against 4091) with no interrupt lock, so it is only safe from the MIDI tracks' task. Version 1 of the mod sends to DIN only.
+
 ## Open
 
-- How a live note reaches a MIDI track's output (0x400d5604 → the MIDI tracks' task) and which context may append to the MIDI tracks' output buffer (0x400e0dac): FX Track found that posting from the wrong task stalled the panel.
-- Whether MIDI clock goes through that buffer (the priority question).
-- What the three predicates in the router check.
+- Where MIDI clock (0xF8) is sent from, and its timing on hardware under heavy aftertouch: digiemu sends DMA buffers at once rather than at 31250 baud, so DIN timing can only be judged on the unit.
+- What the three predicates in the note router (0x4007851a, 0x40078528, 0x4007853a) check.
+- Resets on track change and STOP, and holding back the track's own trig-time PB/AT/MW while a live gesture is held (version 2).
