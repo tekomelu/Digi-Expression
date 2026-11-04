@@ -19,7 +19,8 @@ Logs in `results/mod-0.2/`.
 | Host unit tests, `tests/host/test_expr.c` (`expr.c` compiled with stand-ins for the OS addresses) | sums, caps, take-over, release, priority, routing | 34 checks, 0 failures, on Linux x86-64 and on the Mac's Linux arm64 environment |
 | `tests/stock-expression.txt` on 0.2 | identical to 0.1 (no track values yet, so the sum is the input) | identical |
 | `tests/release.txt`: live PB, AT and CC 1 on the auto channel, then the active track changed (written to 0x4197c6b4) | the track's own values (PB centre, AT 0, MW 0) on the next UI tick | AT 0 and MW 0 sent only with the next incoming MIDI message, 240 ms later: in digiemu the UI task, and with it `ev_tick`, stops once MIDI has been handled (see Not tested), so the release came from the input path's own track check |
-| The same with no MIDI after the change (`release-no-ui-tick.txt`) | — | nothing within 1.5 s: confirms the UI tick does not run in digiemu after MIDI |
+| The same with no MIDI after the change (`release-no-ui-tick.txt`) | — | nothing within 1.5 s: the UI tick did not run (before the driver fix below) |
+| `tests/release-keys.txt`, with the driver fix: live PB, AT and CC 1 on the auto channel, then TRK + 1 (real keys), then TRK + 9, then the wheel | the track's own values within a UI tick; nothing on returning to A; A follows the next wheel move | as expected: `e0 00 40`, `d0 00`, `b0 01 00` 19–34 ms after the key; nothing on TRK + 9; `b0 01 20` on the wheel (`release-track-change-keys.txt`) |
 | 0.2 linked with FX Track and CC Recall | links | links; not run in the emulator |
 
 Not reachable in digiemu and covered only by the host tests: a track's own PB/AT/MW sends (they need the sequencer to play, a parameter lock or an LFO) added to live input, and the cap at the MIDI limits.
@@ -46,13 +47,12 @@ Logs are in `results/mod-0.1/` of the project repository. Setup unless stated: A
 
 ## Not tested
 
-- **The UI tick on hardware.** Track-change release and unticked rows rely on `ev_tick` (30 Hz). It could not be observed in digiemu after MIDI.
 - **Summing with a real LFO or parameter lock** on the unit, and how it sounds.
 
 - **Priority against sequencer bursts and MIDI clock.** digiemu sends DMA buffers at once rather than at 31250 baud, so the transmit ring never fills and the priority gate never holds anything in the emulator. Clock and note timing under heavy aftertouch is for hardware.
 - **Sequencer playback.** PLAY did not start the transport in these emulator runs, so no test played a pattern's MIDI trigs.
 - **The UI tick resend** of held values (only reached when the ring is busy).
-- **Panel after MIDI.** In digiemu c1b5735 panel keys stop taking effect once the MIDI task has handled any incoming message, on the stock OS too, so every routing case was set up with keys first and saved as a snapshot before MIDI was sent.
+- **Panel after MIDI (resolved in the driver).** In digiemu c1b5735's headless `Session`, panel keys, redraw and the core's `ev_tick` stop once the MIDI task has handled any message, on the stock OS too. Cause, documented in digiemu's `emu/longrun.py` (`never_fake_set_posts`): the emulator force-satisfies semaphore waits, so the MIDI task's wait is forced through on every pass once a real message has woken it, the task spins at its priority and starves the UI. digiemu's app applies `never_fake_set_posts`; `Session` does not. `scripts/dtsession.py` now applies it, and keys work after MIDI on stock (`results/stock-keys-after-midi-os154.txt`). The 0.1 routing runs were made before the fix, with keys first and a snapshot.
 - USB input reaching MIDI OUT; OS 1.53; saving and loading projects; power cycles.
 - CPU time per message and under a flood.
 

@@ -87,6 +87,13 @@ class Midi:
 
     def on_machine(self, s):
         self.session = s
+        # digiemu's app (emu/gui.py) stops faking a semaphore once real code
+        # posts it; its headless Session does not. Without this the MIDI
+        # task's wait is forced through on every pass once a message has
+        # woken it, the task spins and starves the UI: keys, redraw and the
+        # core's ev_tick stop (longrun.never_fake_set_posts explains it).
+        from emu.longrun import never_fake_set_posts
+        never_fake_set_posts(s.m, s.ev, s.profile.set_post)
         self.midi_out.install(s.m)
         self.midi_out.attach(s.m, s.ips)
         extra = (self.midi_out,)

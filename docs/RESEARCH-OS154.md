@@ -81,4 +81,4 @@ Unless `force` is set it skips a value equal to the cache, then builds the messa
 
 - Where MIDI clock (0xF8) is sent from, and its timing on hardware under heavy aftertouch: digiemu sends DMA buffers at once rather than at 31250 baud, so DIN timing can only be judged on the unit.
 - What the three predicates in the note router (0x4007851a, 0x40078528, 0x4007853a) check.
-- In digiemu c1b5735 the UI task stops (no redraw, no keys, no `ev_tick`) once the MIDI task has handled a message, on the stock OS too.
+- In digiemu c1b5735 the headless `Session` lets the UI task starve (no redraw, keys or `ev_tick`) once the MIDI task has handled a message: it does not apply `longrun.never_fake_set_posts`, which the app does. `scripts/dtsession.py` applies it.
