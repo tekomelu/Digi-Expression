@@ -42,6 +42,7 @@ def main():
     ap.add_argument('--hook', action='append', default=[])
     ap.add_argument('--find', action='append', default=[], help='also search RAM for this word')
     ap.add_argument('--dump', action='append', default=[], help='addr:len to dump at the end')
+    ap.add_argument('--magic', help='print the 8 longs at each place this long is found (0x47be0000..)')
     ap.add_argument('-e', '--steps', required=True)
     args = ap.parse_args()
 
@@ -120,6 +121,15 @@ def main():
             info = 'vtable %08x key %d kind %d' % (u32(uc, page), u32(uc, page + 0x88), kind)
         print('CHAIN brain %08x layers first %08x last %08x focus %08x%s\n  frame %08x (vtable %08x) page %08x %s'
               % (brain, first, last, focus, '' if first == focus else ' (OVERLAY)', frame, u32(uc, frame), page, info))
+        if args.magic:
+            pat = struct.pack('>I', int(args.magic, 16))
+            mem = bytes(uc.mem_read(0x47be0000, 0x20000))
+            i = mem.find(pat)
+            while i >= 0:
+                if i % 4 == 0:
+                    print('MAGIC at %08x: %s' % (0x47be0000 + i, ' '.join(
+                        str(struct.unpack('>i', mem[i + 4 * j:i + 4 * j + 4])[0]) for j in range(8))))
+                i = mem.find(pat, i + 1)
         for d in args.dump:
             a, n = d.split(':')
             a, n = int(a, 16), int(n, 0)

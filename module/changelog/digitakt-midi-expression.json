@@ -1,5 +1,18 @@
 [
   {
+    "version": "0.5.0-experimental",
+    "date": "2026-11-05",
+    "changes": [
+      "The EXPRESSION page now looks like the stock FLTR and LFO pages: eight knob cells under the TRIG page's header, track box and LEV meter.",
+      "Knobs use the firmware's own acceleration, as the stock pages do; FUNC + turn puts a cell back to its default.",
+      "Turning MW, VEL or AT opens a destination list like the LFO page's DEST.",
+      "New: VEL as a modulation source (VEL DEST, V.DEP) on audio tracks.",
+      "New: V.SNS per track: how much the played velocity counts, for the sound and for what is recorded (100 % as played, 0 % every note full).",
+      "Fixed: LFO destinations (speed, multiplier, fade, phase, depth) now work; they are added before the LFO stage. FLTR slot 37, which the engine never reads, is no longer offered.",
+      "Known issue: settings are not saved. Not yet tested on a unit beyond 0.4."
+    ]
+  },
+  {
     "version": "0.4.0-experimental",
     "date": "2026-11-04",
     "changes": [

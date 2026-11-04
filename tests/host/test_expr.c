@@ -14,7 +14,7 @@ volatile int32_t h_tx_pending;
 volatile uint32_t h_tx_base, h_tx_sent;
 volatile uint16_t h_dma_a, h_dma_b;
 
-int h_trig_page, h_func_held, h_draw_calls;
+int h_trig_page, h_func_held, h_push_held, h_draw_calls, h_knob_calls;
 static char drawn[2048];
 void h_text(void *bmp, const void *font, int x, int y, int colour, const char *fmt, ...)
 {
@@ -58,12 +58,13 @@ static void reset(void)
     h_tx_pending = 0; h_tx_base = h_tx_sent = 0; h_dma_a = h_dma_b = 0;
     nsent = 0; stock_cc_calls = 0;
     memset((void *)atracks, 0, sizeof atracks);
-    ALL(range, 2); ALL(mw_dest, 0); ALL(at_dest, 0); ALL(mw_amount, 32); ALL(at_amount, 32);
+    ALL(range, 2); ALL(mw_dest, 0); ALL(at_dest, 0); ALL(vel_dest, 0); ALL(mw_amount, 32); ALL(at_amount, 32); ALL(vel_amount, 32); ALL(vel_sens, 100);
     for (int m = 0; m < 8; m++) {
         me_midi_cfg[m].pb_on = me_midi_cfg[m].at_on = me_midi_cfg[m].mw_on = 1;
-        me_midi_cfg[m].mw_cc = 1; me_midi_cfg[m].at_cc = 0;
+        me_midi_cfg[m].mw_cc = 1; me_midi_cfg[m].at_cc = 0; me_midi_cfg[m].vel_sens = 100;
     }
-    me_page_open = 0; recompose = 0; pend = 0; hold = 0; cursor = 0;
+    me_page_open = 0; recompose = 0; pend = 0; hold = 0; list_cell = -1; list_t = 0; acc_track = -1;
+    for (int k = 0; k < CELLS; k++) { acc[k] = 0; shown[k] = 0; idle_counts[k] = 0; }
     h_trig_page = 0; h_func_held = 0;
 }
 
@@ -272,16 +273,16 @@ int main(void)
     reset();
     h_active_track = 2;                           // audio track 3
     ALL(mw_dest, 26); ALL(mw_amount, 64);           // FLT.FREQ, full
-    ALL(at_dest, 8); ALL(at_amount, -32);           // L1.DEP, half, down
+    ALL(at_dest, 44); ALL(at_amount, -32);          // AMP.PAN, half, down
     words_reset(20000);
     mw_in(13, 127, AUTO);
     at_in(13, 100, AUTO);
     me_render(words);
     CHECK(*slot(2, 26) == PARAM_MAX, "MW full to FLT.FREQ: capped at the top: %d", *slot(2, 26));
-    CHECK(*slot(2, 8) == 20000 - 100 * 32 * 4, "AT 100 x -32 on L1.DEP: %d", *slot(2, 8));
+    CHECK(*slot(2, 44) == 20000 - 100 * 32 * 4, "AT 100 x -32 on AMP.PAN: %d", *slot(2, 44));
     words_reset(1000);
     me_render(words);
-    CHECK(*slot(2, 8) == 0, "capped at 0: %d", *slot(2, 8));
+    CHECK(*slot(2, 44) == 0, "capped at 0: %d", *slot(2, 44));
     words_reset(10000);
     mw_in(13, 64, AUTO);
     ALL(mw_amount, 32);
@@ -296,7 +297,7 @@ int main(void)
     h_active_track = 3;
     me_tick(0);
     me_render(words);
-    CHECK(*slot(2, 26) == 10000 && *slot(2, 8) == 10000, "released on track change: %d %d", *slot(2, 26), *slot(2, 8));
+    CHECK(*slot(2, 26) == 10000 && *slot(2, 44) == 10000, "released on track change: %d %d", *slot(2, 26), *slot(2, 44));
     CHECK(*slot(3, 26) == 10000, "the new track only follows the next move");
     mw_in(13, 32, AUTO);
     me_render(words);
@@ -376,13 +377,78 @@ int main(void)
     CHECK(nsent == before + 1 && sent[nsent - 1][1] == 2 && sent[nsent - 1][2] == 0, "AT THRU unticked: CC 2 back to 0");
     me_at_on = 1;
 
+    // ---- velocity --------------------------------------------------------------
+    // 22. VEL SENS: 100 % as played, 50 % 0..127 -> 64..127, 0 % always 127; MIDI tracks too.
+    reset();
+    CHECK(me_note_velocity(0, 40, AUTO) == 40, "100 %%: as played");
+    me_audio_cfg[0].vel_sens = 50;
+    CHECK(me_note_velocity(0, 1, AUTO) == 64, "50 %%: 1 -> %d", me_note_velocity(0, 1, AUTO));
+    CHECK(me_note_velocity(0, 127, AUTO) == 127, "50 %%: 127 stays");
+    CHECK(me_note_velocity(0, 64, AUTO) == 96, "50 %%: 64 -> %d", me_note_velocity(0, 64, AUTO));
+    me_audio_cfg[0].vel_sens = 0;
+    CHECK(me_note_velocity(0, 10, AUTO) == 127, "0 %%: every note 127");
+    me_midi_cfg[2].vel_sens = 50;
+    CHECK(me_note_velocity(10, 1, TRACK) == 64, "MIDI track C at 50 %%");
+    CHECK(me_note_velocity(11, 30, TRACK) == 30, "MIDI track D untouched");
+    CHECK(me_note_velocity(3, 0, AUTO) == 0, "velocity 0 passes as it is");
+    for (int v = 1; v < 128; v++)
+        for (int sns = 0; sns <= 100; sns += 10) {
+            me_audio_cfg[1].vel_sens = (int8_t)sns;
+            int r2 = me_note_velocity(1, v, AUTO);
+            CHECK(r2 >= v && r2 <= 127, "sens %d v %d -> %d", sns, v, r2);
+        }
+
+    // 23. Velocity as a source: the last note's velocity x V.DEP into VEL DEST; released on track change.
+    reset();
+    h_active_track = 0;
+    me_tick(0);                                   // the UI has been ticking since power-on
+    me_audio_cfg[0].vel_dest = 26; me_audio_cfg[0].vel_amount = 16;
+    me_note_velocity(0, 100, AUTO);
+    words_reset(10000);
+    me_render(words);
+    CHECK(*slot(0, 26) == 10000 + 100 * 16 * 4, "velocity 100 x 16 on FLT.FREQ: %d", *slot(0, 26) - 10000);
+    me_note_velocity(0, 20, AUTO);
+    words_reset(10000);
+    me_render(words);
+    CHECK(*slot(0, 26) == 10000 + 20 * 16 * 4, "the next note's velocity: %d", *slot(0, 26) - 10000);
+    me_audio_cfg[0].vel_sens = 0;                 // the source is the played velocity, not the scaled one
+    me_note_velocity(0, 20, AUTO);
+    words_reset(10000);
+    me_render(words);
+    CHECK(*slot(0, 26) == 10000 + 20 * 16 * 4, "source unscaled: %d", *slot(0, 26) - 10000);
+    h_active_track = 1;
+    me_tick(0);
+    words_reset(10000);
+    me_render(words);
+    CHECK(*slot(0, 26) == 10000, "released on track change");
+
+    // 24. LFO destinations go in at the LFO stage's entry, the rest after it.
+    reset();
+    h_active_track = 0;
+    me_audio_cfg[0].mw_dest = 8; me_audio_cfg[0].mw_amount = 32;      // L1.DEP
+    me_audio_cfg[0].at_dest = 26; me_audio_cfg[0].at_amount = 32;     // FLT.FREQ
+    mw_in(13, 64, AUTO);
+    at_in(13, 64, AUTO);
+    words_reset(10000);
+    me_render(words);
+    CHECK(*slot(0, 8) == 10000 && *slot(0, 26) == 10000 + 64 * 32 * 4, "after the LFO stage: FREQ only: %d %d", *slot(0, 8), *slot(0, 26));
+    words_reset(10000);
+    me_render_lfo(words);
+    CHECK(*slot(0, 8) == 10000 + 64 * 32 * 4 && *slot(0, 26) == 10000, "LFO entry: L1.DEP only: %d %d", *slot(0, 8), *slot(0, 26));
+    CHECK(*slot(0, 17) == 10000, "LFO entry: no bend");
+    me_audio_cfg[0].mw_dest = 17;                 // TUNE as a destination: within TUNE's range
+    words_reset(16384 + 20 * 256);
+    mw_in(13, 127, AUTO);
+    me_render(words);
+    CHECK(*slot(0, 17) == TUNE_MAX, "TUNE route held at +24: %d", *slot(0, 17));
+
     // ---- the page ------------------------------------------------------------
-    // Key and encoder events as the core hands them: id at +12, flags/count at +16.
     int ev[8];
     #define KEY(id_, down, rep) (memset(ev, 0, sizeof ev), ev[3] = (id_), ev[4] = (down) | ((rep) ? 8 : 0), me_page_key(0, ev))
     #define ENC(id_, n) (memset(ev, 0, sizeof ev), ev[3] = (id_), ev[4] = (n), me_page_enc(0, ev))
+    #define OPEN() (h_trig_page = 1, KEY(19, 1, 0), KEY(19, 0, 0))
 
-    // 22. A tap of TRIG on the TRIG page opens it; a hold, TRIG + a key, FUNC + TRIG or another page do not.
+    // 25. A tap of TRIG on the TRIG page opens it; a hold, TRIG + a key, FUNC + TRIG or another page do not.
     reset();
     h_trig_page = 1;
     CHECK(KEY(19, 1, 0) == 0 && KEY(19, 0, 0) == 0, "TRIG reaches the stock page");
@@ -402,75 +468,126 @@ int main(void)
     KEY(19, 1, 0); KEY(19, 0, 0);
     CHECK(!me_page_open, "FUNC + TRIG: the quantize page");
     reset();
-    h_trig_page = 0;                              // another page (or a menu over the TRIG page)
     KEY(19, 1, 0); h_trig_page = 1; KEY(19, 0, 0);
     CHECK(!me_page_open, "TRIG pressed on another page only brings the TRIG page");
 
-    // 23. On the page: knobs, cursor, values; the sequencer's keys go through.
+    // 26. Audio cells: each knob its own setting, stepped through the accelerator.
     reset();
-    h_trig_page = 1; h_active_track = 0;
-    KEY(19, 1, 0); KEY(19, 0, 0);
-    CHECK(ENC(1, 3) == 1 && me_audio_cfg[0].range == 3, "knob A: BEND RANGE 2 -> 3: %d", me_audio_cfg[0].range);
-    ENC(1, 50);
-    CHECK(me_audio_cfg[0].range == 4, "BEND RANGE steps one at a time: %d", me_audio_cfg[0].range);
+    h_active_track = 0;
+    OPEN();
+    CHECK(ENC(1, 3) == 1 && me_audio_cfg[0].range == 5, "A BEND 2 -> 5: %d", me_audio_cfg[0].range);
+    CHECK(h_enc_last_sid == SID_TUNE, "BEND feels like TUNE");
     for (int i = 0; i < 20; i++) ENC(1, 1);
-    CHECK(me_audio_cfg[0].range == PB_RANGE_MAX, "BEND RANGE at most 12: %d", me_audio_cfg[0].range);
-    ENC(2, 1);
-    CHECK(me_audio_cfg[0].mw_dest == 17, "knob B: MW DEST OFF -> SRC.A: %d", me_audio_cfg[0].mw_dest);
-    ENC(3, -100);
-    CHECK(me_audio_cfg[0].mw_amount == -64, "knob C: MW AMOUNT down to -64: %d", me_audio_cfg[0].mw_amount);
+    CHECK(me_audio_cfg[0].range == PB_RANGE_MAX, "BEND at most 12: %d", me_audio_cfg[0].range);
+    ENC(2, -30);
+    CHECK(me_audio_cfg[0].vel_sens == 70, "B V.SNS 100 -> 70: %d", me_audio_cfg[0].vel_sens);
+    ENC(2, -200);
+    CHECK(me_audio_cfg[0].vel_sens == 0, "V.SNS at least 0");
+    ENC(3, 1);
+    CHECK(me_audio_cfg[0].mw_dest == 17 && list_cell == 2, "C MW: OFF -> SRC TUNE, the list opens: %d %d", me_audio_cfg[0].mw_dest, list_cell);
+    ENC(3, 6);
+    CHECK(me_audio_cfg[0].mw_dest == 27, "MW: 6 more -> FLT RESO: %d", me_audio_cfg[0].mw_dest);
+    ENC(4, -100);
+    CHECK(me_audio_cfg[0].mw_amount == -64 && list_cell == -1, "D M.DEP to -64, the list closes: %d", me_audio_cfg[0].mw_amount);
+    ENC(5, 200);
+    CHECK(me_audio_cfg[0].vel_dest == 16, "E VEL: to the end of the list, L2 DEP: %d", me_audio_cfg[0].vel_dest);
+    ENC(6, -10);
+    CHECK(me_audio_cfg[0].vel_amount == 22, "F V.DEP 32 -> 22: %d", me_audio_cfg[0].vel_amount);
+    ENC(7, 2); ENC(8, 5);
+    CHECK(me_audio_cfg[0].at_dest == 19 && me_audio_cfg[0].at_amount == 37, "G AT, H A.DEP: %d %d", me_audio_cfg[0].at_dest, me_audio_cfg[0].at_amount);
     CHECK(me_audio_cfg[1].range == 2 && me_audio_cfg[1].mw_amount == 32, "track 2 unchanged");
-    CHECK(ENC(9, 1) == 1 && cursor == 3, "LEVEL moves the cursor: %d", cursor);
-    KEY(17, 1, 0); KEY(17, 0, 0);
-    CHECK(me_audio_cfg[0].at_dest == 17, "RIGHT on AT DEST: %d", me_audio_cfg[0].at_dest);
-    KEY(14, 1, 0); KEY(14, 0, 0);
-    CHECK(cursor == 2, "UP: %d", cursor);
+    h_push_held = 1;
+    ENC(6, 1);
+    CHECK(me_audio_cfg[0].vel_amount == 26, "pushed: the push multiplier: %d", me_audio_cfg[0].vel_amount);
+    h_push_held = 0;
+    h_func_held = 1;
+    ENC(1, 1); ENC(2, -1); ENC(3, 1); ENC(4, 1); ENC(5, -1); ENC(6, 1); ENC(7, 1); ENC(8, 1);
+    h_func_held = 0;
+    CHECK(me_audio_cfg[0].range == 2 && me_audio_cfg[0].vel_sens == 100 && me_audio_cfg[0].mw_dest == 0 &&
+          me_audio_cfg[0].mw_amount == 32 && me_audio_cfg[0].vel_dest == 0 && me_audio_cfg[0].vel_amount == 32 &&
+          me_audio_cfg[0].at_dest == 0 && me_audio_cfg[0].at_amount == 32, "FUNC + turn: every cell back to its default");
+    CHECK(ENC(9, 3) == 0, "LEVEL stays the track level");
     CHECK(KEY(30, 1, 0) == 0 && KEY(10, 1, 0) == 0 && KEY(2, 1, 0) == 0, "trig keys, PLAY and TRK go to the stock page");
-    CHECK(me_page_open, "still open after them");
+    CHECK(KEY(14, 1, 0) == 1 && KEY(12, 1, 0) == 1, "arrows and YES: taken, nothing happens");
+    CHECK(me_page_open, "still open");
+    for (int i = 0; i < SHOW_TICKS; i++) me_page_tick(0);
+    ENC(4, 2);
+    memset(drawn, 0, sizeof drawn);
+    h_knob_calls = 0;
+    me_page_draw((void *)1, (void *)1);
+    CHECK(strstr(drawn, "Expression") && strstr(drawn, "BEND") && strstr(drawn, "V.SNS") && strstr(drawn, "+34") && !strstr(drawn, "M.DEP") && strstr(drawn, "A.DEP"), "drawn: %s", drawn);
+    CHECK(h_knob_calls == 4, "four knobs (V.SNS and the three depths): %d", h_knob_calls);
+    ENC(3, 2);
     memset(drawn, 0, sizeof drawn);
     me_page_draw((void *)1, (void *)1);
-    CHECK(strstr(drawn, "EXPRESSION: TRACK 1") && strstr(drawn, "12 ST") && strstr(drawn, "SRC.A") && strstr(drawn, "-64"), "drawn: %s", drawn);
-    h_active_track = 9;                           // TRK + trig 10: MIDI track B
+    CHECK(strstr(drawn, "None") && strstr(drawn, "SRC:Name"), "the list: %s", drawn);
+    for (int i = 0; i < LIST_TICKS; i++) me_page_tick(0);
+    CHECK(list_cell == -1, "the list closes by itself");
+    me_pb_on = me_at_on = me_mw_on = 0;
     memset(drawn, 0, sizeof drawn);
     me_page_draw((void *)1, (void *)1);
-    CHECK(strstr(drawn, "MIDI B") && strstr(drawn, "PITCH BEND") && strstr(drawn, "CC 1 (MW)") && strstr(drawn, "AFTERTCH"), "MIDI track drawn: %s", drawn);
+    CHECK(strstr(drawn, "THRU off"), "THRU off shown: %s", drawn);
+    me_pb_on = me_at_on = me_mw_on = 1;
     KEY(13, 1, 0);
     CHECK(!me_page_open, "NO leaves");
 
-    // 24. MIDI track rows; a change gives the channel back.
+    // 26b. The safety net: an accelerator that gives nothing for six detents gives way to a step a detent.
     reset();
-    h_trig_page = 1; h_active_track = 8;
-    pb_in(13, 12000, AUTO);
-    KEY(19, 1, 0); KEY(19, 0, 0);
-    before = nsent;
-    KEY(12, 1, 0);                                // YES on PITCH BEND: off
-    CHECK(me_midi_cfg[0].pb_on == 0, "YES toggles PITCH BEND off");
-    CHECK(nsent == before + 1 && sent[nsent - 1][0] == 0xE0 && pb_of(nsent - 1) == 8192, "the synth's bend back to the track's: %d", nsent - before);
-    ENC(4, 73);
-    CHECK(me_midi_cfg[0].mw_cc == 74, "knob D: MW AS CC 74: %d", me_midi_cfg[0].mw_cc);
-    ENC(4, 200);
-    CHECK(me_midi_cfg[0].mw_cc == CC_MAX, "MW AS at most CC 119: %d", me_midi_cfg[0].mw_cc);
-    ENC(5, 2);
-    CHECK(me_midi_cfg[0].at_cc == 2, "knob E: AT AS CC 2: %d", me_midi_cfg[0].at_cc);
-    ENC(5, -10);
-    CHECK(me_midi_cfg[0].at_cc == 0, "AT AS back to aftertouch: %d", me_midi_cfg[0].at_cc);
-    KEY(17, 1, 0);                                // cursor on AT AS
-    CHECK(me_midi_cfg[0].at_cc == 1, "RIGHT: CC 1");
-    CHECK(me_midi_cfg[1].mw_cc == 1, "MIDI B unchanged");
+    h_active_track = 0;
+    OPEN();
+    h_enc_zero = 1;
+    for (int i = 0; i < 5; i++) ENC(4, 4);
+    CHECK(me_audio_cfg[0].mw_amount == 32, "five detents of nothing: unchanged (the stock slow start)");
+    ENC(4, 4);
+    CHECK(me_audio_cfg[0].mw_amount == 33, "the sixth: a step: %d", me_audio_cfg[0].mw_amount);
+    ENC(4, 8);
+    CHECK(me_audio_cfg[0].mw_amount == 35, "then a step a detent: %d", me_audio_cfg[0].mw_amount);
+    h_enc_zero = 0;
+    ENC(4, 1);
+    CHECK(me_audio_cfg[0].mw_amount == 36 && idle_counts[3] == 0, "the accelerator back: %d", me_audio_cfg[0].mw_amount);
 
-    // 25. Leaving: another page key, or the page gone from under it.
+    // 27. MIDI cells; a change gives the channel back.
     reset();
-    h_trig_page = 1;
-    KEY(19, 1, 0); KEY(19, 0, 0);
+    h_active_track = 8;
+    pb_in(13, 12000, AUTO);
+    OPEN();
+    before = nsent;
+    ENC(1, -1);
+    CHECK(me_midi_cfg[0].pb_on == 0, "A PB off");
+    CHECK(nsent == before + 1 && sent[nsent - 1][0] == 0xE0 && pb_of(nsent - 1) == 8192, "the synth's bend back to the track's: %d", nsent - before);
+    ENC(1, 1);
+    CHECK(me_midi_cfg[0].pb_on == 1, "A PB on again");
+    ENC(4, -50);
+    CHECK(me_midi_cfg[0].vel_sens == 50, "D V.SNS 50: %d", me_midi_cfg[0].vel_sens);
+    CHECK(ENC(5, 3) == 1 && ENC(6, 3) == 1, "E, F empty: taken, nothing");
+    ENC(7, 73);
+    CHECK(me_midi_cfg[0].mw_cc == 74, "G MW> CC 74: %d", me_midi_cfg[0].mw_cc);
+    CHECK(h_enc_last_sid == SID_LIST, "feels like the SAMP selector");
+    ENC(7, 200);
+    CHECK(me_midi_cfg[0].mw_cc == CC_MAX, "MW> at most CC 119");
+    ENC(8, 2);
+    CHECK(me_midi_cfg[0].at_cc == 2, "H AT> CC 2");
+    h_func_held = 1;
+    ENC(8, 1); ENC(7, 1); ENC(4, 1);
+    h_func_held = 0;
+    CHECK(me_midi_cfg[0].at_cc == 0 && me_midi_cfg[0].mw_cc == 1 && me_midi_cfg[0].vel_sens == 100, "FUNC + turn: defaults");
+    CHECK(me_midi_cfg[1].mw_cc == 1, "MIDI B unchanged");
+    for (int i = 0; i < SHOW_TICKS; i++) me_page_tick(0);
+    memset(drawn, 0, sizeof drawn);
+    me_page_draw((void *)1, (void *)1);
+    CHECK(strstr(drawn, "ON") && strstr(drawn, "MW>") && strstr(drawn, "AT>") && strstr(drawn, "V.SNS"), "MIDI drawn: %s", drawn);
+
+    // 28. Leaving: another page key, the page gone from under it, TRIG again.
+    reset();
+    OPEN();
     CHECK(KEY(21, 1, 0) == 0 && !me_page_open, "FLTR: stock takes it, the page closes");
-    KEY(19, 1, 0); KEY(19, 0, 0);
+    OPEN();
     CHECK(me_page_open, "open again");
     h_trig_page = 0;
     me_page_draw((void *)1, (void *)1);
     CHECK(!me_page_open, "the TRIG page gone: closed");
     reset();
-    h_trig_page = 1;
-    KEY(19, 1, 0); KEY(19, 0, 0);
+    OPEN();
     CHECK(KEY(19, 1, 0) == 1 && me_page_open && KEY(19, 0, 0) == 1 && !me_page_open, "TRIG again: back to the first page");
     CHECK(ENC(1, 1) == 0, "closed: knobs are stock's");
 

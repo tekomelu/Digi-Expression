@@ -411,8 +411,7 @@ void me_page_tick(void *ctrl);
 void me_tick(void *ctrl)
 {
     me_page_tick(ctrl);
-    if (!initialised)
-        return;
+    init();                             // a note's velocity alone can need a release
     check_track();
     uint16_t sr = irq_off();
     for (int kind = 0; kind < KINDS; kind++) {

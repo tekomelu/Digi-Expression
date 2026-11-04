@@ -1,6 +1,6 @@
 # MIDI Expression
 
-Module version `0.4.0-experimental`, for the original Digitakt on OS 1.54, Core 2.1.
+Module version `0.5.0-experimental`, for the original Digitakt on OS 1.54, Core 2.1.
 
 ## Overview
 
@@ -8,17 +8,24 @@ Stock, the Digitakt passes an external keyboard's notes through a MIDI track to 
 
 ## The EXPRESSION page (each track's own settings)
 
-Select a track, press **TRIG** for its TRIG page, then **tap TRIG again**. Knobs A–E set the five rows; UP/DOWN or LEVEL move the cursor, LEFT/RIGHT change the value, YES toggles ON/OFF. TRIG or NO goes back to the TRIG page, and any other page or menu key does its stock job. The trig keys, TRK + trig, FUNC, PTN, BANK and the transport keep working under it; TRK + trig shows the newly selected track's settings. Holding TRIG and FUNC + TRIG stay stock.
+Select a track, press **TRIG** for its TRIG page, then **tap TRIG again**. The page looks like the stock FLTR and LFO pages: eight cells on knobs A–H, under the TRIG page's own header, track box and LEV meter. The knobs use the firmware's own acceleration, as the stock pages do (pushed, the stock push multiplier); **FUNC + turn** puts a cell back to its default. Turning a destination cell opens a list like the LFO page's DEST. TRIG or NO goes back; any other page or menu key does its stock job. The trig keys, TRK + trig, FUNC, PTN, BANK, the transport and LEVEL keep working.
 
 | Knob | Audio track | Default | MIDI track | Default |
 | --- | --- | --- | --- | --- |
-| A | BEND RANGE: OFF, 1–12 semitones of TUNE | 2 ST | PITCH BEND: ON/OFF | ON |
-| B | MW DEST: OFF or a SRC, FLTR, AMP or LFO amount | OFF | AFTERTOUCH: ON/OFF | ON |
-| C | MW AMOUNT: −64 to +64 | +32 | MOD WHEEL: ON/OFF | ON |
-| D | AT DEST | OFF | MW AS: CC 1 (added to the track's own MW) or CC 2–119 (the wheel alone) | CC 1 (MW) |
-| E | AT AMOUNT: −64 to +64 | +32 | AT AS: channel aftertouch (added to the track's own AT) or CC 1–119 (the pressure alone) | AFTERTCH |
+| A | BEND: OFF, 1–12 semitones of TUNE | 2 | PB: ON/OFF | ON |
+| B | V.SNS: velocity sensitivity, 0–100 % | 100 % | AT: ON/OFF | ON |
+| C | MW: the parameter the wheel moves | none | MW: ON/OFF | ON |
+| D | M.DEP: −64 to +64 | +32 | V.SNS | 100 % |
+| E | VEL: the parameter the played velocity moves | none | – | |
+| F | V.DEP: −64 to +64 | +32 | – | |
+| G | AT: the parameter aftertouch moves | none | MW>: CC 1 (added to the track's own MW) or CC 2–119 alone | CC 1 |
+| H | A.DEP: −64 to +64 | +32 | AT>: channel aftertouch, or CC 1–119 alone | AT |
 
-Audio tracks: pitch bend moves TUNE smoothly, within TUNE's own ±24; the wheel and pressure move their parameter in the stock LFO's scale (±64 at full covers its whole range). Everything adds to the track's own value, its parameter locks, its LFOs and Digi Matrix's routings, capped to the parameter's range. A CC chosen with MW AS or AT AS goes back to 0 when you leave the track. Changing a MIDI track's row gives its synth the track's own values back.
+**Destinations:** SRC Tune, Bit Reduction, Start, Length, Level; FLTR Frequency, Resonance, Env Depth, Attack, Decay, Sustain, Release and its second page; AMP Attack, Hold, Decay, Overdrive, Delay, Reverb, Pan, Volume; LFO1 and LFO2 Speed, Multiplier, Fade, Phase, Depth. Each adds to the track's own value, its parameter locks, its LFOs and Digi Matrix's routings, within the parameter's range, in the stock LFO's scale (±64 at full covers the whole range). The LFO ones are added before the LFO stage, everything else after it, which is where the engine reads them (measured).
+
+**Velocity.** V.SNS scales the velocity of notes from MIDI IN on their way to the track: 100 % as played, 50 % maps 0–127 to 64–127, 0 % plays every note at 127. It is what sounds and what the sequencer records. As a source, VEL is the last note's played velocity, held until the next note.
+
+A CC chosen with MW> or AT> goes back to 0 when you leave the track. Changing a MIDI track's PB/AT/MW/MW>/AT> gives its synth the track's own values back.
 
 The settings are held in RAM: they return to the defaults at every power-on and are not saved with the project.
 
@@ -37,7 +44,7 @@ They start unticked at every power-on.
 1. Connect a keyboard to MIDI IN on the Digitakt's AUTO CHANNEL, and a synth to MIDI OUT.
 2. Select MIDI track A (TRK + trig 9), switch its CHAN on (SRC page, FUNC + knob A) and set the synth's channel.
 3. Tick PB THRU, AT THRU and MW THRU in SETTINGS, and play.
-4. For an audio track: select it, TRIG, tap TRIG, and set BEND RANGE and the routes.
+4. For an audio track: select it, TRIG, tap TRIG, and set BEND and the routes.
 
 ## Message map
 
@@ -60,10 +67,12 @@ They start unticked at every power-on.
 - **The track's own values:** an 8-byte site at the entry of the MIDI tracks' `send(track, channel, id, value, force)` lets the mod see and, while live input is active, take over the track's PB (id 21), AT (22) and MW (23) sends. Every other parameter passes untouched.
 - **Priority:** each output channel keeps one pending flag per message type, and the value is worked out when it goes out. It goes through the stock DIN driver only while its transmit ring holds at most 24 bytes (about 8 ms of line time), so it never queues in front of a burst of sequencer notes. What waits goes with the next message or within one UI tick (33 ms).
 
+- **Velocity:** a 6-byte site at 0x400d5d8e, the note router's call of the live note for each track, scales the velocity (vel.s).
+- **The LFO slots:** an 8-byte site at the LFO stage's entry, 0x400ed766 (lfo.s).
 - **The page:** the core's key, encoder, draw and tick hooks only. Which page is up is read from the UI's view controller (measured, see docs/RESEARCH-OS154.md); nothing there is written.
 - **Audio tracks:** a 6-byte site at 0x40077eea, the first call after the render's LFO stage that takes the parameter words (after Digi Matrix's and Digi Poly's sites), adds the live values to them.
 
-All five sites are claimed in `build.json`; no other Modwerk Digitakt module patches them. It links beside Digi Matrix, Digi Poly, Digichain, FX Track and CC Recall together.
+All seven sites are claimed in `build.json`; no other Modwerk Digitakt module patches them. It links beside Digi Matrix, Digi Poly, Digichain, FX Track and CC Recall together.
 
 ## Compatibility and limitations
 

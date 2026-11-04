@@ -191,8 +191,8 @@ On the Digitakt (with the MIDI Expression build):
   Select MIDI track A (TRK + trig 9); on its SRC page press FUNC + knob A so
       CHAN is on, and note its channel.
   SETTINGS: tick PB THRU, AT THRU and MW THRU. On each track's EXPRESSION page
-      (TRIG, then tap TRIG) leave the defaults for now: BEND RANGE 2, MW DEST
-      and AT DEST OFF; MIDI A: all ON, MW AS CC 1, AT AS AFTERTCH.
+      (TRIG, then tap TRIG) leave the defaults for now: BEND 2, MW, VEL and
+      AT destinations none (---), V.SNS 100 %; MIDI A: all ON, MW AS CC 1, AT AS AFTERTCH.
   Nothing else should send to this MIDI input during the tests.''')
         for key, label in (('auto', 'AUTO CHANNEL'), ('track_a', 'TRACK A CHANNEL'), ('chan', "MIDI track A's CHAN")):
             a = ask('%s (1-16) [%d]:' % (label, c[key] + 1)).strip()
@@ -295,7 +295,7 @@ synth or a long LOOP). The program plays it with a note on track 1's own
 channel (TRACK 1 CHANNEL in MIDI CONFIG > CHANNELS).''')
         a = ask('TRACK 1 CHANNEL (1-16) [1]:').strip()
         t1 = int(a) - 1 if a.isdigit() and 1 <= int(a) <= 16 else 0
-        ask('Select audio track 1 (TRK + trig 1). Its EXPRESSION page (TRIG, tap TRIG): BEND RANGE 2. PB THRU ticked. Press Enter.')
+        ask('Select audio track 1 (TRK + trig 1). Its EXPRESSION page (TRIG, tap TRIG): BEND 2. PB THRU ticked. Press Enter.')
         ch = c['auto']
         m = self.io.mark()
         self.io.send(self.non(t1, 60))
@@ -310,7 +310,7 @@ channel (TRACK 1 CHANNEL in MIDI CONFIG > CHANNELS).''')
                     '%d pitch bends came out' % len(got) if got else '')
         self.result('audio', 'bend up 2 semitones and back (heard)',
                     yes('Did the note bend up by two semitones and come back?'))
-        ask('On track 1\'s EXPRESSION page turn knob A to BEND RANGE 12, then press Enter.')
+        ask('On track 1\'s EXPRESSION page turn knob A to BEND 12, then press Enter.')
         self.io.send(self.non(t1, 60))
         wait(0.4)
         self.io.send(self.pb(ch, 16383))
@@ -320,9 +320,9 @@ channel (TRACK 1 CHANNEL in MIDI CONFIG > CHANNELS).''')
         self.io.send(self.pb(ch, 8192))
         wait(0.3)
         self.io.send(self.noff(t1, 60))
-        self.result('audio', 'BEND RANGE 12: an octave up, an octave down (heard)',
+        self.result('audio', 'BEND 12: an octave up, an octave down (heard)',
                     yes('Did it jump an octave up, then an octave down, then back?'))
-        ask('EXPRESSION page: MW DEST (knob B) FLT.FREQ, MW AMOUNT (C) +32; on the FLTR page close the filter about halfway. Press Enter.')
+        ask('EXPRESSION page: MW (knob C) FLTR:Frequency, M.DEP (D) +32; on the FLTR page close the filter about halfway. Press Enter.')
         self.io.send(self.non(t1, 60))
         for v in list(range(0, 128, 4)) + list(range(127, -1, -4)):
             self.io.send(self.mw(ch, v))
@@ -332,7 +332,7 @@ channel (TRACK 1 CHANNEL in MIDI CONFIG > CHANNELS).''')
         self.io.send(self.noff(t1, 60))
         self.result('audio', 'mod wheel opens the filter and closes it again (heard)',
                     yes('Did the filter open and close smoothly, back where it was?'))
-        ask('EXPRESSION page: AT DEST (knob D) L1.DEP, AT AMOUNT (E) +32; give track 1 LFO1 a slow wave on pitch or filter with DEP 0. Press Enter.')
+        ask('EXPRESSION page: AT (knob G) LFO1:Depth, A.DEP (H) +32; give track 1 LFO1 a slow wave on pitch or filter with DEP 0. Press Enter.')
         self.io.send(self.non(t1, 60))
         for v in list(range(0, 128, 4)) + [127] * 20 + list(range(127, -1, -4)):
             self.io.send(self.at(ch, v))
@@ -342,7 +342,24 @@ channel (TRACK 1 CHANNEL in MIDI CONFIG > CHANNELS).''')
         self.io.send(self.noff(t1, 60))
         self.result('audio', 'pressure brings in the LFO, release takes it away (heard)',
                     yes('Did the LFO wobble appear with pressure and stop when it went back to 0?'))
-        ask('EXPRESSION page: MW DEST and AT DEST back to OFF, BEND RANGE 2. Press Enter.')
+        def three_notes():
+            for v in (20, 60, 127):
+                self.io.send(bytes([0x90 | t1, 60, v]))
+                wait(0.5)
+                self.io.send(self.noff(t1, 60))
+                wait(0.3)
+        ask('Back on the EXPRESSION page: V.SNS (knob B) 100 %. Press Enter, then listen: three notes, soft to hard.')
+        three_notes()
+        loud = yes('Did they get louder, soft to hard?')
+        ask('Turn V.SNS to 0 %. Press Enter, then listen to the same three notes.')
+        three_notes()
+        self.result('audio', 'V.SNS: 100 % follows velocity, 0 % plays every note full (heard)',
+                    loud and yes('Were they all equally loud now?'))
+        ask('V.SNS back to 100 % (FUNC + turn B). VEL (knob E) FLTR:Frequency, V.DEP (F) +32; the filter closed about halfway. Press Enter.')
+        three_notes()
+        self.result('audio', 'VEL to the filter: harder notes brighter (heard)',
+                    yes('Did the harder notes sound brighter?'))
+        ask('EXPRESSION page: FUNC + turn knobs A, C, E and G (back to their defaults). Press Enter.')
 
     def clock(self, seconds=15):
         c = self.cfg

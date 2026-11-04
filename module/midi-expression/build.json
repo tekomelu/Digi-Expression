@@ -6,7 +6,9 @@
     "src/page.c",
     "src/rows.s",
     "src/send.s",
-    "src/render.s"
+    "src/render.s",
+    "src/lfo.s",
+    "src/vel.s"
   ],
   "defsym": {},
   "cflags": [],
@@ -89,6 +91,20 @@
           "stockSha256": "f2c0d49818da2ca50f42f9b7fec5ef9d19b3e936903fb2b04eccfde2c434a85c",
           "op": "jsr",
           "target": "me_render_hook"
+        },
+        {
+          "addr": "0x400ed766",
+          "len": 8,
+          "stockSha256": "2f00d9fdb64f51c6d0127dfa877aafe06a2b563333fd0cf980219fbddab7e663",
+          "op": "jmp",
+          "target": "me_lfo_entry"
+        },
+        {
+          "addr": "0x400d5d8e",
+          "len": 6,
+          "stockSha256": "db11bfa4de9f4ddf15ceb8d62bfb97afdc44f1f95f1310967cab8ffeea14a21f",
+          "op": "jsr",
+          "target": "me_note_hook"
         }
       ]
     }

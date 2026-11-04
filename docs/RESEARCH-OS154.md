@@ -95,3 +95,12 @@ Measured in digiemu (c1b5735) on stock OS 1.54 and on MX01 builds with this mod,
 - FILLRECT on 1.54 is 0x400c1bce.
 
 Stock heap addresses are the same from boot to boot in the emulator but are not relied on: the page is found from the controller each time.
+
+## 9. The render's parameter words, the LFO stage, velocity (0.5)
+
+- Render block (from 0x40077e94): `0x40074b9e(0x800014f0)` returns the words (0x80002760 in fast SRAM); `0x400ed766(words, *0x4020df10, d5)` at 0x40077eac is the LFO stage; `0x400ece8e(words, 0x4199f466, *0x4020df10, d3)` at 0x40077eea follows.
+- `scripts/probe-reads.py` (memory-read hooks on the words): slots 1–16 are read only inside the LFO stage; 17–36 and 38–45 only after it; 37 never. A route into an LFO slot must be added before 0x400ed766 runs.
+- LFO stage entry: `lea -64(%sp),%sp; movem.l %d2-%d7/%a2-%a6,(%sp)` (8 bytes, SHA-256 2f00d9fd…e663), then 0x400ed76e. Its only caller is 0x40077eac (Digi Poly's site at 0x40077eaa replaces that call and calls the function itself, so an entry hook still runs).
+- Note router 0x400d5c1c: for each routed track, `lea %pc@(0x400d5604),%a2` at 0x400d5d5e, then per track `live_note(track, note, velocity, flag, 0, -1, -1)` by `jsr (%a2)` at 0x400d5d8e and `lea 28(%sp),%sp` (6 bytes together, SHA-256 db11bfa4…a21f). Velocity is the router's own argument. This is MIDI IN only; the unit's keys reach the live note elsewhere (Digi Poly's 0x40028bae).
+- Encoder accelerator 0x400c06ae(state, encoder, raw × multiplier, curve, pushed): the stock pages call it from 0x40032bbe after 0x40065794(id) (the UI record) and 0x400c047e. A detent is 4 raw counts in digiemu; there the accelerator returns 0 for stock pages too.
+- `STOCK_NAME` 0x4000feac(0, id) gives the firmware's parameter names; the label font 0x401fe44c has a width table at word 2, the 5-pixel font 0x40200ebc does not (fixed 4-pixel advance).
