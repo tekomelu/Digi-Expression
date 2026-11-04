@@ -1,4 +1,4 @@
-# digitakt-midi-fun
+# digitakt-midi-expression
 
 MIDI expression for the original Digitakt (mk1, OS 1.54): pitch bend, aftertouch and mod wheel pass-through to the MIDI tracks, pitch bend for the audio tracks and simple mod routes. A [Modwerk](https://modwerk.app/) module in development, kept private until it is ready.
 
