@@ -10,6 +10,7 @@ enum { PB, AT, MW, KINDS };
 // SETTINGS (rows.s, rows.c): off and the defaults at power-on, not saved.
 extern volatile uint8_t me_pb_on, me_at_on, me_mw_on;
 extern volatile int8_t me_bend_range;          // semitones, 0 = audio tracks not bent
+#define PB_RANGE_MAX 12                         // an octave each way at most
 extern volatile int8_t me_mw_dest, me_at_dest; // a sound slot (1..45), 0 = none
 extern volatile int8_t me_mw_amount, me_at_amount; // -64..+64
 

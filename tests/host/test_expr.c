@@ -215,20 +215,26 @@ int main(void)
     pb_in(13, 0, AUTO);                           // full down
     me_render(words);
     CHECK(*slot(0, 17) == 16384 - 512, "TUNE -2 semitones: %d", *slot(0, 17) - 16384);
-    me_bend_range = 24;
+    me_bend_range = 12;
     words_reset(16384);
-    pb_in(13, 16383, AUTO);                       // full up: 8191/8192 of 24 semitones
+    pb_in(13, 16383, AUTO);                       // full up: 8191/8192 of 12 semitones
     me_render(words);
-    CHECK(*slot(0, 17) == 16384 + 6143, "TUNE +24: %d", *slot(0, 17) - 16384);
+    CHECK(*slot(0, 17) == 16384 + 3071, "TUNE +12: %d", *slot(0, 17) - 16384);
     words_reset(16384);
     pb_in(13, 0, AUTO);
     me_render(words);
-    CHECK(*slot(0, 17) == 16384 - 6144, "TUNE -24: %d", *slot(0, 17) - 16384);
-    words_reset(16384 + 512);                     // TUNE knob at +2, bend +24: TUNE's own top
+    CHECK(*slot(0, 17) == 16384 - 3072, "TUNE -12: %d", *slot(0, 17) - 16384);
+    me_bend_range = 24;                           // more than the row allows: held to 12
+    words_reset(16384);
+    pb_in(13, 0, AUTO);
+    me_render(words);
+    CHECK(*slot(0, 17) == 16384 - 3072, "range held to 12: %d", *slot(0, 17) - 16384);
+    me_bend_range = 12;
+    words_reset(16384 + 13 * 256);                /* TUNE knob at +13, bend +12: TUNE's own top */
     pb_in(13, 16383, AUTO);
     me_render(words);
     CHECK(*slot(0, 17) == TUNE_MAX, "capped at TUNE +24: %d", *slot(0, 17));
-    words_reset(16384 - 512);
+    words_reset(16384 - 13 * 256);
     pb_in(13, 0, AUTO);
     me_render(words);
     CHECK(*slot(0, 17) == TUNE_MIN, "capped at TUNE -24: %d", *slot(0, 17));

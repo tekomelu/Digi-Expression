@@ -67,7 +67,7 @@
     {
       "name": "PB RANGE",
       "default": null,
-      "doc": "OFF, 1-24 semitones (default 2): how far a full bend moves an audio track's TUNE, within TUNE's own +-24.",
+      "doc": "OFF, 1-12 semitones (default 2): how far a full bend moves an audio track's TUNE, within TUNE's own +-24.",
       "labels": null
     },
     {

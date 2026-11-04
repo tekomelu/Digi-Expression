@@ -84,7 +84,7 @@ static int8_t clamp_amount(int v)
 void me_row_none(void **payload) { (void)payload; }
 
 
-// BEND RANGE: OFF, 1..24 semitones.
+// PB RANGE: OFF, 1..PB_RANGE_MAX semitones.
 void me_range_draw(void *a, void *b, void *bmp, int x, int y)
 {
     (void)a; (void)b;
@@ -97,7 +97,7 @@ void me_range_change(void **payload, int unused, int delta)
 {
     (void)unused;
     int v = me_bend_range + (delta > 0 ? 1 : delta < 0 ? -1 : 0);
-    me_bend_range = (int8_t)(v < 0 ? 0 : v > 24 ? 24 : v);
+    me_bend_range = (int8_t)(v < 0 ? 0 : v > PB_RANGE_MAX ? PB_RANGE_MAX : v);
     redraw(payload);
 }
 

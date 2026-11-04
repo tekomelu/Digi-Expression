@@ -96,6 +96,8 @@ static int32_t scaled(int32_t value, int32_t amount)
 void me_render(void *words)
 {
     int32_t range = me_bend_range;
+    if (range > PB_RANGE_MAX)
+        range = PB_RANGE_MAX;
     int32_t mw_dest = me_mw_dest, at_dest = me_at_dest;
     int32_t mw_amount = me_mw_amount, at_amount = me_at_amount;
     for (int t = 0; t < 8; t++) {

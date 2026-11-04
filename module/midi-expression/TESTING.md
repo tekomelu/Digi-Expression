@@ -1,6 +1,6 @@
 # MIDI Expression testing
 
-Module version 0.3.0-experimental (image SHA-256 `03c08b8e…ab3d` built from the author's OS 1.54), Digitakt I OS 1.54 (stock file SHA-256 `f78ba80f…3cf6`), Core 2.1 (`core-2.1-os1.54.elemod`). Built locally with Modwerk's `scripts/link-image.mjs` (commit ced6490), m68k-elf GCC 16.2.0 and binutils 2.47. Firmware, linked images and emulator state stay on the developer's computer.
+Module version 0.3.0-experimental (image SHA-256 `33db5141…cfbc` built; PB RANGE capped at 12. The emulator results below were measured on `03c08b8e…ab3d`, which differs only in that cap, from the author's OS 1.54), Digitakt I OS 1.54 (stock file SHA-256 `f78ba80f…3cf6`), Core 2.1 (`core-2.1-os1.54.elemod`). Built locally with Modwerk's `scripts/link-image.mjs` (commit ced6490), m68k-elf GCC 16.2.0 and binutils 2.47. Firmware, linked images and emulator state stay on the developer's computer.
 
 ## Evidence tier
 
@@ -14,7 +14,7 @@ See the README's "How it hooks in" and `docs/RESEARCH-OS154.md` in the project r
 
 | Test | Expected | Observed |
 | --- | --- | --- |
-| Host unit tests (`tests/host/test_expr.c`, now with `audio.c`) | TUNE scale and limits, routes, caps, release, routing | 476 checks, 0 failures |
+| Host unit tests (`tests/host/test_expr.c`, now with `audio.c`) | TUNE scale and limits, PB RANGE held to 12, routes, caps, release, routing | 477 checks, 0 failures |
 | TUNE's scale: CC 16 to track 1 at 64, 65, 88, 127, 0 on stock, reading the TUNE knob | — | 88 and 127 put the knob in the same place, so TUNE runs 40–88 (±24 semitones), one step a semitone: 256 per semitone in the parameter words |
 | `scripts/probe-words.py`: track 1's parameter words at the call after the hook, PB RANGE 2, AT DEST L1.DEP +32, auto channel | TUNE 16384 ± 2 semitones; L1.DEP + 100 × 32 × 4; nothing after TRK + 2 | TUNE 16895 (full up, +511) and 15872 (full down, −512), 16384 at centre; L1.DEP 16384 → 29184 at AT 100; after TRK + 2 back to 16384 |
 | The same, MW 127 to FLT.FREQ | + 127 × 32 × 4, within 32512 | the kit's FLT.FREQ was already 32512; it stayed at 32512 (capped) |

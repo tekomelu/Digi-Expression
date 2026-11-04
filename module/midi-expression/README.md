@@ -10,7 +10,7 @@ Stock, the Digitakt passes an external keyboard's notes through a MIDI track to 
 
 With an audio track selected (or reached through its TRACK CHANNEL), the same messages play the Digitakt's own sound:
 
-- **Pitch bend** moves the track's TUNE by up to **PB RANGE** semitones each way, smoothly, within TUNE's own ±24.
+- **Pitch bend** moves the track's TUNE by up to **PB RANGE** semitones each way (at most 12, an octave), smoothly, within TUNE's own ±24.
 - **The mod wheel** moves **MW DEST** by up to **MW AMT**, and **aftertouch** moves **AT DEST** by up to **AT AMT**: any amount-type parameter of the SRC, FLTR and AMP pages or of either LFO (speed, multiplier, fade, phase, depth). −64 to +64, in the stock LFO's scale (±64 at full wheel covers the whole range).
 
 It adds to the track's own value, its parameter locks, its LFOs and Digi Matrix's routings, capped to the parameter's range, every audio block. Selecting another track stops the old track's modulation at once; the new track follows the next move.
@@ -23,7 +23,7 @@ It adds to the track's own value, its parameter locks, its LFOs and Digi Matrix'
 | AT THRU | Ticked: channel aftertouch is added to the track's own AT, within 0–127. Poly aftertouch is not passed. Unticked: dropped, as stock. |
 | MW THRU | Ticked, and PORT CONFIG > RECEIVE CC/NRPN ticked: the mod wheel (CC 1) is added to the track's own MW, within 0–127, after the stock control-change handling. Unticked: CC 1 is handled as stock only. |
 
-| PB RANGE | OFF, 1–24 semitones (default 2): how far a full bend moves an audio track's TUNE. |
+| PB RANGE | OFF, 1–12 semitones (default 2): how far a full bend moves an audio track's TUNE. |
 | MW DEST | OFF (default) or an audio-track parameter for the mod wheel. |
 | MW AMT | −64 to +64 (default +32): how far a full wheel moves MW DEST. |
 | AT DEST | OFF (default) or an audio-track parameter for aftertouch. |
