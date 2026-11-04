@@ -1,0 +1,32 @@
+    300.0  --- auto: note
+    300.0  IN  9d 3c 64
+    300.0  OUT 90 3c 64
+    533.3  IN  8d 3c 00
+    538.6  OUT 90 3c 00
+    666.7  --- auto: pitch bend up, max, centre
+    666.7  IN  ed 00 60
+    678.6  OUT e0 00 60
+    698.6  IN  ed 7f 7f
+    698.6  OUT e0 7f 7f
+    718.6  IN  ed 00 40
+    718.6  OUT e0 00 40
+    745.9  --- auto: channel aftertouch
+    745.9  IN  dd 50
+    758.6  OUT d0 50
+    766.7  --- auto: mod wheel CC1
+    766.7  IN  bd 01 40
+    778.6  OUT b0 01 40
+    900.0  --- track A channel 9: note
+    900.0  IN  98 3e 64
+    900.0  OUT 90 3e 64
+   1133.4  IN  88 3e 00
+   1133.4  OUT 90 3e 00
+   1258.6  --- track A channel 9: pitch bend
+   1258.6  IN  e8 00 60
+   1258.6  OUT e0 00 60
+   1279.2  --- track A channel 9: aftertouch
+   1279.2  IN  d8 50
+   1279.2  OUT d0 50
+   1300.0  --- track A channel 9: mod wheel CC1
+   1300.0  IN  b8 01 40
+   1312.6  OUT b0 01 40

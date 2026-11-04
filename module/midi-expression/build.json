@@ -2,8 +2,11 @@
   "schemaVersion": 1,
   "sources": [
     "src/expr.c",
+    "src/audio.c",
+    "src/rows.c",
     "src/rows.s",
-    "src/send.s"
+    "src/send.s",
+    "src/render.s"
   ],
   "defsym": {},
   "cflags": [],
@@ -27,7 +30,12 @@
   "claims": [
     "settings:PB THRU",
     "settings:AT THRU",
-    "settings:MW THRU"
+    "settings:MW THRU",
+    "settings:PB RANGE",
+    "settings:MW DEST",
+    "settings:MW AMT",
+    "settings:AT DEST",
+    "settings:AT AMT"
   ],
   "requires": [],
   "derive": null,
@@ -63,6 +71,13 @@
           "stockSha256": "93c277eff201aa4134d6da0d4d80fa9dac2728da3e8b05ce07869a2756a3f47d",
           "op": "jmp",
           "target": "me_send_entry"
+        },
+        {
+          "addr": "0x40077eea",
+          "len": 6,
+          "stockSha256": "f2c0d49818da2ca50f42f9b7fec5ef9d19b3e936903fb2b04eccfde2c434a85c",
+          "op": "jsr",
+          "target": "me_render_hook"
         }
       ]
     }

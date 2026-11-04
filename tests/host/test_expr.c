@@ -4,6 +4,7 @@
 #include <string.h>
 
 #include "../../module/midi-expression/src/expr.c"
+#include "../../module/midi-expression/src/audio.c"
 
 volatile int32_t h_auto_channel = 13, h_active_track = 8, h_track_channel[16], h_receive_cc = 1;
 volatile uint32_t h_output_to = 3;
@@ -37,6 +38,18 @@ static void reset(void)
     h_active_track = 8; h_auto_channel = 13;
     h_tx_pending = 0; h_tx_base = h_tx_sent = 0; h_dma_a = h_dma_b = 0;
     nsent = 0; stock_cc_calls = 0;
+    memset((void *)atracks, 0, sizeof atracks);
+    me_bend_range = 2; me_mw_dest = 0; me_at_dest = 0; me_mw_amount = 32; me_at_amount = 32;
+}
+
+// A render block's parameter words: 18 bytes, then 8 tracks x 53 slots.
+static int16_t words[9 + 53 * 8 + 8];
+static int16_t *slot(int track, int s) { return (int16_t *)((char *)words + 18 + 106 * track) + s; }
+static void words_reset(int16_t value)
+{
+    for (int t = 0; t < 8; t++)
+        for (int s = 0; s < 53; s++)
+            *slot(t, s) = value;
 }
 
 static int pb_of(int i) { return sent[i][1] | (sent[i][2] << 7); }
@@ -187,6 +200,94 @@ int main(void)
     pb_in(13, 9000, AUTO);
     CHECK(me_filter(0, 0, 24, 77 << 8, 0) == (77 << 8), "breath (id 24) untouched");
     CHECK(me_filter(0, 0, 25, 5 << 8, 1) == (5 << 8), "CC VAL (id 25) untouched");
+
+    // ---- audio tracks -------------------------------------------------------
+    // 13. Pitch bend on an audio track: TUNE is 64 x 256 at 0, 256 a semitone, 40..88 (+-24).
+    reset();
+    h_active_track = 0;                           // audio track 1
+    words_reset(16384);
+    pb_in(13, 8192 + 4096, AUTO);                 // half up at PB RANGE 2
+    me_render(words);
+    CHECK(*slot(0, 17) == 16384 + 256, "TUNE +1 semitone: %d", *slot(0, 17) - 16384);
+    CHECK(*slot(1, 17) == 16384, "other tracks untouched");
+    CHECK(nsent == 0, "no MIDI out for an audio track: %d", nsent);
+    words_reset(16384);
+    pb_in(13, 0, AUTO);                           // full down
+    me_render(words);
+    CHECK(*slot(0, 17) == 16384 - 512, "TUNE -2 semitones: %d", *slot(0, 17) - 16384);
+    me_bend_range = 24;
+    words_reset(16384);
+    pb_in(13, 16383, AUTO);                       // full up: 8191/8192 of 24 semitones
+    me_render(words);
+    CHECK(*slot(0, 17) == 16384 + 6143, "TUNE +24: %d", *slot(0, 17) - 16384);
+    words_reset(16384);
+    pb_in(13, 0, AUTO);
+    me_render(words);
+    CHECK(*slot(0, 17) == 16384 - 6144, "TUNE -24: %d", *slot(0, 17) - 16384);
+    words_reset(16384 + 512);                     // TUNE knob at +2, bend +24: TUNE's own top
+    pb_in(13, 16383, AUTO);
+    me_render(words);
+    CHECK(*slot(0, 17) == TUNE_MAX, "capped at TUNE +24: %d", *slot(0, 17));
+    words_reset(16384 - 512);
+    pb_in(13, 0, AUTO);
+    me_render(words);
+    CHECK(*slot(0, 17) == TUNE_MIN, "capped at TUNE -24: %d", *slot(0, 17));
+    me_bend_range = 0;
+    words_reset(16384);
+    me_render(words);
+    CHECK(*slot(0, 17) == 16384, "PB RANGE OFF: TUNE untouched");
+
+    // 14. Mod wheel and aftertouch routes add in the stock LFO's scale, within 0..32512.
+    reset();
+    h_active_track = 2;                           // audio track 3
+    me_mw_dest = 26; me_mw_amount = 64;           // FLT.FREQ, full
+    me_at_dest = 8; me_at_amount = -32;           // L1.DEP, half, down
+    words_reset(20000);
+    mw_in(13, 127, AUTO);
+    at_in(13, 100, AUTO);
+    me_render(words);
+    CHECK(*slot(2, 26) == PARAM_MAX, "MW full to FLT.FREQ: capped at the top: %d", *slot(2, 26));
+    CHECK(*slot(2, 8) == 20000 - 100 * 32 * 4, "AT 100 x -32 on L1.DEP: %d", *slot(2, 8));
+    words_reset(1000);
+    me_render(words);
+    CHECK(*slot(2, 8) == 0, "capped at 0: %d", *slot(2, 8));
+    words_reset(10000);
+    mw_in(13, 64, AUTO);
+    me_mw_amount = 32;
+    me_render(words);
+    CHECK(*slot(2, 26) == 10000 + 64 * 32 * 4, "MW 64 x +32: %d", *slot(2, 26) - 10000);
+    for (int t = 0; t < 8; t++)
+        for (int s = 0; s < 53; s++)
+            CHECK(*slot(t, s) >= 0 && *slot(t, s) <= PARAM_MAX, "word %d/%d in range: %d", t, s, *slot(t, s));
+
+    // 15. Changing track stops the old track's modulation at once.
+    words_reset(10000);
+    h_active_track = 3;
+    me_tick(0);
+    me_render(words);
+    CHECK(*slot(2, 26) == 10000 && *slot(2, 8) == 10000, "released on track change: %d %d", *slot(2, 26), *slot(2, 8));
+    CHECK(*slot(3, 26) == 10000, "the new track only follows the next move");
+    mw_in(13, 32, AUTO);
+    me_render(words);
+    CHECK(*slot(3, 26) == 10000 + 32 * 32 * 4, "new track after a move: %d", *slot(3, 26) - 10000);
+
+    // 16. A TRACK CHANNEL reaches its audio track whatever is selected, and is kept on a track change.
+    reset();
+    me_mw_dest = 27;                              // FLT.RESO
+    words_reset(5000);
+    mw_in(4, 100, TRACK);                         // channel 5: audio track 5
+    h_active_track = 1;
+    me_tick(0);
+    me_render(words);
+    CHECK(*slot(4, 27) == 5000 + 100 * 32 * 4, "track-channel route kept: %d", *slot(4, 27) - 5000);
+
+    // 17. Unticking a row stops it on audio tracks too.
+    me_mw_on = 0;
+    me_tick(0);
+    words_reset(5000);
+    me_render(words);
+    CHECK(*slot(4, 27) == 5000, "MW THRU unticked: no route: %d", *slot(4, 27));
+    me_mw_on = 1;
 
     printf("%d checks, %d failures\n", checks, failures);
     return failures != 0;

@@ -1,5 +1,15 @@
 [
   {
+    "version": "0.3.0-experimental",
+    "date": "2026-11-04",
+    "changes": [
+      "Audio tracks: pitch bend moves the track's pitch by up to PB RANGE semitones (default 2).",
+      "MW DEST and AT DEST send the mod wheel and aftertouch to a parameter of the track's sound, by MW AMT and AT AMT.",
+      "Everything adds to the track's own value and LFOs, within the parameter's range; changing track stops it.",
+      "Known issue: not yet tested on a unit."
+    ]
+  },
+  {
     "version": "0.2.0-experimental",
     "date": "2026-11-04",
     "changes": [

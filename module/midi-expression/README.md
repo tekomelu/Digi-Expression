@@ -1,10 +1,19 @@
 # MIDI Expression
 
-Module version `0.2.0-experimental`, for the original Digitakt on OS 1.54, Core 2.1.
+Module version `0.3.0-experimental`, for the original Digitakt on OS 1.54, Core 2.1.
 
 ## Overview
 
 Stock, the Digitakt passes an external keyboard's notes through a MIDI track to the synth it plays, but drops pitch bend, aftertouch and the mod wheel. With **SETTINGS > PB THRU**, **AT THRU** and **MW THRU** ticked, those messages follow the notes and are **added to what the track itself sends**: on the AUTO CHANNEL to the active MIDI track, and on a track's TRACK CHANNEL to that track, on the track's CHAN out of MIDI OUT. A track's LFO bending its synth by a semitone and a live bend of a semitone give two. It is for live playing: nothing is recorded into the sequencer. Unticked, MIDI handling is stock.
+
+## Audio tracks
+
+With an audio track selected (or reached through its TRACK CHANNEL), the same messages play the Digitakt's own sound:
+
+- **Pitch bend** moves the track's TUNE by up to **PB RANGE** semitones each way, smoothly, within TUNE's own ±24.
+- **The mod wheel** moves **MW DEST** by up to **MW AMT**, and **aftertouch** moves **AT DEST** by up to **AT AMT**: any amount-type parameter of the SRC, FLTR and AMP pages or of either LFO (speed, multiplier, fade, phase, depth). −64 to +64, in the stock LFO's scale (±64 at full wheel covers the whole range).
+
+It adds to the track's own value, its parameter locks, its LFOs and Digi Matrix's routings, capped to the parameter's range, every audio block. Selecting another track stops the old track's modulation at once; the new track follows the next move.
 
 ## Controls
 
@@ -14,13 +23,19 @@ Stock, the Digitakt passes an external keyboard's notes through a MIDI track to 
 | AT THRU | Ticked: channel aftertouch is added to the track's own AT, within 0–127. Poly aftertouch is not passed. Unticked: dropped, as stock. |
 | MW THRU | Ticked, and PORT CONFIG > RECEIVE CC/NRPN ticked: the mod wheel (CC 1) is added to the track's own MW, within 0–127, after the stock control-change handling. Unticked: CC 1 is handled as stock only. |
 
-All three start unticked at every power-on and are not saved with the project.
+| PB RANGE | OFF, 1–24 semitones (default 2): how far a full bend moves an audio track's TUNE. |
+| MW DEST | OFF (default) or an audio-track parameter for the mod wheel. |
+| MW AMT | −64 to +64 (default +32): how far a full wheel moves MW DEST. |
+| AT DEST | OFF (default) or an audio-track parameter for aftertouch. |
+| AT AMT | −64 to +64 (default +32): how far full pressure moves AT DEST. |
+
+The THRU rows switch each message on for MIDI and audio tracks alike. All rows return to their defaults at every power-on and are not saved with the project.
 
 ## Usage
 
 ### Where to find it
 
-SETTINGS, below SYSTEM: PB THRU, AT THRU and MW THRU. YES toggles a row, RIGHT ticks it, LEFT unticks it.
+SETTINGS, below SYSTEM: PB THRU, AT THRU, MW THRU, PB RANGE, MW DEST, MW AMT, AT DEST, AT AMT. YES toggles a checkbox row; RIGHT and LEFT change a value.
 
 ### Quick tutorial: bend a synth through a MIDI track
 
@@ -51,7 +66,9 @@ SETTINGS, below SYSTEM: PB THRU, AT THRU and MW THRU. YES toggles a row, RIGHT t
 - **The track's own values:** an 8-byte site at the entry of the MIDI tracks' `send(track, channel, id, value, force)` lets the mod see and, while live input is active, take over the track's PB (id 21), AT (22) and MW (23) sends. Every other parameter passes untouched.
 - **Priority:** each output channel keeps one pending flag per message type, and the value is worked out when it goes out. It goes through the stock DIN driver only while its transmit ring holds at most 24 bytes (about 8 ms of line time), so it never queues in front of a burst of sequencer notes. What waits goes with the next message or within one UI tick (33 ms).
 
-All four sites are claimed in `build.json`; no other Modwerk Digitakt module patches them (CC Recall calls `send` and links beside this module).
+- **Audio tracks:** a 6-byte site at 0x40077eea, the first call after the render's LFO stage that takes the parameter words (after Digi Matrix's and Digi Poly's sites), adds the live values to them.
+
+All five sites are claimed in `build.json`; no other Modwerk Digitakt module patches them. It links beside Digi Matrix, Digi Poly, Digichain, FX Track and CC Recall together.
 
 ## Compatibility and limitations
 
@@ -61,7 +78,8 @@ All four sites are claimed in `build.json`; no other Modwerk Digitakt module pat
 - Not recorded: the sequencer never sees the live values.
 - A bend can reach the synth a few milliseconds before the note played with it: live notes go through the MIDI tracks' task (about 6 ms in the emulator), pass-through goes straight out.
 - The track's PB, AT and MW knobs on screen show the track's own value, not the sum.
-- Links beside FX Track and CC Recall.
+- Audio-track routes are global: one MW DEST and one AT DEST for every audio track.
+- Machines other than the sample ones take TUNE from their own SRC knob A.
 
 ## Tests
 

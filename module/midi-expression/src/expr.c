@@ -82,7 +82,7 @@ typedef void (*handler_fn)(const uint8_t *msg, int32_t len, int32_t flag);
 volatile uint8_t me_pb_on, me_at_on, me_mw_on;
 
 // ---- state per output channel -----------------------------------------------
-enum { PB, AT, MW, KINDS };
+#include "expr.h"
 #define PRIORITY_BYTES 24       // about 8 ms of DIN line time
 
 struct chan {
@@ -235,6 +235,7 @@ static void release(int ch, int kind)
 
 static void release_auto(void)
 {
+    me_audio_release_auto();
     uint16_t sr = irq_off();
     for (int ch = 0; ch < 16; ch++) {
         if (!chans[ch].via_auto)
@@ -260,17 +261,25 @@ static void take(int kind, int32_t live, int32_t in_ch, int32_t flag)
 {
     init();
     check_track();
-    uint32_t tracks = 0;
+    uint32_t tracks = 0, audio = 0;
     int from_auto = (flag & 0x14) != 0; // the auto channel (DIN 0x10, USB 4)
     if (from_auto) {
         int32_t t = ACTIVE_TRACK;
         if (t >= 8 && t < 16)
             tracks = 1u << (t - 8);
+        else if (t >= 0 && t < 8)
+            audio = 1u << t;
     } else {
-        for (int t = 8; t < 16; t++)
-            if (TRACK_CHANNEL[t] == in_ch)
-                tracks |= 1u << (t - 8);
+        for (int t = 0; t < 16; t++)
+            if (TRACK_CHANNEL[t] == in_ch) {
+                if (t >= 8)
+                    tracks |= 1u << (t - 8);
+                else
+                    audio |= 1u << t;
+            }
     }
+    if (audio)
+        me_audio_take(kind, live, audio, from_auto);
     if (!tracks)
         return;
     me_taken++;
@@ -364,6 +373,7 @@ void me_tick(void *ctrl)
             continue;
         for (int ch = 0; ch < 16; ch++)
             release(ch, kind);
+        me_audio_release_kind(kind);
     }
     irq_restore(sr);
     for (int ch = 0; ch < 16 && !waiting; ch++)

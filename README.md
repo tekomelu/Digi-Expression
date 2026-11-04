@@ -37,17 +37,18 @@ About four slots of SRC (MW / AT / PB), DEST (FLT FREQ, FLT RESO, LFO1 DEPTH, LF
 
 ## Status
 
-**Phase 1 works in the emulator** (4 November 2026): module `midi-expression` 0.2.0-experimental in [`module/midi-expression/`](module/midi-expression/), with its [README](module/midi-expression/README.md) and [TESTING.md](module/midi-expression/TESTING.md). Not yet tested on a unit.
+**Phase 1 works in the emulator** (4 November 2026): module `midi-expression` 0.3.0-experimental in [`module/midi-expression/`](module/midi-expression/), with its [README](module/midi-expression/README.md) and [TESTING.md](module/midi-expression/TESTING.md). Not yet tested on a unit.
 
 - Version 1 sends to DIN MIDI OUT only, and leaves out the THIN setting: coalescing plus the priority gate replace it.
 - 0.2: live input adds to the track's own PB/AT/MW (knob, locks, LFO) within the MIDI limits; leaving an auto-channel track restores its values. Host unit tests: `cc -std=c11 -DME_HOST_TEST -I tests/host tests/host/test_expr.c -o build/test_expr && build/test_expr`.
+- 0.3: audio tracks: pitch bend moves TUNE by PB RANGE semitones; the mod wheel and aftertouch move a chosen sound parameter (MW/AT DEST, AMT). Links beside Digi Matrix and Digi Poly (a separate site after the LFO stage).
 - Research notes: [docs/RESEARCH-OS154.md](docs/RESEARCH-OS154.md). Setup: [SETUP.md](SETUP.md).
 
 ### Build a test image
 
 ```sh
 source env.sh
-scripts/build-mod.sh build/midi-expression-0.2.0-experimental.syx
+scripts/build-mod.sh build/midi-expression-0.3.0-experimental.syx
 ```
 
 The image is built from your own OS file and stays on your computer. Flash it with Elektron Transfer; to go back, hold FUNC at power-on, choose OS UPGRADE (TRIG 4) and send the stock .syx.

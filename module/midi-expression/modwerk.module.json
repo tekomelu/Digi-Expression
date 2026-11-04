@@ -2,7 +2,7 @@
   "schemaVersion": 3,
   "id": "midi-expression",
   "name": "MIDI Expression",
-  "version": "0.2.0-experimental",
+  "version": "0.3.0-experimental",
   "machine": "digitakt",
   "category": "midi-usb",
   "exclusive": false,
@@ -18,10 +18,11 @@
   "presentation": {
     "label": "MIDI EXPRESSION",
     "family": "MIDI",
-    "summary": "Pitch bend, channel aftertouch and the mod wheel from MIDI IN add to what a MIDI track sends its synth, on the route its notes take.",
+    "summary": "Pitch bend, aftertouch and the mod wheel from MIDI IN play a MIDI track's synth and the Digitakt's own audio tracks, on the route the notes take.",
     "overview": "Stock, the Digitakt passes the notes of an external keyboard through to the synth a MIDI track plays, but drops pitch bend, aftertouch and the mod wheel. With SETTINGS > PB THRU, AT THRU and MW THRU ticked, those messages follow the notes and are added to the track's own values (its knob, parameter locks and LFO), capped to the MIDI limits: on the AUTO CHANNEL to the active MIDI track, and on a track's own TRACK CHANNEL to that track, on the track's CHAN out of MIDI OUT. Selecting another track gives the previous synth back the track's own values. For live playing: nothing is recorded into the sequencer. Unticked, MIDI handling is stock.",
     "highlights": [
       "Play a synth through a MIDI track with pitch bend, aftertouch and the mod wheel.",
+      "Audio tracks: bend the pitch by up to PB RANGE semitones, and send the wheel and aftertouch to filter, amp, SRC or LFO parameters.",
       "Adds to the track's LFO and parameter locks instead of fighting them, within the MIDI limits.",
       "Follows the stock AUTO CHANNEL and TRACK CHANNEL routing of the notes; leaving a track restores its own values.",
       "Sequencer notes and controls go out first; three SETTINGS rows; unticked, MIDI is stock."
@@ -33,7 +34,7 @@
     ]
   },
   "access": {
-    "location": "SETTINGS > PB THRU, AT THRU, MW THRU",
+    "location": "SETTINGS > PB THRU, AT THRU, MW THRU, PB RANGE, MW DEST, MW AMT, AT DEST, AT AMT",
     "steps": [
       "Use a build containing MIDI Expression for the original Digitakt on OS 1.54.",
       "Press SETTINGS and go down to PB THRU, AT THRU and MW THRU, below SYSTEM, with UP/DOWN.",
@@ -61,6 +62,36 @@
       "name": "MW THRU",
       "default": null,
       "doc": "Ticked, with PORT CONFIG > RECEIVE CC/NRPN ticked: the mod wheel (CC 1) is added to the track's own MW, within 0-127, routed like PB THRU, after the stock control-change handling. Unticked: CC 1 is handled as stock only.",
+      "labels": null
+    },
+    {
+      "name": "PB RANGE",
+      "default": null,
+      "doc": "OFF, 1-24 semitones (default 2): how far a full bend moves an audio track's TUNE, within TUNE's own +-24.",
+      "labels": null
+    },
+    {
+      "name": "MW DEST",
+      "default": null,
+      "doc": "OFF (default) or the audio-track parameter the mod wheel moves.",
+      "labels": null
+    },
+    {
+      "name": "MW AMT",
+      "default": null,
+      "doc": "-64 to +64 (default +32): how far a full wheel moves MW DEST, in the stock LFO's scale.",
+      "labels": null
+    },
+    {
+      "name": "AT DEST",
+      "default": null,
+      "doc": "OFF (default) or the audio-track parameter aftertouch moves.",
+      "labels": null
+    },
+    {
+      "name": "AT AMT",
+      "default": null,
+      "doc": "-64 to +64 (default +32): how far full pressure moves AT DEST.",
       "labels": null
     }
   ],
@@ -90,11 +121,16 @@
     "claims": [
       "settings:PB THRU",
       "settings:AT THRU",
-      "settings:MW THRU"
+      "settings:MW THRU",
+      "settings:PB RANGE",
+      "settings:MW DEST",
+      "settings:MW AMT",
+      "settings:AT DEST",
+      "settings:AT AMT"
     ]
   },
   "resources": {
-    "memoryBytes": 2704,
+    "memoryBytes": 5612,
     "fastBytes": 0,
     "load": {
       "display": "Not measured yet",
@@ -104,7 +140,7 @@
   },
   "evidence": {
     "tier": "none",
-    "moduleVersion": "0.2.0-experimental",
+    "moduleVersion": "0.3.0-experimental",
     "sourceSha256": null,
     "reports": [],
     "hardware": null,
@@ -112,7 +148,7 @@
   },
   "tests": {
     "report": "TESTING.md",
-    "summary": "Host unit tests (34 checks): sums with the track's own PB/AT/MW, MIDI limits, take-over, release on track change, priority and routing. Emulator (digiemu): pass-through on the notes' route from the auto channel and TRACK CHANNEL; unticked identical to stock; stock CC handling unchanged; beside FX Track and CC Recall. Hardware not yet tested."
+    "summary": "Host unit tests (476 checks): sums with the track's own PB/AT/MW, MIDI limits, take-over, release on track change, priority and routing. Emulator (digiemu): pass-through on the notes' route from the auto channel and TRACK CHANNEL; unticked identical to stock; stock CC handling unchanged; beside FX Track and CC Recall. Hardware not yet tested. 0.3: in the emulator, the render's parameter words show TUNE +-2 semitones and an aftertouch route on L1 depth, released on track change; links beside Digi Matrix and Digi Poly."
   },
   "license": {
     "spdx": "GPL-3.0-or-later",
