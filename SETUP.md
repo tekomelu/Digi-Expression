@@ -36,7 +36,7 @@ From `nodejs.org/dist/latest-v24.x/`, checked against `SHASUMS256.txt`. The fold
 2. `uv` from PyPI (`pip install --target toolchain/uv-pkg uv`); `env.sh` keeps uv's Python 3.12 and cache inside `toolchain/`. Then `uv sync --frozen` in `digiemu/`.
 3. The patched Unicorn: clone Unicorn tag 2.1.4 (commit 8028ec4) to `toolchain/unicorn-src`, check and apply the six patches in `digiemu/patches/` by their SHA-256 (as `digiemu/tools/install-patched-unicorn.sh` does), build with cmake and ninja from PyPI (`-DUNICORN_ARCH=m68k`), copy `libunicorn.so.2` into the venv's `unicorn/lib/`. `python -m emu.unicorn_compat` must report `"compatible": true`.
 4. `python -m emu.portable --add ../Digitakt_OS1.54.syx --yes` sets up OS 1.54 (SHA-256 f78ba80f…3cf6, the release FX Track and CC Recall were tested on) and boots it to a settled main-screen snapshot.
-5. `toolchain/emu-dt154.env` holds the `DT2_*` paths for that firmware folder. `scripts/dtshot.py` runs digiemu's headless panel driver with the app's emulator flags and saves the screen as PNG. digiemu's control-name table is mapped on OS 1.53, so key names do not resolve on 1.54 yet.
+5. `toolchain/emu-dt154.env` holds the `DT2_*` paths for that firmware folder. `scripts/dtsession.py` drives the emulated panel from a step script (`tap GLOBAL; wait 300; snap settings`) through digiemu's `Session`, with the measured mk1 key codes, and saves PNG captures. (digiemu's `tools/dtdrive.py` uses the firmware's panel-test name table, whose order is not the runtime key map on the mk1, so it presses the wrong keys.)
 
 ## Modwerk
 
