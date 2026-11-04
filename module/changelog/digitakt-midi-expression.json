@@ -1,0 +1,13 @@
+[
+  {
+    "version": "0.1.0-experimental",
+    "date": "2026-11-04",
+    "changes": [
+      "First release for Digitakt I OS 1.54, on Core 2.1. SETTINGS > PB THRU, AT THRU and MW THRU pass pitch bend, aftertouch and the mod wheel from MIDI IN to the synth a MIDI track plays.",
+      "They follow the notes: the AUTO CHANNEL to the active MIDI track, a TRACK CHANNEL to that track, sent on the track's CHAN.",
+      "Sequencer notes and controls go out first. DIN MIDI OUT only. Unticked, MIDI is stock.",
+      "The settings are not saved and start unticked at every power-on.",
+      "Known issue: not yet tested on a unit."
+    ]
+  }
+]

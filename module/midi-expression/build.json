@@ -1,0 +1,62 @@
+{
+  "schemaVersion": 1,
+  "sources": [
+    "src/expr.c",
+    "src/rows.s"
+  ],
+  "defsym": {},
+  "cflags": [],
+  "weak": [],
+  "subscribe": [
+    {
+      "event": "ev_settings",
+      "fn": "me_settings",
+      "order": 50
+    },
+    {
+      "event": "ev_tick",
+      "fn": "me_tick",
+      "order": 50
+    }
+  ],
+  "contribute": [],
+  "collections": {},
+  "copied": [],
+  "regions": [],
+  "claims": [
+    "settings:PB THRU",
+    "settings:AT THRU",
+    "settings:MW THRU"
+  ],
+  "requires": [],
+  "derive": null,
+  "releases": {
+    "1.54": {
+      "defsym": {},
+      "cflags": [],
+      "sites": [
+        {
+          "addr": "0x401b8e00",
+          "len": 4,
+          "stockSha256": "b3b51b9b7f1db16f5c8e630103f865a79091277aa7af1fbc8c227e346caf4cdf",
+          "op": "ptr",
+          "target": "me_control_change"
+        },
+        {
+          "addr": "0x401b8e08",
+          "len": 4,
+          "stockSha256": "1829f227ecfe2cd9f2a93f8f33123931a47255643557c5c89a3c6acfba1bba7c",
+          "op": "ptr",
+          "target": "me_aftertouch"
+        },
+        {
+          "addr": "0x401b8e0c",
+          "len": 4,
+          "stockSha256": "37e61de8713c438b0ba60815fcf2e70015cec54871b189d684dc09b3de0d0c6c",
+          "op": "ptr",
+          "target": "me_pitch_bend"
+        }
+      ]
+    }
+  }
+}

@@ -1,0 +1,8 @@
+    300.0  --- auto PB, B selected CHAN on
+    300.0  IN  ed 00 63
+    305.5  OUT e0 00 63
+    325.5  --- ch10 PB (B)
+    325.5  IN  e9 00 64
+    325.5  OUT e0 00 64
+    345.9  --- ch9 PB (A off)
+    345.9  IN  e8 00 65

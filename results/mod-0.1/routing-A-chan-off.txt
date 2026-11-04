@@ -1,0 +1,4 @@
+    300.0  --- auto PB, A selected CHAN off
+    300.0  IN  ed 00 60
+    325.6  --- ch9 PB
+    325.6  IN  e8 00 60

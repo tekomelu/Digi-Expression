@@ -54,6 +54,11 @@ def parse(text):
         verb, _, rest = line.partition(' ')
         if verb.lower() == 'midi':
             steps.append(('midi', bytes(int(t, 16) for t in rest.split())))
+        elif verb.lower() == 'flood':
+            # flood <status hex> <count> <interval ms>: pitch bend (Ex) sweeping
+            # 0..16383 and back, aftertouch (Dx) or CC 1 (Bx) sweeping 0..127
+            tok = rest.split()
+            steps.append(('flood', int(tok[0], 16), int(tok[1]), float(tok[2])))
         elif verb.lower() == 'mark':
             steps.append(('mark', rest.strip()))
         else:
@@ -93,6 +98,32 @@ class Midi:
             self.log.append((s.ms, 'IN  (not delivered: %d bytes left)'
                              % len(self.midi_in._pending)))
         s.run_ms(MIDI_SETTLE_MS)
+
+    def flood(self, s, status, count, interval):
+        """Messages every `interval` ms, delivered without the settle time."""
+        kind = status & 0xF0
+        self.log.append((s.ms, 'IN  flood %02x x%d every %.2f ms' % (status, count, interval)))
+        for i in range(count):
+            phase = i % 64
+            v = phase if phase < 32 else 63 - phase          # triangle 0..31..0
+            if kind == 0xE0:
+                value = v * 528                                # 0..16368
+                data = bytes([status, value & 0x7F, value >> 7])
+            elif kind == 0xD0:
+                data = bytes([status, v * 4])
+            else:
+                data = bytes([status, 1, v * 4])
+            self.midi_in.put(data)
+            if self.midi_in.deliver(s.m):
+                s.pc = s.m.uc.reg_read(UC_M68K_REG_PC)
+            s.run_ms(interval)
+        for _ in range(200):
+            if not self.midi_in._pending:
+                break
+            if self.midi_in.deliver(s.m):
+                s.pc = s.m.uc.reg_read(UC_M68K_REG_PC)
+            s.run_ms(1)
+        self.log.append((s.ms, 'IN  flood done'))
 
 
 def save_session(s, path):
@@ -151,6 +182,8 @@ def main(argv=None):
         for step in steps:
             if step[0] == 'midi':
                 io.send(s, step[1])
+            elif step[0] == 'flood':
+                io.flood(s, *step[1:])
             elif step[0] == 'mark':
                 io.log.append((s.ms, '--- ' + step[1]))
             else:

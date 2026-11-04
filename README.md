@@ -37,7 +37,20 @@ About four slots of SRC (MW / AT / PB), DEST (FLT FREQ, FLT RESO, LFO1 DEPTH, LF
 
 ## Status
 
-Setup. Nothing built or tested yet.
+**Phase 1 works in the emulator** (4 November 2026): module `midi-expression` 0.1.0-experimental in [`module/midi-expression/`](module/midi-expression/), with its [README](module/midi-expression/README.md) and [TESTING.md](module/midi-expression/TESTING.md). Not yet tested on a unit.
+
+- Version 1 sends to DIN MIDI OUT only, and leaves out the THIN setting: coalescing plus the priority gate replace it.
+- Still for version 2: resets on track change and STOP, and holding back a track's own trig-time PB/AT/MW while a live gesture is held.
+- Research notes: [docs/RESEARCH-OS154.md](docs/RESEARCH-OS154.md). Setup: [SETUP.md](SETUP.md).
+
+### Build a test image
+
+```sh
+source env.sh
+scripts/build-mod.sh build/midi-expression.syx
+```
+
+The image is built from your own OS file and stays on your computer. Flash it with Elektron Transfer; to go back, hold FUNC at power-on, choose OS UPGRADE (TRIG 4) and send the stock .syx.
 
 ## Licence
 

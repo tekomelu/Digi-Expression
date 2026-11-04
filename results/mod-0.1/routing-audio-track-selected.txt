@@ -1,0 +1,9 @@
+    300.0  --- auto PB with audio track 1 selected
+    300.0  IN  ed 00 60
+    325.6  --- auto AT
+    325.6  IN  dd 40
+    345.6  --- auto MW
+    345.6  IN  bd 01 40
+    366.7  --- ch9 PB (track A, CHAN on, not selected)
+    366.7  IN  e8 00 62
+    379.5  OUT e0 00 62
