@@ -3,7 +3,7 @@
   "sources": [
     "src/expr.c",
     "src/audio.c",
-    "src/rows.c",
+    "src/page.c",
     "src/rows.s",
     "src/send.s",
     "src/render.s"
@@ -21,6 +21,21 @@
       "event": "ev_tick",
       "fn": "me_tick",
       "order": 50
+    },
+    {
+      "event": "ev_draw",
+      "fn": "me_page_draw",
+      "order": 50
+    },
+    {
+      "event": "ev_key",
+      "fn": "me_page_key",
+      "order": 50
+    },
+    {
+      "event": "ev_enc",
+      "fn": "me_page_enc",
+      "order": 50
     }
   ],
   "contribute": [],
@@ -31,11 +46,7 @@
     "settings:PB THRU",
     "settings:AT THRU",
     "settings:MW THRU",
-    "settings:PB RANGE",
-    "settings:MW DEST",
-    "settings:MW AMT",
-    "settings:AT DEST",
-    "settings:AT AMT"
+    "ui:TRIG page:second page, TRIG pressed again"
   ],
   "requires": [],
   "derive": null,

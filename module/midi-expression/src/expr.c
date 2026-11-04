@@ -34,6 +34,11 @@
 // touched gets the track's own values back and is released, as if this mod
 // had never been there. Unticking a row does the same for that message type.
 //
+// Per track (the TRIG page's second page, page.c): a MIDI track can leave
+// out PB, AT or MW, and send the wheel or the pressure as a CC of its own
+// (MW AS / AT AS) instead. Such a CC is the live value alone: the track has
+// no value of its own for it, and leaving the track sends it 0.
+//
 // Sending. Each channel has one pending flag per type; the value is computed
 // when it goes out. It goes through the stock DIN driver (din_send, which
 // masks interrupts while it copies into its 4 KB transmit ring) only while
@@ -87,9 +92,10 @@ volatile uint8_t me_pb_on, me_at_on, me_mw_on;
 
 struct chan {
     int16_t track[KINDS];       // the track's own value: PB 0..16383, AT/MW 0..127
-    int16_t live[KINDS];        // live input: PB offset -8192..8191, AT/MW 0..127
-    uint8_t active[KINDS];      // live input has touched this channel
-    uint8_t pending[KINDS];     // a value is due to go out
+    int16_t live[OUTS];         // live input: PB offset -8192..8191, the rest 0..127
+    uint8_t active[OUTS];       // live input has touched this channel
+    uint8_t pending[OUTS];      // a value is due to go out
+    uint8_t num[OUTS];          // XMW, XAT: the CC number it goes out on
     uint8_t via_auto;           // touched from the auto channel: released on track change
 };
 
@@ -132,9 +138,8 @@ static void init(void)
         chans[ch].track[PB] = 8192;     // stock's centre until the track sends
         chans[ch].track[AT] = 0;
         chans[ch].track[MW] = 0;
-        chans[ch].live[PB] = 0;
-        chans[ch].live[AT] = 0;
-        chans[ch].live[MW] = 0;
+        for (int k = 0; k < OUTS; k++)
+            chans[ch].live[k] = 0;
     }
     initialised = 1;
 }
@@ -170,8 +175,13 @@ static uint8_t compose(int ch, int kind, uint8_t *out)
         return 2;
     }
     out[0] = (uint8_t)(0xB0 | ch);
-    out[1] = 1;
-    out[2] = (uint8_t)clamp(c->track[MW] + live, 0, 127);
+    if (kind == MW) {
+        out[1] = 1;
+        out[2] = (uint8_t)clamp(c->track[MW] + live, 0, 127);
+    } else {                            // XMW, XAT: the live value alone, 0 when released
+        out[1] = c->num[kind];
+        out[2] = (uint8_t)clamp(live, 0, 127);
+    }
     return 3;
 }
 
@@ -188,7 +198,7 @@ static void flush(void)
     irq_restore(sr);
 
     for (int ch = 0; ch < 16; ch++) {
-        for (int kind = 0; kind < KINDS; kind++) {
+        for (int kind = 0; kind < OUTS; kind++) {
             uint8_t out[3];
             uint8_t len;
             sr = irq_off();
@@ -240,11 +250,33 @@ static void release_auto(void)
     for (int ch = 0; ch < 16; ch++) {
         if (!chans[ch].via_auto)
             continue;
-        for (int kind = 0; kind < KINDS; kind++)
+        for (int kind = 0; kind < OUTS; kind++)
             release(ch, kind);
         chans[ch].via_auto = 0;
     }
     irq_restore(sr);
+}
+
+// A MIDI track's settings changed on the page: its channel gets the track's
+// own values back (and 0 on a CC the wheel or pressure went out on), and
+// follows again from the next move with the new settings.
+void me_midi_release_track(int m)
+{
+    if (m < 0 || m > 7 || !initialised)
+        return;
+    int32_t ch = CHANNEL(m);
+    if (ch < 0 || ch > 15)
+        return;
+    uint16_t sr = irq_off();
+    for (int kind = 0; kind < OUTS; kind++)
+        release(ch, kind);
+    irq_restore(sr);
+    flush();
+}
+
+static int track_passes(const struct me_midi_cfg *cfg, int kind)
+{
+    return kind == PB ? cfg->pb_on : kind == AT ? cfg->at_on : cfg->mw_on;
 }
 
 static void check_track(void)
@@ -286,14 +318,27 @@ static void take(int kind, int32_t live, int32_t in_ch, int32_t flag)
     for (int m = 0; m < 8; m++) {
         if (!(tracks & (1u << m)))
             continue;
+        const struct me_midi_cfg *cfg = &me_midi_cfg[m];
+        if (!track_passes(cfg, kind))
+            continue;
         int32_t ch = CHANNEL(m);
         if (ch < 0 || ch > 15)
             continue;
+        int out = kind;
+        uint8_t num = 0;
+        if (kind == MW && cfg->mw_cc != 1 && cfg->mw_cc <= CC_MAX) {
+            out = XMW;
+            num = cfg->mw_cc;
+        } else if (kind == AT && cfg->at_cc && cfg->at_cc <= CC_MAX) {
+            out = XAT;
+            num = cfg->at_cc;
+        }
         struct chan *c = &chans[ch];
         uint16_t sr = irq_off();
-        c->live[kind] = (int16_t)live;
-        c->active[kind] = 1;
-        c->pending[kind] = 1;
+        c->live[out] = (int16_t)live;
+        c->num[out] = num;
+        c->active[out] = 1;
+        c->pending[out] = 1;
         if (from_auto)
             c->via_auto = 1;
         irq_restore(sr);
@@ -360,10 +405,12 @@ int32_t me_filter(int32_t track, int32_t channel, int32_t id, int32_t value, int
     return TAKE_OVER;
 }
 
+void me_page_tick(void *ctrl);
+
 // ---- ev_tick: track changes, unticked rows, values that waited --------------
 void me_tick(void *ctrl)
 {
-    (void)ctrl;
+    me_page_tick(ctrl);
     if (!initialised)
         return;
     check_track();
@@ -371,13 +418,18 @@ void me_tick(void *ctrl)
     for (int kind = 0; kind < KINDS; kind++) {
         if (enabled(kind))
             continue;
-        for (int ch = 0; ch < 16; ch++)
+        for (int ch = 0; ch < 16; ch++) {
             release(ch, kind);
+            if (kind == MW)
+                release(ch, XMW);
+            else if (kind == AT)
+                release(ch, XAT);
+        }
         me_audio_release_kind(kind);
     }
     irq_restore(sr);
     for (int ch = 0; ch < 16 && !waiting; ch++)
-        for (int kind = 0; kind < KINDS; kind++)
+        for (int kind = 0; kind < OUTS; kind++)
             if (chans[ch].pending[kind])
                 waiting = 1;
     if (waiting)

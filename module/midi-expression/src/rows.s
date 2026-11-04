@@ -30,26 +30,6 @@ me_settings:
         move.l  8(%sp), -(%sp)
         jsr     core_additem
         addq.l  #8, %sp
-        pea     me_row_range
-        move.l  8(%sp), -(%sp)
-        jsr     core_additem
-        addq.l  #8, %sp
-        pea     me_row_mwdest
-        move.l  8(%sp), -(%sp)
-        jsr     core_additem
-        addq.l  #8, %sp
-        pea     me_row_mwamt
-        move.l  8(%sp), -(%sp)
-        jsr     core_additem
-        addq.l  #8, %sp
-        pea     me_row_atdest
-        move.l  8(%sp), -(%sp)
-        jsr     core_additem
-        addq.l  #8, %sp
-        pea     me_row_atamt
-        move.l  8(%sp), -(%sp)
-        jsr     core_additem
-        addq.l  #8, %sp
         rts
 
 | ---- shared row code; %a1 holds the row's setting byte --------------------
@@ -139,22 +119,3 @@ me_row_\tag:
         ROW     pb, me_pb_on, "PB THRU"
         ROW     at, me_at_on, "AT THRU"
         ROW     mw, me_mw_on, "MW THRU"
-
-| ---- value rows: the label here, select/draw/change in rows.c ---------------
-        .macro  VROW tag, text
-\tag\()_vlabel:
-        lea     \tag\()_vname, %a1
-        bra     row_label
-        .balign 4
-me_row_\tag:
-        .long   \tag\()_vlabel, me_row_none, me_\tag\()_draw, me_\tag\()_change
-\tag\()_vname:
-        .asciz  "\text"
-        .balign 2
-        .endm
-
-        VROW    range,  "PB RANGE"
-        VROW    mwdest, "MW DEST"
-        VROW    mwamt,  "MW AMT"
-        VROW    atdest, "AT DEST"
-        VROW    atamt,  "AT AMT"

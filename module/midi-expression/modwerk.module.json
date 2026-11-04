@@ -2,7 +2,7 @@
   "schemaVersion": 3,
   "id": "midi-expression",
   "name": "MIDI Expression",
-  "version": "0.3.0-experimental",
+  "version": "0.4.0-experimental",
   "machine": "digitakt",
   "category": "midi-usb",
   "exclusive": false,
@@ -18,27 +18,28 @@
   "presentation": {
     "label": "MIDI EXPRESSION",
     "family": "MIDI",
-    "summary": "Pitch bend, aftertouch and the mod wheel from MIDI IN play a MIDI track's synth and the Digitakt's own audio tracks, on the route the notes take.",
-    "overview": "Stock, the Digitakt passes the notes of an external keyboard through to the synth a MIDI track plays, but drops pitch bend, aftertouch and the mod wheel. With SETTINGS > PB THRU, AT THRU and MW THRU ticked, those messages follow the notes and are added to the track's own values (its knob, parameter locks and LFO), capped to the MIDI limits: on the AUTO CHANNEL to the active MIDI track, and on a track's own TRACK CHANNEL to that track, on the track's CHAN out of MIDI OUT. Selecting another track gives the previous synth back the track's own values. For live playing: nothing is recorded into the sequencer. Unticked, MIDI handling is stock.",
+    "summary": "Pitch bend, aftertouch and the mod wheel from MIDI IN play a MIDI track's synth and the Digitakt's own audio tracks, with each track's own settings on a second TRIG page.",
+    "overview": "Stock, the Digitakt passes the notes of an external keyboard through to the synth a MIDI track plays, but drops pitch bend, aftertouch and the mod wheel. With SETTINGS > PB THRU, AT THRU and MW THRU ticked, those messages follow the notes: on the AUTO CHANNEL to the active track, and on a track's own TRACK CHANNEL to that track. A MIDI track adds them to its own PB, AT and MW (its knob, parameter locks and LFO), within the MIDI limits, on its CHAN out of MIDI OUT. An audio track bends its TUNE and moves two parameters of its choice. Each track's settings are on the TRIG page's second page: tap TRIG on the TRIG page. Selecting another track gives the previous one its own values back. For live playing: nothing is recorded into the sequencer. Unticked, MIDI handling is stock.",
     "highlights": [
       "Play a synth through a MIDI track with pitch bend, aftertouch and the mod wheel.",
-      "Audio tracks: bend the pitch by up to PB RANGE semitones, and send the wheel and aftertouch to filter, amp, SRC or LFO parameters.",
+      "Audio tracks: bend the pitch by up to 12 semitones, and send the wheel and aftertouch to filter, amp, SRC or LFO parameters.",
+      "Each track's own settings on a second TRIG page: bend range and routes for audio tracks; on/off and the wheel or pressure as any CC for MIDI tracks.",
       "Adds to the track's LFO and parameter locks instead of fighting them, within the MIDI limits.",
-      "Follows the stock AUTO CHANNEL and TRACK CHANNEL routing of the notes; leaving a track restores its own values.",
-      "Sequencer notes and controls go out first; three SETTINGS rows; unticked, MIDI is stock."
+      "Follows the stock AUTO CHANNEL and TRACK CHANNEL routing of the notes; leaving a track restores its own values."
     ],
     "usage": [
       "Connect a keyboard to MIDI IN on the AUTO CHANNEL and a synth to MIDI OUT.",
-      "Select a MIDI track, switch its CHAN on and set the synth's channel.",
-      "Tick PB THRU, AT THRU and MW THRU in SETTINGS, then play: bends, pressure and the mod wheel reach the synth."
+      "Tick PB THRU, AT THRU and MW THRU in SETTINGS.",
+      "Select a track, open its TRIG page and tap TRIG again: set the bend range and the wheel and aftertouch routes (audio) or what passes and on which CC (MIDI) with knobs A-E.",
+      "Play: bends, pressure and the wheel reach the track."
     ]
   },
   "access": {
-    "location": "SETTINGS > PB THRU, AT THRU, MW THRU, PB RANGE, MW DEST, MW AMT, AT DEST, AT AMT",
+    "location": "SETTINGS > PB THRU, AT THRU, MW THRU; the TRIG page's second page (tap TRIG on the TRIG page)",
     "steps": [
       "Use a build containing MIDI Expression for the original Digitakt on OS 1.54.",
-      "Press SETTINGS and go down to PB THRU, AT THRU and MW THRU, below SYSTEM, with UP/DOWN.",
-      "Press YES to tick or untick a row. RIGHT ticks it and LEFT unticks it."
+      "Press SETTINGS and go down to PB THRU, AT THRU and MW THRU, below SYSTEM. YES ticks or unticks a row.",
+      "Select a track, press TRIG for its TRIG page, then tap TRIG again: the EXPRESSION page. Knobs A-E set its five rows; UP/DOWN or LEVEL move the cursor, LEFT/RIGHT change, YES toggles. TRIG or NO goes back."
     ],
     "screenshots": [
       "media/settings-off.png",
@@ -49,50 +50,68 @@
     {
       "name": "PB THRU",
       "default": null,
-      "doc": "Ticked: pitch bend from MIDI IN is added to the track's own pitch bend (knob, parameter locks, LFO), within 0-16383, and sent on the CHAN of each MIDI track the notes on that channel would play. Unticked: dropped, as stock, and the track's own value is restored. Unticked at every power-on; not saved.",
-      "labels": null
+      "labels": null,
+      "doc": "SETTINGS. Ticked: pitch bend from MIDI IN reaches the tracks the notes would play. Unticked: dropped, as stock, and every track gets its own value back. Unticked at power-on; not saved."
     },
     {
       "name": "AT THRU",
       "default": null,
-      "doc": "Ticked: channel aftertouch is added to the track's own AT, within 0-127, routed like PB THRU. Poly aftertouch is not passed. Unticked: dropped, as stock.",
-      "labels": null
+      "labels": null,
+      "doc": "SETTINGS. Ticked: channel aftertouch, routed like PB THRU. Poly aftertouch is not passed."
     },
     {
       "name": "MW THRU",
       "default": null,
-      "doc": "Ticked, with PORT CONFIG > RECEIVE CC/NRPN ticked: the mod wheel (CC 1) is added to the track's own MW, within 0-127, routed like PB THRU, after the stock control-change handling. Unticked: CC 1 is handled as stock only.",
-      "labels": null
+      "labels": null,
+      "doc": "SETTINGS. Ticked, with PORT CONFIG > RECEIVE CC/NRPN ticked: the mod wheel (CC 1), routed like PB THRU, after the stock control-change handling."
     },
     {
-      "name": "PB RANGE",
+      "name": "BEND RANGE",
       "default": null,
-      "doc": "OFF, 1-12 semitones (default 2): how far a full bend moves an audio track's TUNE, within TUNE's own +-24.",
-      "labels": null
+      "labels": null,
+      "doc": "Audio track, knob A: OFF, 1-12 semitones: how far a full bend moves the track's TUNE, within TUNE's own +-24. Default: 2 ST."
     },
     {
       "name": "MW DEST",
       "default": null,
-      "doc": "OFF (default) or the audio-track parameter the mod wheel moves.",
-      "labels": null
+      "labels": null,
+      "doc": "Audio track, knob B: OFF or the parameter the wheel moves (SRC, FLTR, AMP or LFO amounts). Default: OFF."
     },
     {
-      "name": "MW AMT",
+      "name": "MW AMOUNT",
       "default": null,
-      "doc": "-64 to +64 (default +32): how far a full wheel moves MW DEST, in the stock LFO's scale.",
-      "labels": null
+      "labels": null,
+      "doc": "Audio track, knob C: -64 to +64, how far a full wheel moves MW DEST, in the stock LFO's scale. Default: +32."
     },
     {
       "name": "AT DEST",
       "default": null,
-      "doc": "OFF (default) or the audio-track parameter aftertouch moves.",
-      "labels": null
+      "labels": null,
+      "doc": "Audio track, knob D: OFF or the parameter aftertouch moves. Default: OFF."
     },
     {
-      "name": "AT AMT",
+      "name": "AT AMOUNT",
       "default": null,
-      "doc": "-64 to +64 (default +32): how far full pressure moves AT DEST.",
-      "labels": null
+      "labels": null,
+      "doc": "Audio track, knob E: -64 to +64, how far full pressure moves AT DEST. Default: +32."
+    },
+    {
+      "name": "PITCH BEND / AFTERTOUCH / MOD WHEEL",
+      "default": null,
+      "labels": null,
+      "doc": "MIDI track, knobs A-C: whether this track passes each one on to its synth. Default: ON."
+    },
+    {
+      "name": "MW AS",
+      "default": null,
+      "labels": null,
+      "doc": "MIDI track, knob D: CC 1 adds the wheel to the track's own MW; CC 2-119 sends the wheel alone on that CC (0 when you leave the track). Default: CC 1 (MW)."
+    },
+    {
+      "name": "AT AS",
+      "default": null,
+      "labels": null,
+      "doc": "MIDI track, knob E: channel aftertouch added to the track's own AT, or the pressure alone on CC 1-119. Default: AFTERTCH."
     }
   ],
   "compatibility": {
@@ -100,14 +119,16 @@
       "1.54"
     ],
     "requires": [],
-    "conflicts": [],
+    "conflicts": [
+      "digiperform"
+    ],
     "limitations": [
       "Built for OS 1.54 only.",
-      "Not saved: the three rows start unticked (stock) at every power-on.",
+      "Not saved: the THRU rows start unticked and every track's settings start at their defaults at every power-on.",
       "Sends to DIN MIDI OUT only, not USB: the stock USB sender is not safe to call from the MIDI input task.",
-      "Only MIDI tracks A-H with CHAN on receive; audio tracks ignore pitch bend, as stock.",
       "Not recorded: the sequencer never sees the live values.",
-      "A bend can reach the synth a few milliseconds before the note played with it."
+      "A bend can reach the synth a few milliseconds before the note played with it.",
+      "Digi Perform opens its own page with the same gesture (TRIG again on the TRIG page): the two are not built together."
     ]
   },
   "platform": {
@@ -116,17 +137,16 @@
     "build": "build.json",
     "events": [
       "ev_settings",
-      "ev_tick"
+      "ev_tick",
+      "ev_draw",
+      "ev_key",
+      "ev_enc"
     ],
     "claims": [
       "settings:PB THRU",
       "settings:AT THRU",
       "settings:MW THRU",
-      "settings:PB RANGE",
-      "settings:MW DEST",
-      "settings:MW AMT",
-      "settings:AT DEST",
-      "settings:AT AMT"
+      "ui:TRIG page:second page, TRIG pressed again"
     ]
   },
   "resources": {
@@ -140,7 +160,7 @@
   },
   "evidence": {
     "tier": "none",
-    "moduleVersion": "0.3.0-experimental",
+    "moduleVersion": "0.4.0-experimental",
     "sourceSha256": null,
     "reports": [],
     "hardware": null,

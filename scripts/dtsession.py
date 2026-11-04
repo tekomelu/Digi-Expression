@@ -186,7 +186,8 @@ def main(argv=None):
     steps = parse(text)
 
     syx = os.environ['DT2_SYX']
-    snapshot = args.snapshot or os.path.join(os.environ['DT2_SNAPSHOTS'], 'Digitakt_OS1.54', 'gui.snap')
+    snapshot = args.snapshot or os.environ.get('DT2_SNAPSHOT') or os.path.join(
+        os.environ['DT2_SNAPSHOTS'], 'Digitakt_OS1.54', 'gui.snap')
     snapshot = os.path.abspath(snapshot)
     save = os.path.abspath(args.save) if args.save else None
     out = os.path.abspath(args.out)

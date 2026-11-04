@@ -85,3 +85,9 @@ Shared mod memory: 5,612 bytes in 0.3 (`ramSpare` 124,084), 2,704 bytes in 0.2 (
 4. Select an audio track: bends do nothing. Select another MIDI track: they follow it.
 5. Priority: give MIDI tracks A-H 4-note chords on every step at 160 BPM or more, with CLOCK SEND on and a clock-following device, and sweep aftertouch hard. Compare note timing and the device's tempo stability with the rows ticked and unticked.
 6. Check the panel stays responsive throughout, and that STOP and pattern changes leave no stuck notes.
+
+## 0.4 (the EXPRESSION page)
+
+- **Host unit tests:** 524 checks, 0 failures (`results/mod-0.4/host-unit-tests.txt`): per-track bend ranges and routes, per-track PB/AT/MW off, MW AS and AT AS on their own CC and back to 0 on leaving, a row change releasing the synth, and the page's keys and knobs (tap vs hold of TRIG, TRIG + REC, FUNC + TRIG, another page, overlay, cursor, limits).
+- **Emulator** (`tests/page.txt`, captures in `results/mod-0.4/page/`): TRIG then a tap of TRIG opens the page on audio track 1 and MIDI track A; knobs A–E change the rows; TRIG goes back to the stock TRIG page; a 1 s hold of TRIG stays stock; FUNC + TRIG is the stock quantize page; TRK + 1 while the page is up shows track 1's settings; GLOBAL opens SETTINGS over it and the page is gone after NO; FLTR from the page gives the stock FLTR page.
+- **Not yet on hardware.**

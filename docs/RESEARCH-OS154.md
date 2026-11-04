@@ -82,3 +82,16 @@ Unless `force` is set it skips a value equal to the cache, then builds the messa
 - Where MIDI clock (0xF8) is sent from, and its timing on hardware under heavy aftertouch: digiemu sends DMA buffers at once rather than at 31250 baud, so DIN timing can only be judged on the unit.
 - What the three predicates in the note router (0x4007851a, 0x40078528, 0x4007853a) check.
 - In digiemu c1b5735 the headless `Session` lets the UI task starve (no redraw, keys or `ev_tick`) once the MIDI task has handled a message: it does not apply `longrun.never_fake_set_posts`, which the app does. `scripts/dtsession.py` applies it.
+
+## 8. Which page is up (for the EXPRESSION page, 0.4)
+
+Measured in digiemu (c1b5735) on stock OS 1.54 and on MX01 builds with this mod, with `scripts/probe-view.py`:
+
+- `Brain::key(brain, event)` is 0x400084fe; the brain is 0x429b70b0 here, also held at 0x421fac10. The core's `ev_key` and `ev_enc` hand handlers the brain; `ev_tick` and `ev_draw` the view controller, brain + 0x40 (its +0x20 is the recompose byte).
+- Controller + 0x14 / + 0x18: a std::list of layers (first, last), nodes `{next, prev, view}`. + 0x1c: the layer with focus. With nothing over the page, focus == first. SETTINGS (GLOBAL) and the scale setup (FUNC + PAGE) put their own layer last and give it focus.
+- The first layer's view is the main frame (vtable 0x40183268). Frame + 0xb4 is the page it shows: SRC, FLTR, AMP, LFO and TRIG page views each have their own object.
+- TRIG page view: vtable 0x40184308 for audio and MIDI tracks alike; + 0x88 is its page key (19 = TRIG; SRC 20, FLTR 21, AMP 22, LFO 23); + 0x7c/+0x80 a vector of page kinds and + 0x90 the index (1 audio TRIG, 15 MIDI TRIG, as Digi Poly documents). AMP page view: vtable 0x4018444c, key 22, kind 8.
+- Key-held test: 0x400d399c(key) (Digi Perform's). Key codes: FUNC 1, TRK 2, PTN 3, BANK 4, SONG 5, GLOBAL 6, SAMPLE 7, TEMPO 8, REC 9, PLAY 10, STOP 11, YES 12, NO 13, UP 14, DOWN 15, LEFT 16, RIGHT 17, PAGE 18, TRIG 19–LFO 23, trigs 24–39, knob pushes 40–47. Encoders: 1–8 knobs A–H, 9 LEVEL.
+- FILLRECT on 1.54 is 0x400c1bce.
+
+Stock heap addresses are the same from boot to boot in the emulator but are not relied on: the page is found from the controller each time.

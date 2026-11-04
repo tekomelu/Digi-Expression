@@ -1,5 +1,17 @@
 [
   {
+    "version": "0.4.0-experimental",
+    "date": "2026-11-04",
+    "changes": [
+      "New: the TRIG page's second page (tap TRIG on the TRIG page) holds each track's own settings.",
+      "Audio tracks: BEND RANGE, MW DEST, MW AMOUNT, AT DEST and AT AMOUNT per track, on knobs A-E.",
+      "MIDI tracks: PITCH BEND, AFTERTOUCH and MOD WHEEL on or off per track; MW AS and AT AS send the wheel or the pressure on a CC of your choice.",
+      "SETTINGS keeps only PB THRU, AT THRU and MW THRU.",
+      "Not built together with Digi Perform, which opens its page with the same gesture.",
+      "Known issue: the per-track settings are not saved; they return to their defaults at power-on. Not yet tested on a unit."
+    ]
+  },
+  {
     "version": "0.3.0-experimental",
     "date": "2026-11-04",
     "changes": [

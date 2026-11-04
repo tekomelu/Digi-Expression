@@ -1,18 +1,39 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-// MIDI Expression: what expr.c (MIDI tracks) and audio.c (audio tracks) share.
+// MIDI Expression: what expr.c (MIDI tracks), audio.c (audio tracks) and
+// page.c (the TRIG page's second page) share.
 #ifndef MIDI_EXPRESSION_H
 #define MIDI_EXPRESSION_H
 
 #include <stdint.h>
 
 enum { PB, AT, MW, KINDS };
+// What a MIDI track sends: the three above, summed with the track's own
+// values, or the wheel and the pressure as a plain CC of their own.
+enum { XMW = KINDS, XAT, OUTS };
 
-// SETTINGS (rows.s, rows.c): off and the defaults at power-on, not saved.
+// SETTINGS (rows.s): the THRU rows, unticked at power-on, not saved.
 extern volatile uint8_t me_pb_on, me_at_on, me_mw_on;
-extern volatile int8_t me_bend_range;          // semitones, 0 = audio tracks not bent
+
+// Per track, on the TRIG page's second page (page.c). Defaults at power-on;
+// held in RAM only, not saved with the project.
 #define PB_RANGE_MAX 12                         // an octave each way at most
-extern volatile int8_t me_mw_dest, me_at_dest; // a sound slot (1..45), 0 = none
-extern volatile int8_t me_mw_amount, me_at_amount; // -64..+64
+#define AMOUNT_MAX   64
+#define CC_MAX       119                        // CC 120-127 are channel mode messages
+
+struct me_audio_cfg {
+    volatile int8_t range;                      // semitones, 0 = not bent
+    volatile int8_t mw_dest, at_dest;           // a sound slot (1..45), 0 = none
+    volatile int8_t mw_amount, at_amount;       // -64..+64
+};
+
+struct me_midi_cfg {
+    volatile uint8_t pb_on, at_on, mw_on;       // this track passes them
+    volatile uint8_t mw_cc;                     // 1: the track's MW (CC 1); else this CC
+    volatile uint8_t at_cc;                     // 0: channel aftertouch; else this CC
+};
+
+extern struct me_audio_cfg me_audio_cfg[8];
+extern struct me_midi_cfg me_midi_cfg[8];
 
 // audio.c
 // live: PB as an offset from centre (-8192..8191), AT and MW 0..127.
@@ -20,5 +41,8 @@ void me_audio_take(int kind, int32_t live, uint32_t audio_tracks, int from_auto)
 void me_audio_release_auto(void);
 void me_audio_release_kind(int kind);
 void me_render(void *words);
+
+// expr.c: a MIDI track's settings changed on the page: give its channel back.
+void me_midi_release_track(int m);
 
 #endif

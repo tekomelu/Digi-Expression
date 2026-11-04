@@ -11,8 +11,9 @@
 // Stock's LFO stage adds its modulation to them each block. A 6-byte site
 // at 0x40077eea, the next call after that stage (and after Digi Matrix's
 // own hook), runs me_render on the words: it adds
-//   TUNE   += bend offset x PB RANGE semitones, within TUNE's +-24
+//   TUNE   += bend offset x BEND RANGE semitones, within TUNE's +-24
 //   MW DEST += wheel x MW AMOUNT,   AT DEST += pressure x AT AMOUNT
+// with each track's own settings from the TRIG page's second page (page.c)
 // within 0..32512, in the same scale the stock LFO uses (+-64 at full value
 // covers the parameter's whole range). It runs in the audio interrupt and
 // only reads what the MIDI task wrote; nothing is stored in the words, so
@@ -32,9 +33,6 @@
 #define TUNE_MIN          (40 * 256)
 #define TUNE_MAX          (88 * 256)
 
-volatile int8_t me_bend_range = 2;
-volatile int8_t me_mw_dest, me_at_dest;
-volatile int8_t me_mw_amount = 32, me_at_amount = 32;
 
 struct atrack {
     volatile int16_t live[KINDS];   // PB offset, AT, MW
@@ -95,16 +93,21 @@ static int32_t scaled(int32_t value, int32_t amount)
 
 void me_render(void *words)
 {
-    int32_t range = me_bend_range;
-    if (range > PB_RANGE_MAX)
-        range = PB_RANGE_MAX;
-    int32_t mw_dest = me_mw_dest, at_dest = me_at_dest;
-    int32_t mw_amount = me_mw_amount, at_amount = me_at_amount;
     for (int t = 0; t < 8; t++) {
         struct atrack *a = &atracks[t];
         int32_t pb = a->live[PB], at = a->live[AT], mw = a->live[MW];
         if (!pb && !at && !mw)
             continue;
+        struct me_audio_cfg *cfg = &me_audio_cfg[t];
+        int32_t range = cfg->range;
+        if (range > PB_RANGE_MAX)
+            range = PB_RANGE_MAX;
+        int32_t mw_dest = cfg->mw_dest, at_dest = cfg->at_dest;
+        int32_t mw_amount = cfg->mw_amount, at_amount = cfg->at_amount;
+        if (mw_amount > AMOUNT_MAX) mw_amount = AMOUNT_MAX;
+        if (mw_amount < -AMOUNT_MAX) mw_amount = -AMOUNT_MAX;
+        if (at_amount > AMOUNT_MAX) at_amount = AMOUNT_MAX;
+        if (at_amount < -AMOUNT_MAX) at_amount = -AMOUNT_MAX;
         volatile int16_t *v = VOICE(words, t);
         if (pb && range > 0)
             add_within(v + SLOT_TUNE, (pb * range * TUNE_PER_SEMITONE) / 8192, TUNE_MIN, TUNE_MAX);
