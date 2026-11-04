@@ -2,7 +2,7 @@
   "schemaVersion": 3,
   "id": "midi-expression",
   "name": "MIDI Expression",
-  "version": "0.5.0-experimental",
+  "version": "0.6.0-experimental",
   "machine": "digitakt",
   "category": "midi-usb",
   "exclusive": false,
@@ -19,7 +19,7 @@
     "label": "MIDI EXPRESSION",
     "family": "MIDI",
     "summary": "Pitch bend, aftertouch, the mod wheel and velocity from MIDI IN play a MIDI track's synth and the Digitakt's own audio tracks, with each track's settings on a second TRIG page.",
-    "overview": "Stock, the Digitakt passes the notes of an external keyboard through to the synth a MIDI track plays, but drops pitch bend, aftertouch and the mod wheel. With SETTINGS > PB THRU, AT THRU and MW THRU ticked, those messages follow the notes: on the AUTO CHANNEL to the active track, and on a track's own TRACK CHANNEL to that track. A MIDI track adds them to its own PB, AT and MW (its knob, parameter locks and LFO), within the MIDI limits, on its CHAN out of MIDI OUT. An audio track bends its TUNE and moves two parameters of its choice. Each track's settings are on the TRIG page's second page: tap TRIG on the TRIG page. Selecting another track gives the previous one its own values back. For live playing: nothing is recorded into the sequencer. Unticked, MIDI handling is stock.",
+    "overview": "Stock, the Digitakt passes the notes of an external keyboard through to the synth a MIDI track plays, but drops pitch bend, aftertouch and the mod wheel. Those messages now follow the notes: on the AUTO CHANNEL to the active track, and on a track's own TRACK CHANNEL to that track. A MIDI track adds them to its own PB, AT and MW (its knob, parameter locks and LFO), within the MIDI limits, on its CHAN out of MIDI OUT. An audio track bends its TUNE and moves two parameters of its choice. Each track's settings are on the TRIG page's second page: tap TRIG on the TRIG page. Selecting another track gives the previous one its own values back. For live playing: nothing is recorded into the sequencer.",
     "highlights": [
       "Play a synth through a MIDI track with pitch bend, aftertouch and the mod wheel.",
       "Audio tracks: bend by up to 12 semitones; route the wheel, aftertouch and velocity to any SRC, FLTR, AMP or LFO amount.",
@@ -28,43 +28,23 @@
       "Adds to the track's own values, LFOs and parameter locks within their limits; leaving a track restores them."
     ],
     "usage": [
-      "Connect a keyboard to MIDI IN on the AUTO CHANNEL and a synth to MIDI OUT.",
-      "Tick PB THRU, AT THRU and MW THRU in SETTINGS.",
-      "Select a track, open its TRIG page and tap TRIG again: set the bend range and the wheel and aftertouch routes (audio) or what passes and on which CC (MIDI) with knobs A-E.",
-      "Play: bends, pressure and the wheel reach the track."
+      "Connect a keyboard to MIDI IN on the AUTO CHANNEL; for a synth, connect it to MIDI OUT and switch a MIDI track's CHAN on.",
+      "Select a track, press TRIG, then tap TRIG again: set its bend range, routes and velocity sensitivity with knobs A-H.",
+      "Play: bends, pressure, the wheel and velocity reach the track."
     ]
   },
   "access": {
-    "location": "SETTINGS > PB THRU, AT THRU, MW THRU; the TRIG page's second page (tap TRIG on the TRIG page)",
+    "location": "The TRIG page's second page: tap TRIG on the TRIG page",
     "steps": [
       "Use a build containing MIDI Expression for the original Digitakt on OS 1.54.",
-      "Press SETTINGS and go down to PB THRU, AT THRU and MW THRU, below SYSTEM. YES ticks or unticks a row.",
-      "Select a track, press TRIG for its TRIG page, then tap TRIG again: the EXPRESSION page. Knobs A-H set the eight cells; FUNC + turn puts one back to its default. TRIG or NO goes back."
+      "Select a track, press TRIG for its TRIG page, then tap TRIG again: the EXPRESSION page. Knobs A-H set the eight cells; FUNC + turn jumps between useful values. TRIG or NO goes back."
     ],
     "screenshots": [
-      "media/settings-off.png",
-      "media/settings-on.png"
+      "media/page-audio.png",
+      "media/page-midi.png"
     ]
   },
   "controls": [
-    {
-      "name": "PB THRU",
-      "default": null,
-      "labels": null,
-      "doc": "SETTINGS. Ticked: pitch bend from MIDI IN reaches the tracks the notes would play. Unticked: dropped, as stock."
-    },
-    {
-      "name": "AT THRU",
-      "default": null,
-      "labels": null,
-      "doc": "SETTINGS. Ticked: channel aftertouch, routed like PB THRU."
-    },
-    {
-      "name": "MW THRU",
-      "default": null,
-      "labels": null,
-      "doc": "SETTINGS. Ticked, with RECEIVE CC/NRPN ticked: the mod wheel (CC 1), routed like PB THRU."
-    },
     {
       "name": "BEND",
       "default": null,
@@ -87,7 +67,7 @@
       "name": "M.DEP / V.DEP / A.DEP",
       "default": null,
       "labels": null,
-      "doc": "Audio track, knobs D, F, H: -64 to +64, how far, in the stock LFO's scale. Default +32."
+      "doc": "Audio track, knobs D, F, H: -64.00 to +64.00, how far, as finely as the LFO page's DEP, in the stock LFO's scale. Default 0."
     },
     {
       "name": "PB / AT / MW",
@@ -118,7 +98,7 @@
     ],
     "limitations": [
       "Built for OS 1.54 only.",
-      "Not saved: the THRU rows start unticked and every track's settings start at their defaults at every power-on.",
+      "Not saved: every track's settings start at their defaults at every power-on. With BEND set to OFF and no destinations, an audio track is stock; a MIDI track with PB, AT and MW OFF is stock.",
       "Sends to DIN MIDI OUT only, not USB: the stock USB sender is not safe to call from the MIDI input task.",
       "Not recorded: the sequencer never sees the live values.",
       "A bend can reach the synth a few milliseconds before the note played with it.",
@@ -130,16 +110,12 @@
     "core": "2.1",
     "build": "build.json",
     "events": [
-      "ev_settings",
       "ev_tick",
       "ev_draw",
       "ev_key",
       "ev_enc"
     ],
     "claims": [
-      "settings:PB THRU",
-      "settings:AT THRU",
-      "settings:MW THRU",
       "ui:TRIG page:second page, TRIG pressed again"
     ]
   },
@@ -154,7 +130,7 @@
   },
   "evidence": {
     "tier": "none",
-    "moduleVersion": "0.5.0-experimental",
+    "moduleVersion": "0.6.0-experimental",
     "sourceSha256": null,
     "reports": [],
     "hardware": null,
@@ -180,35 +156,35 @@
       "source": "Original placeholder from the Modwerk SDK template; replace with your own artwork."
     },
     {
-      "path": "media/settings-off.png",
+      "path": "media/page-audio.png",
       "kind": "screenshot",
-      "caption": "PB THRU, AT THRU and MW THRU unticked: MIDI handling is stock",
-      "alt": "PB THRU, AT THRU and MW THRU unticked: MIDI handling is stock, on the Digitakt monochrome LCD",
+      "caption": "The EXPRESSION page on an audio track: bend range, velocity sensitivity and three routes",
+      "alt": "The EXPRESSION page on audio track 1: BEND 2, V.SNS, MW to FLTR Frequency, VEL to LFO1 Depth, AT to AMP Pan, on the Digitakt monochrome LCD",
       "credit": "Modwerk documentation capture; Elektron interface; tekomelu module",
       "license": "LicenseRef-Digi-UI-Documentation",
       "source": "original",
       "capture": {
         "type": "emulator",
         "release": "1.54",
-        "moduleVersion": "0.1.0-experimental",
-        "imageSha256": "b6e715683f21340c5f74761d33b1bb20d044d82c5a54306e765b529608484bed",
-        "setup": "Pinned digiemu c1b5735, firmware-native drawing, disposable first-boot project. No audio or timing qualification."
+        "moduleVersion": "0.6.0-experimental",
+        "imageSha256": "cfbc6a2c7a33370ed4e01c128d83540d0d9d5294b6a19a6783e2b4228cb69dcf",
+        "setup": "Pinned digiemu c1b5735, firmware-native drawing, disposable first-boot project, settings set in memory for the picture. No audio or timing qualification."
       }
     },
     {
-      "path": "media/settings-on.png",
+      "path": "media/page-midi.png",
       "kind": "screenshot",
-      "caption": "The three rows ticked: pitch bend, aftertouch and the mod wheel pass through",
-      "alt": "The three rows ticked: pitch bend, aftertouch and the mod wheel pass through, on the Digitakt monochrome LCD",
+      "caption": "The EXPRESSION page on a MIDI track: what passes, and on which CC",
+      "alt": "The EXPRESSION page on MIDI track A: PB on, AT off, MW on, V.SNS, MW on CC 74, AT as aftertouch, on the Digitakt monochrome LCD",
       "credit": "Modwerk documentation capture; Elektron interface; tekomelu module",
       "license": "LicenseRef-Digi-UI-Documentation",
       "source": "original",
       "capture": {
         "type": "emulator",
         "release": "1.54",
-        "moduleVersion": "0.1.0-experimental",
-        "imageSha256": "b6e715683f21340c5f74761d33b1bb20d044d82c5a54306e765b529608484bed",
-        "setup": "Pinned digiemu c1b5735, firmware-native drawing, disposable first-boot project. No audio or timing qualification."
+        "moduleVersion": "0.6.0-experimental",
+        "imageSha256": "215c1debb3cc2ffcddc34ba9986ace8231ee34851b261324556c3caef3fa162b",
+        "setup": "Pinned digiemu c1b5735, firmware-native drawing, disposable first-boot project, settings set in memory for the picture. No audio or timing qualification."
       }
     }
   ]

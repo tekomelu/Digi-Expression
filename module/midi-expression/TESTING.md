@@ -97,3 +97,8 @@ Shared mod memory: 5,612 bytes in 0.3 (`ramSpare` 124,084), 2,704 bytes in 0.2 (
 - **Host unit tests:** 1955 checks, 0 failures (`results/mod-0.5/host-unit-tests.txt`): V.SNS mapping over every velocity and sensitivity, VEL as a source, LFO slots only at the LFO entry and the rest only after it, every cell's knob, limits, FUNC + turn defaults, the destination list, the accelerator safety net.
 - **Emulator** (`results/mod-0.5/emulator-checks.txt`): which words the engine reads and when; a note of velocity 20 at V.SNS 50 % reaches the live note as 74; VEL → L1.DEP raises LFO1 depth at the LFO stage by 20 × 32 × 4 and is released on a track change. Page captures in `results/mod-0.5/page/`.
 - **Not measurable in the emulator:** the knob feel. The firmware's accelerator returns 0 there for the stock pages too.
+
+## 0.6 (fine depths, FUNC jumps, no SETTINGS rows)
+
+- **Host unit tests:** 1978 checks, 0 failures (`results/mod-0.6/host-unit-tests.txt`): fine depths in 1/256, FUNC + turn jumps for every kind of cell with the 0.4 s rest, a push of the list's own knob closing it, depths starting at 0.
+- **Emulator** (`results/mod-0.6/emulator-checks.txt`): pass-through works from power-on with nothing ticked; PB OFF on a MIDI track gives the synth its values back; a fine depth of +20.25 lands exactly on LFO1 depth. Captures in `results/mod-0.6/page/`.

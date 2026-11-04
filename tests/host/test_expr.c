@@ -29,7 +29,7 @@ void h_text(void *bmp, const void *font, int x, int y, int colour, const char *f
 }
 void h_fillrect(void *bmp, int x0, int y0, int x1, int y1, int colour) { (void)bmp; (void)x0; (void)y0; (void)x1; (void)y1; (void)colour; }
 
-#define ALL(field, v) do { for (int t_ = 0; t_ < 8; t_++) me_audio_cfg[t_].field = (int8_t)(v); } while (0)
+#define ALL(field, v) do { for (int t_ = 0; t_ < 8; t_++) me_audio_cfg[t_].field = (v); } while (0)
 
 static int32_t chan_of[8];              // MIDI track A-H -> CHAN (0-15), -1 off
 static uint8_t sent[256][3];
@@ -58,13 +58,13 @@ static void reset(void)
     h_tx_pending = 0; h_tx_base = h_tx_sent = 0; h_dma_a = h_dma_b = 0;
     nsent = 0; stock_cc_calls = 0;
     memset((void *)atracks, 0, sizeof atracks);
-    ALL(range, 2); ALL(mw_dest, 0); ALL(at_dest, 0); ALL(vel_dest, 0); ALL(mw_amount, 32); ALL(at_amount, 32); ALL(vel_amount, 32); ALL(vel_sens, 100);
+    ALL(range, 2); ALL(mw_dest, 0); ALL(at_dest, 0); ALL(vel_dest, 0); ALL(mw_amount, 0); ALL(at_amount, 0); ALL(vel_amount, 0); ALL(vel_sens, 100);
     for (int m = 0; m < 8; m++) {
         me_midi_cfg[m].pb_on = me_midi_cfg[m].at_on = me_midi_cfg[m].mw_on = 1;
         me_midi_cfg[m].mw_cc = 1; me_midi_cfg[m].at_cc = 0; me_midi_cfg[m].vel_sens = 100;
     }
     me_page_open = 0; recompose = 0; pend = 0; hold = 0; list_cell = -1; list_t = 0; acc_track = -1;
-    for (int k = 0; k < CELLS; k++) { acc[k] = 0; shown[k] = 0; idle_counts[k] = 0; }
+    for (int k = 0; k < CELLS; k++) { acc[k] = 0; shown[k] = 0; idle_counts[k] = 0; snap_rest[k] = 0; }
     h_trig_page = 0; h_func_held = 0;
 }
 
@@ -272,8 +272,8 @@ int main(void)
     // 14. Mod wheel and aftertouch routes add in the stock LFO's scale, within 0..32512.
     reset();
     h_active_track = 2;                           // audio track 3
-    ALL(mw_dest, 26); ALL(mw_amount, 64);           // FLT.FREQ, full
-    ALL(at_dest, 44); ALL(at_amount, -32);          // AMP.PAN, half, down
+    ALL(mw_dest, 26); ALL(mw_amount, 64 * 256);           // FLT.FREQ, full
+    ALL(at_dest, 44); ALL(at_amount, -32 * 256);          // AMP.PAN, half, down
     words_reset(20000);
     mw_in(13, 127, AUTO);
     at_in(13, 100, AUTO);
@@ -285,7 +285,7 @@ int main(void)
     CHECK(*slot(2, 44) == 0, "capped at 0: %d", *slot(2, 44));
     words_reset(10000);
     mw_in(13, 64, AUTO);
-    ALL(mw_amount, 32);
+    ALL(mw_amount, 32 * 256);
     me_render(words);
     CHECK(*slot(2, 26) == 10000 + 64 * 32 * 4, "MW 64 x +32: %d", *slot(2, 26) - 10000);
     for (int t = 0; t < 8; t++)
@@ -305,7 +305,7 @@ int main(void)
 
     // 16. A TRACK CHANNEL reaches its audio track whatever is selected, and is kept on a track change.
     reset();
-    ALL(mw_dest, 27);                              // FLT.RESO
+    ALL(mw_dest, 27); ALL(mw_amount, 32 * 256);    // FLT.RESO
     words_reset(5000);
     mw_in(4, 100, TRACK);                         // channel 5: audio track 5
     h_active_track = 1;
@@ -333,8 +333,8 @@ int main(void)
     me_render(words);
     CHECK(*slot(0, 17) == 16384 - 3072, "track 1 at 12: %d", *slot(0, 17) - 16384);
     CHECK(*slot(1, 17) == 16384, "track 2 at OFF: %d", *slot(1, 17) - 16384);
-    me_audio_cfg[0].mw_dest = 26; me_audio_cfg[0].mw_amount = 10;
-    me_audio_cfg[1].mw_dest = 27; me_audio_cfg[1].mw_amount = -10;
+    me_audio_cfg[0].mw_dest = 26; me_audio_cfg[0].mw_amount = 10 * 256;
+    me_audio_cfg[1].mw_dest = 27; me_audio_cfg[1].mw_amount = -10 * 256;
     words_reset(10000);
     mw_in(0, 100, TRACK);
     me_render(words);
@@ -402,7 +402,7 @@ int main(void)
     reset();
     h_active_track = 0;
     me_tick(0);                                   // the UI has been ticking since power-on
-    me_audio_cfg[0].vel_dest = 26; me_audio_cfg[0].vel_amount = 16;
+    me_audio_cfg[0].vel_dest = 26; me_audio_cfg[0].vel_amount = 16 * 256;
     me_note_velocity(0, 100, AUTO);
     words_reset(10000);
     me_render(words);
@@ -425,8 +425,8 @@ int main(void)
     // 24. LFO destinations go in at the LFO stage's entry, the rest after it.
     reset();
     h_active_track = 0;
-    me_audio_cfg[0].mw_dest = 8; me_audio_cfg[0].mw_amount = 32;      // L1.DEP
-    me_audio_cfg[0].at_dest = 26; me_audio_cfg[0].at_amount = 32;     // FLT.FREQ
+    me_audio_cfg[0].mw_dest = 8; me_audio_cfg[0].mw_amount = 32 * 256;      // L1.DEP
+    me_audio_cfg[0].at_dest = 26; me_audio_cfg[0].at_amount = 32 * 256;     // FLT.FREQ
     mw_in(13, 64, AUTO);
     at_in(13, 64, AUTO);
     words_reset(10000);
@@ -471,10 +471,13 @@ int main(void)
     KEY(19, 1, 0); h_trig_page = 1; KEY(19, 0, 0);
     CHECK(!me_page_open, "TRIG pressed on another page only brings the TRIG page");
 
-    // 26. Audio cells: each knob its own setting, stepped through the accelerator.
+    // 26. Audio cells: each knob its own setting, stepped through the accelerator
+    //     (the stand-in gives 256 words a raw count: a whole step, or 1.00 of a depth).
     reset();
     h_active_track = 0;
     OPEN();
+    CHECK(me_audio_cfg[0].mw_amount == 0 && me_audio_cfg[0].at_amount == 0 && me_audio_cfg[0].vel_amount == 0, "depths start at 0");
+    CHECK(me_audio_cfg[0].vel_sens == 100 && me_audio_cfg[0].range == 2, "V.SNS 100 %%, BEND 2");
     CHECK(ENC(1, 3) == 1 && me_audio_cfg[0].range == 5, "A BEND 2 -> 5: %d", me_audio_cfg[0].range);
     CHECK(h_enc_last_sid == SID_TUNE, "BEND feels like TUNE");
     for (int i = 0; i < 20; i++) ENC(1, 1);
@@ -484,50 +487,108 @@ int main(void)
     ENC(2, -200);
     CHECK(me_audio_cfg[0].vel_sens == 0, "V.SNS at least 0");
     ENC(3, 1);
-    CHECK(me_audio_cfg[0].mw_dest == 17 && list_cell == 2, "C MW: OFF -> SRC TUNE, the list opens: %d %d", me_audio_cfg[0].mw_dest, list_cell);
+    CHECK(me_audio_cfg[0].mw_dest == 17 && list_cell == 2, "C MW: none -> SRC Tune, the list opens: %d %d", me_audio_cfg[0].mw_dest, list_cell);
     ENC(3, 6);
-    CHECK(me_audio_cfg[0].mw_dest == 27, "MW: 6 more -> FLT RESO: %d", me_audio_cfg[0].mw_dest);
+    CHECK(me_audio_cfg[0].mw_dest == 27, "MW: 6 more -> FLTR Resonance: %d", me_audio_cfg[0].mw_dest);
+    KEY(42, 1, 0);
+    CHECK(list_cell == -1 && me_page_open, "pushing knob C closes its list, the page stays");
+    KEY(42, 0, 0);
+    ENC(3, 1);
+    CHECK(list_cell == 2, "turning again opens it again");
+    KEY(41, 1, 0); KEY(41, 0, 0);
+    CHECK(list_cell == 2, "another knob's push leaves it");
     ENC(4, -100);
-    CHECK(me_audio_cfg[0].mw_amount == -64 && list_cell == -1, "D M.DEP to -64, the list closes: %d", me_audio_cfg[0].mw_amount);
-    ENC(5, 200);
-    CHECK(me_audio_cfg[0].vel_dest == 16, "E VEL: to the end of the list, L2 DEP: %d", me_audio_cfg[0].vel_dest);
+    CHECK(me_audio_cfg[0].mw_amount == -AMOUNT_MAX && list_cell == -1, "D M.DEP to -64.00, the list closes: %d", me_audio_cfg[0].mw_amount);
+    reset(); h_active_track = 0; OPEN();
+    h_enc_fine = 1;                               // the accelerator's slow turn: a few words
+    ENC(4, 1);
+    CHECK(me_audio_cfg[0].mw_amount == 4, "a slow detent: 4/256 of a step (fine): %d", me_audio_cfg[0].mw_amount);
+    h_enc_fine = 0;
+    ENC(4, 3);
+    CHECK(me_audio_cfg[0].mw_amount == 4 + 3 * 256, "a fast turn: whole steps: %d", me_audio_cfg[0].mw_amount);
     ENC(6, -10);
-    CHECK(me_audio_cfg[0].vel_amount == 22, "F V.DEP 32 -> 22: %d", me_audio_cfg[0].vel_amount);
+    CHECK(me_audio_cfg[0].vel_amount == -10 * 256, "F V.DEP 0 -> -10.00: %d", me_audio_cfg[0].vel_amount);
+    ENC(5, 200);
+    CHECK(me_audio_cfg[0].vel_dest == 16, "E VEL: to the end of the list, LFO2 Depth: %d", me_audio_cfg[0].vel_dest);
     ENC(7, 2); ENC(8, 5);
-    CHECK(me_audio_cfg[0].at_dest == 19 && me_audio_cfg[0].at_amount == 37, "G AT, H A.DEP: %d %d", me_audio_cfg[0].at_dest, me_audio_cfg[0].at_amount);
-    CHECK(me_audio_cfg[1].range == 2 && me_audio_cfg[1].mw_amount == 32, "track 2 unchanged");
+    CHECK(me_audio_cfg[0].at_dest == 19 && me_audio_cfg[0].at_amount == 5 * 256, "G AT, H A.DEP: %d %d", me_audio_cfg[0].at_dest, me_audio_cfg[0].at_amount);
+    CHECK(me_audio_cfg[1].range == 2 && me_audio_cfg[1].mw_amount == 0, "track 2 unchanged");
     h_push_held = 1;
     ENC(6, 1);
-    CHECK(me_audio_cfg[0].vel_amount == 26, "pushed: the push multiplier: %d", me_audio_cfg[0].vel_amount);
+    CHECK(me_audio_cfg[0].vel_amount == -6 * 256, "pushed: the push multiplier: %d", me_audio_cfg[0].vel_amount);
     h_push_held = 0;
+
+    // 26a. FUNC + turn: the next useful value, then a rest of 0.4 s.
+    reset(); h_active_track = 0; OPEN();
     h_func_held = 1;
-    ENC(1, 1); ENC(2, -1); ENC(3, 1); ENC(4, 1); ENC(5, -1); ENC(6, 1); ENC(7, 1); ENC(8, 1);
+    ENC(4, 1);
+    CHECK(me_audio_cfg[0].mw_amount == 16 * 256, "M.DEP 0 -> +16: %d", me_audio_cfg[0].mw_amount);
+    ENC(4, 1);
+    CHECK(me_audio_cfg[0].mw_amount == 16 * 256, "resting: no second jump at once");
+    for (int i = 0; i < SNAP_REST; i++) me_page_tick(0);
+    ENC(4, 1); for (int i = 0; i < SNAP_REST; i++) me_page_tick(0);
+    ENC(4, 1); for (int i = 0; i < SNAP_REST; i++) me_page_tick(0);
+    ENC(4, 1); for (int i = 0; i < SNAP_REST; i++) me_page_tick(0);
+    ENC(4, 1); for (int i = 0; i < SNAP_REST; i++) me_page_tick(0);
+    CHECK(me_audio_cfg[0].mw_amount == AMOUNT_MAX, "up to +64 and no further: %d", me_audio_cfg[0].mw_amount);
+    me_audio_cfg[0].mw_amount = 20 * 256 + 37;    // between snaps
+    ENC(4, -1); for (int i = 0; i < SNAP_REST; i++) me_page_tick(0);
+    CHECK(me_audio_cfg[0].mw_amount == 16 * 256, "20.14 down: +16: %d", me_audio_cfg[0].mw_amount);
+    for (int i = 0; i < 6; i++) { ENC(4, -1); for (int j = 0; j < SNAP_REST; j++) me_page_tick(0); }
+    CHECK(me_audio_cfg[0].mw_amount == -AMOUNT_MAX, "down to -64: %d", me_audio_cfg[0].mw_amount);
+    me_audio_cfg[0].mw_amount = -20 * 256;
+    ENC(4, 1); for (int i = 0; i < SNAP_REST; i++) me_page_tick(0);
+    CHECK(me_audio_cfg[0].mw_amount == -16 * 256, "-20 up: -16: %d", me_audio_cfg[0].mw_amount);
+    ENC(1, 1); for (int i = 0; i < SNAP_REST; i++) me_page_tick(0);
+    CHECK(me_audio_cfg[0].range == 3, "BEND 2 -> 3: %d", me_audio_cfg[0].range);
+    ENC(1, 1); for (int i = 0; i < SNAP_REST; i++) me_page_tick(0);
+    ENC(1, 1); for (int i = 0; i < SNAP_REST; i++) me_page_tick(0);
+    CHECK(me_audio_cfg[0].range == 7, "-> 5 -> 7: %d", me_audio_cfg[0].range);
+    ENC(1, 1); for (int i = 0; i < SNAP_REST; i++) me_page_tick(0);
+    CHECK(me_audio_cfg[0].range == 12, "-> 12: %d", me_audio_cfg[0].range);
+    ENC(2, -1); for (int i = 0; i < SNAP_REST; i++) me_page_tick(0);
+    CHECK(me_audio_cfg[0].vel_sens == 75, "V.SNS 100 -> 75: %d", me_audio_cfg[0].vel_sens);
+    ENC(3, 1); for (int i = 0; i < SNAP_REST; i++) me_page_tick(0);
+    CHECK(me_audio_cfg[0].mw_dest == 17, "MW none -> SRC: %d", me_audio_cfg[0].mw_dest);
+    ENC(3, 1); for (int i = 0; i < SNAP_REST; i++) me_page_tick(0);
+    CHECK(me_audio_cfg[0].mw_dest == 26, "SRC -> FLTR Frequency: %d", me_audio_cfg[0].mw_dest);
+    ENC(3, 1); for (int i = 0; i < SNAP_REST; i++) me_page_tick(0);
+    ENC(3, 1); for (int i = 0; i < SNAP_REST; i++) me_page_tick(0);
+    CHECK(me_audio_cfg[0].mw_dest == 1, "-> AMP -> LFO1 Speed: %d", me_audio_cfg[0].mw_dest);
+    me_audio_cfg[0].mw_dest = 27;                 // FLTR Resonance
+    ENC(3, -1); for (int i = 0; i < SNAP_REST; i++) me_page_tick(0);
+    CHECK(me_audio_cfg[0].mw_dest == 26, "back: the first of FLTR: %d", me_audio_cfg[0].mw_dest);
+    ENC(3, -1); for (int i = 0; i < SNAP_REST; i++) me_page_tick(0);
+    CHECK(me_audio_cfg[0].mw_dest == 17, "back again: SRC: %d", me_audio_cfg[0].mw_dest);
+    ENC(3, -1); for (int i = 0; i < SNAP_REST; i++) me_page_tick(0);
+    CHECK(me_audio_cfg[0].mw_dest == 0, "and none: %d", me_audio_cfg[0].mw_dest);
     h_func_held = 0;
-    CHECK(me_audio_cfg[0].range == 2 && me_audio_cfg[0].vel_sens == 100 && me_audio_cfg[0].mw_dest == 0 &&
-          me_audio_cfg[0].mw_amount == 32 && me_audio_cfg[0].vel_dest == 0 && me_audio_cfg[0].vel_amount == 32 &&
-          me_audio_cfg[0].at_dest == 0 && me_audio_cfg[0].at_amount == 32, "FUNC + turn: every cell back to its default");
+
     CHECK(ENC(9, 3) == 0, "LEVEL stays the track level");
     CHECK(KEY(30, 1, 0) == 0 && KEY(10, 1, 0) == 0 && KEY(2, 1, 0) == 0, "trig keys, PLAY and TRK go to the stock page");
     CHECK(KEY(14, 1, 0) == 1 && KEY(12, 1, 0) == 1, "arrows and YES: taken, nothing happens");
     CHECK(me_page_open, "still open");
     for (int i = 0; i < SHOW_TICKS; i++) me_page_tick(0);
-    ENC(4, 2);
+    me_audio_cfg[0].at_amount = 12 * 256 + 128;
+    ENC(8, 0);
+    shown[7] = 1;
     memset(drawn, 0, sizeof drawn);
     h_knob_calls = 0;
     me_page_draw((void *)1, (void *)1);
-    CHECK(strstr(drawn, "Expression") && strstr(drawn, "BEND") && strstr(drawn, "V.SNS") && strstr(drawn, "+34") && !strstr(drawn, "M.DEP") && strstr(drawn, "A.DEP"), "drawn: %s", drawn);
+    CHECK(strstr(drawn, "Expression") && strstr(drawn, "BEND") && strstr(drawn, "V.SNS") && strstr(drawn, "+12.50") && strstr(drawn, "M.DEP"), "drawn: %s", drawn);
     CHECK(h_knob_calls == 4, "four knobs (V.SNS and the three depths): %d", h_knob_calls);
+    me_audio_cfg[0].at_amount = -5 * 256;
+    shown[7] = 1;
+    memset(drawn, 0, sizeof drawn);
+    me_page_draw((void *)1, (void *)1);
+    CHECK(strstr(drawn, "-5.00"), "negative depth: %s", drawn);
+    me_audio_cfg[0].mw_dest = 0;
     ENC(3, 2);
     memset(drawn, 0, sizeof drawn);
     me_page_draw((void *)1, (void *)1);
     CHECK(strstr(drawn, "None") && strstr(drawn, "SRC:Name"), "the list: %s", drawn);
     for (int i = 0; i < LIST_TICKS; i++) me_page_tick(0);
     CHECK(list_cell == -1, "the list closes by itself");
-    me_pb_on = me_at_on = me_mw_on = 0;
-    memset(drawn, 0, sizeof drawn);
-    me_page_draw((void *)1, (void *)1);
-    CHECK(strstr(drawn, "THRU off"), "THRU off shown: %s", drawn);
-    me_pb_on = me_at_on = me_mw_on = 1;
     KEY(13, 1, 0);
     CHECK(!me_page_open, "NO leaves");
 
@@ -536,15 +597,17 @@ int main(void)
     h_active_track = 0;
     OPEN();
     h_enc_zero = 1;
-    for (int i = 0; i < 5; i++) ENC(4, 4);
-    CHECK(me_audio_cfg[0].mw_amount == 32, "five detents of nothing: unchanged (the stock slow start)");
-    ENC(4, 4);
-    CHECK(me_audio_cfg[0].mw_amount == 33, "the sixth: a step: %d", me_audio_cfg[0].mw_amount);
-    ENC(4, 8);
-    CHECK(me_audio_cfg[0].mw_amount == 35, "then a step a detent: %d", me_audio_cfg[0].mw_amount);
+    for (int i = 0; i < 5; i++) ENC(2, -4);
+    CHECK(me_audio_cfg[0].vel_sens == 100, "five detents of nothing: unchanged (the stock slow start)");
+    ENC(2, -4);
+    CHECK(me_audio_cfg[0].vel_sens == 99, "the sixth: a step: %d", me_audio_cfg[0].vel_sens);
+    ENC(2, -8);
+    CHECK(me_audio_cfg[0].vel_sens == 97, "then a step a detent: %d", me_audio_cfg[0].vel_sens);
+    ENC(4, -4); ENC(4, -4); ENC(4, -4); ENC(4, -4); ENC(4, -4); ENC(4, -4);
+    CHECK(me_audio_cfg[0].mw_amount == -256, "a depth too: 1.00 a detent: %d", me_audio_cfg[0].mw_amount);
     h_enc_zero = 0;
-    ENC(4, 1);
-    CHECK(me_audio_cfg[0].mw_amount == 36 && idle_counts[3] == 0, "the accelerator back: %d", me_audio_cfg[0].mw_amount);
+    ENC(2, -1);
+    CHECK(me_audio_cfg[0].vel_sens == 96 && idle_counts[1] == 0, "the accelerator back: %d", me_audio_cfg[0].vel_sens);
 
     // 27. MIDI cells; a change gives the channel back.
     reset();
@@ -568,9 +631,9 @@ int main(void)
     ENC(8, 2);
     CHECK(me_midi_cfg[0].at_cc == 2, "H AT> CC 2");
     h_func_held = 1;
-    ENC(8, 1); ENC(7, 1); ENC(4, 1);
+    ENC(8, 1); ENC(7, -1);
     h_func_held = 0;
-    CHECK(me_midi_cfg[0].at_cc == 0 && me_midi_cfg[0].mw_cc == 1 && me_midi_cfg[0].vel_sens == 100, "FUNC + turn: defaults");
+    CHECK(me_midi_cfg[0].at_cc == 10 && me_midi_cfg[0].mw_cc == 110, "FUNC + turn: CCs by tens: %d %d", me_midi_cfg[0].at_cc, me_midi_cfg[0].mw_cc);
     CHECK(me_midi_cfg[1].mw_cc == 1, "MIDI B unchanged");
     for (int i = 0; i < SHOW_TICKS; i++) me_page_tick(0);
     memset(drawn, 0, sizeof drawn);

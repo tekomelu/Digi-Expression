@@ -83,8 +83,8 @@ typedef void (*handler_fn)(const uint8_t *msg, int32_t len, int32_t flag);
 
 #define TAKE_OVER      ((int32_t)0x80000000)      // me_filter: stock must not send
 
-// ---- settings (SETTINGS rows in rows.s; off at power-on, not saved) ---------
-volatile uint8_t me_pb_on, me_at_on, me_mw_on;
+// ---- master switches (expr.h): on --------------------------------------------
+volatile uint8_t me_pb_on = 1, me_at_on = 1, me_mw_on = 1;
 
 // ---- state per output channel -----------------------------------------------
 #include "expr.h"

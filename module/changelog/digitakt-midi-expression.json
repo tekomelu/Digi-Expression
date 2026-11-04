@@ -1,5 +1,17 @@
 [
   {
+    "version": "0.6.0-experimental",
+    "date": "2026-11-05",
+    "changes": [
+      "Pushing the knob whose destination list is open closes the list, as on the stock pages.",
+      "Depths (M.DEP, V.DEP, A.DEP) are as fine as the LFO page's DEP: -64.00 to +64.00.",
+      "FUNC + turn now jumps between useful values, as FUNC + TUNE jumps octaves: depths in 16s, BEND 1/2/3/5/7/12, V.SNS in 25 %, destinations page by page, CCs in tens.",
+      "Depths start at 0; V.SNS at 100 %.",
+      "SETTINGS > PB THRU, AT THRU, MW THRU removed: each track's own switches do the job, and the mod works from power-on without ticking anything.",
+      "Known issue: settings are not saved."
+    ]
+  },
+  {
     "version": "0.5.0-experimental",
     "date": "2026-11-05",
     "changes": [

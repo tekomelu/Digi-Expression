@@ -11,20 +11,22 @@ enum { PB, AT, MW, KINDS };
 // values, or the wheel and the pressure as a plain CC of their own.
 enum { XMW = KINDS, XAT, OUTS };
 
-// SETTINGS (rows.s): the THRU rows, unticked at power-on, not saved.
+// Master switches for pitch bend, aftertouch and the mod wheel: on. (They were
+// SETTINGS rows up to 0.5; each track's own switches replaced them. Unticking
+// one releases everything it reached, which the tests still use.)
 extern volatile uint8_t me_pb_on, me_at_on, me_mw_on;
 
 // Per track, on the TRIG page's second page (page.c). Defaults at power-on;
 // held in RAM only, not saved with the project.
 #define PB_RANGE_MAX 12                         // an octave each way at most
-#define AMOUNT_MAX   64
+#define AMOUNT_MAX   (64 * 256)                // depths in 1/256: -64.00..+64.00
 #define CC_MAX       119                        // CC 120-127 are channel mode messages
 
 struct me_audio_cfg {
     volatile int8_t range;                      // semitones, 0 = not bent
     volatile int8_t mw_dest, at_dest, vel_dest; // a sound slot (1..45), 0 = none
-    volatile int8_t mw_amount, at_amount, vel_amount;   // -64..+64
     volatile int8_t vel_sens;                   // 0..100 %: how much velocity counts
+    volatile int16_t mw_amount, at_amount, vel_amount;  // -64.00..+64.00, in 1/256
 };
 
 struct me_midi_cfg {

@@ -97,19 +97,21 @@ static int32_t held(int32_t amount)
     return amount > AMOUNT_MAX ? AMOUNT_MAX : amount < -AMOUNT_MAX ? -AMOUNT_MAX : amount;
 }
 
-// One route: source value 0..127 times amount -64..+64 into slot `dest`, in
-// the stock LFO's scale (full value at +-64 is the whole range:
-// 127 * 64 * 4 = 32512). lfo: this pass does the LFO slots, else the rest.
+// One route: source value 0..127 times amount -64.00..+64.00 (in 1/256) into
+// slot `dest`, in the stock LFO's scale (full value at +-64 is the whole
+// range: 127 * 64 * 256 / 64 = 32512). lfo: this pass does the LFO slots,
+// else the rest.
 static void route(volatile int16_t *v, int32_t dest, int32_t value, int32_t amount, int lfo)
 {
     if (!value || dest <= 0 || dest > SLOT_LAST || !(amount = held(amount)))
         return;
     if ((dest <= SLOT_LFO_LAST) != lfo)
         return;
+    int32_t x = value * amount / 64;
     if (dest == SLOT_TUNE)
-        add_within(v + dest, value * amount * 4, TUNE_MIN, TUNE_MAX);
+        add_within(v + dest, x, TUNE_MIN, TUNE_MAX);
     else
-        add_within(v + dest, value * amount * 4, 0, PARAM_MAX);
+        add_within(v + dest, x, 0, PARAM_MAX);
 }
 
 static void render(void *words, int lfo)

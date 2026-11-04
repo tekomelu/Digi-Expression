@@ -11,8 +11,10 @@
 //   BEND   OFF, 1..12 semitones of TUNE (default 2)
 //   V.SNS  0..100 %: how much the played velocity counts (default 100 %)
 //   MW, VEL, AT        the parameter each source moves (default none);
-//                      turning opens the list, as the LFO page's DEST does
-//   M.DEP, V.DEP, A.DEP  -64..+64, how far (default +32)
+//                      turning opens the list, as the LFO page's DEST does,
+//                      and pushing that knob closes it
+//   M.DEP, V.DEP, A.DEP  -64.00..+64.00, how far (default 0), as finely as
+//                      the LFO page's DEP
 //   PB, AT, MW         a MIDI track passes them or not (default ON)
 //   MW>    CC 1 (adds to the track's own MW, default) or CC 2..119 alone
 //   AT>    channel aftertouch (default) or CC 1..119 alone
@@ -26,7 +28,11 @@
 // Knobs. A turn goes through the firmware's own encoder accelerator with the
 // step size of a stock parameter of the same kind (as Digi Perform does), so
 // the page feels like the stock pages; pushed, the stock push multiplier.
-// FUNC + turn puts the cell back to its default.
+// FUNC + turn jumps between useful values, as FUNC + TUNE jumps octaves:
+// depths -64, -48 .. +48, +64; BEND OFF, 1, 2, 3, 5, 7, 12; V.SNS 0, 25, 50,
+// 75, 100 %; a destination to the next page's first (SRC, FLTR, AMP, LFO1,
+// LFO2); a CC to the next ten. After each jump the knob rests 0.4 s, as the
+// firmware does.
 //
 // Which page is up. The UI's view controller is the brain + 0x40 (the ctrl
 // that ev_tick and ev_draw get). Measured in digiemu on OS 1.54 (stock and
@@ -43,11 +49,11 @@
 #include "expr.h"
 
 #define D_RANGE   2
-#define D_AMOUNT  32
+#define D_AMOUNT  0
 #define D_SENS    100
 
 struct me_audio_cfg me_audio_cfg[8] = {
-#define A0 { D_RANGE, 0, 0, 0, D_AMOUNT, D_AMOUNT, D_AMOUNT, D_SENS }
+#define A0 { D_RANGE, 0, 0, 0, D_SENS, D_AMOUNT, D_AMOUNT, D_AMOUNT }
     A0, A0, A0, A0, A0, A0, A0, A0,
 #undef A0
 };
@@ -166,7 +172,9 @@ static uint8_t shown[CELLS];            // ticks left showing the value instead 
 static int list_cell = -1, list_t;      // the destination list: its cell, ticks left
 static int acc[CELLS];                  // words turned that have not made a whole step yet
 static int acc_track = -1;
-static int idle_counts[CELLS];          // raw counts the accelerator has turned into nothing
+static int idle_counts[CELLS];
+static uint8_t snap_rest[CELLS];        // UI ticks a knob rests after a FUNC jump
+#define SNAP_REST 12                    // 0.4 s, as the firmware locks a knob after a snap          // raw counts the accelerator has turned into nothing
 #define RAW_DETENT 4                    // raw counts a detent (measured in digiemu)
 #define IDLE_LIMIT (6 * RAW_DETENT)
 
@@ -212,6 +220,12 @@ static const char *dest_short(int s)
 static const char *dest_page(int s)
 {
     return s <= 0 ? "" : s <= 8 ? "LFO1" : s <= 16 ? "LFO2" : s <= 24 ? "SRC" : s <= 37 ? "FLTR" : "AMP";
+}
+
+// Which page a slot is on: 0 none, 1 SRC, 2 FLTR, 3 AMP, 4 LFO1, 5 LFO2.
+static int dest_group(int s)
+{
+    return s <= 0 ? 0 : s <= 8 ? 4 : s <= 16 ? 5 : s <= 24 ? 1 : s <= 37 ? 2 : 3;
 }
 
 // The firmware's parameter id of a slot (Digi Perform's measured map).
@@ -275,24 +289,21 @@ static int within(int v, int lo, int hi)
 }
 
 // The setting behind cell k of track t.
-static volatile int8_t *audio_field(struct me_audio_cfg *a, int k)
-{
-    switch (k) {
-    case 0: return &a->range;
-    case 1: return &a->vel_sens;
-    case 2: return &a->mw_dest;
-    case 3: return &a->mw_amount;
-    case 4: return &a->vel_dest;
-    case 5: return &a->vel_amount;
-    case 6: return &a->at_dest;
-    default: return &a->at_amount;
-    }
-}
-
 int me_page_value(int t, int k)
 {
-    if (t < 8)
-        return *audio_field(&me_audio_cfg[t], k);
+    if (t < 8) {
+        struct me_audio_cfg *a = &me_audio_cfg[t];
+        switch (k) {
+        case 0: return a->range;
+        case 1: return a->vel_sens;
+        case 2: return a->mw_dest;
+        case 3: return a->mw_amount;
+        case 4: return a->vel_dest;
+        case 5: return a->vel_amount;
+        case 6: return a->at_dest;
+        default: return a->at_amount;
+        }
+    }
     struct me_midi_cfg *m = &me_midi_cfg[t - 8];
     switch (k) {
     case 0: return m->pb_on;
@@ -305,7 +316,7 @@ int me_page_value(int t, int k)
     }
 }
 
-static int default_of(int t, int k)
+int me_page_default(int t, int k)
 {
     switch (cell_of(t, k)->kind) {
     case C_RANGE:  return D_RANGE;
@@ -320,7 +331,17 @@ static int default_of(int t, int k)
 static void set_value(int t, int k, int v)
 {
     if (t < 8) {
-        *audio_field(&me_audio_cfg[t], k) = (int8_t)v;
+        struct me_audio_cfg *a = &me_audio_cfg[t];
+        switch (k) {
+        case 0: a->range = (int8_t)v; break;
+        case 1: a->vel_sens = (int8_t)v; break;
+        case 2: a->mw_dest = (int8_t)v; break;
+        case 3: a->mw_amount = (int16_t)v; break;
+        case 4: a->vel_dest = (int8_t)v; break;
+        case 5: a->vel_amount = (int16_t)v; break;
+        case 6: a->at_dest = (int8_t)v; break;
+        default: a->at_amount = (int16_t)v; break;
+        }
         return;
     }
     struct me_midi_cfg *m = &me_midi_cfg[t - 8];
@@ -348,27 +369,79 @@ static int sid_of(int kind)
     }
 }
 
-// Move cell k of track t by `steps` whole steps; func: back to its default.
-void me_page_change(int t, int k, int steps, int func)
+// The next of a list of useful values from v, in the direction of d.
+static int next_of(const int *list, int count, int v, int d)
+{
+    if (d > 0) {
+        for (int i = 0; i < count; i++)
+            if (list[i] > v)
+                return list[i];
+        return list[count - 1];
+    }
+    for (int i = count - 1; i >= 0; i--)
+        if (list[i] < v)
+            return list[i];
+    return list[0];
+}
+
+// FUNC + turn: the next useful value of cell k from v, in the direction of d.
+static int snap(int kind, int v, int d)
+{
+    static const int ranges[] = { 0, 1, 2, 3, 5, 7, 12 };
+    static const int sens[] = { 0, 25, 50, 75, 100 };
+    switch (kind) {
+    case C_RANGE: return next_of(ranges, 7, v, d);
+    case C_SENS:  return next_of(sens, 5, v, d);
+    case C_AMOUNT: {
+        int step = 16 * 256, q = v >= 0 ? v / step : -((-v + step - 1) / step);   // floor
+        int lo = q * step;
+        v = d > 0 ? lo + step : (lo == v ? v - step : lo);
+        return within(v, -AMOUNT_MAX, AMOUNT_MAX);
+    }
+    case C_DEST: {                      // the first of the next page, or of this one going back
+        int i = dest_index(v), g = dest_group(v);
+        if (d > 0) {
+            while (i + 1 < DEST_COUNT && dest_group(dest_order[i]) == g)
+                i++;
+        } else if (i > 0) {
+            if (dest_group(dest_order[i - 1]) != g)
+                g = dest_group(dest_order[--i]);    // already the first: the page before
+            while (i > 0 && dest_group(dest_order[i - 1]) == g)
+                i--;
+        }
+        return dest_order[i];
+    }
+    case C_MWCC:
+    case C_ATCC: {
+        int lo = kind == C_MWCC ? 1 : 0;
+        v = d > 0 ? (v / 10 + 1) * 10 : (v % 10 ? v / 10 * 10 : v - 10);
+        return within(v, lo, CC_MAX);
+    }
+    default:
+        return v;
+    }
+}
+
+// Move cell k of track t by delta (whole steps; for a depth, 1/256 steps);
+// snap: FUNC + turn, the next useful value in delta's direction.
+void me_page_change(int t, int k, int delta, int snapping)
 {
     const struct cell *c = cell_of(t, k);
     int v = me_page_value(t, k);
-    if (c->kind == C_NONE)
+    if (c->kind == C_NONE || !delta)
         return;
-    if (func) {
-        set_value(t, k, default_of(t, k));
+    if (snapping && c->kind != C_ONOFF) {
+        set_value(t, k, snap(c->kind, v, delta));
         return;
     }
-    if (!steps)
-        return;
     switch (c->kind) {
-    case C_RANGE:  v = within(v + steps, 0, PB_RANGE_MAX); break;
-    case C_SENS:   v = within(v + steps, 0, VEL_SENS_MAX); break;
-    case C_AMOUNT: v = within(v + steps, -AMOUNT_MAX, AMOUNT_MAX); break;
-    case C_DEST:   v = dest_order[within(dest_index(v) + steps, 0, DEST_COUNT - 1)]; break;
-    case C_ONOFF:  v = steps > 0; break;
-    case C_MWCC:   v = within(v + steps, 1, CC_MAX); break;
-    case C_ATCC:   v = within(v + steps, 0, CC_MAX); break;
+    case C_RANGE:  v = within(v + delta, 0, PB_RANGE_MAX); break;
+    case C_SENS:   v = within(v + delta, 0, VEL_SENS_MAX); break;
+    case C_AMOUNT: v = within(v + delta, -AMOUNT_MAX, AMOUNT_MAX); break;
+    case C_DEST:   v = dest_order[within(dest_index(v) + delta, 0, DEST_COUNT - 1)]; break;
+    case C_ONOFF:  v = delta > 0; break;
+    case C_MWCC:   v = within(v + delta, 1, CC_MAX); break;
+    case C_ATCC:   v = within(v + delta, 0, CC_MAX); break;
     }
     set_value(t, k, v);
 }
@@ -445,13 +518,28 @@ static void format_value(char *b, int t, int k)
     const char *s = 0;
     switch (cell_of(t, k)->kind) {
     case C_RANGE:  if (v <= 0) s = "OFF"; else { b[0] = (char)('0' + v / 10); b[1] = (char)('0' + v % 10); b[2] = 0; if (v < 10) { b[0] = b[1]; b[1] = 0; } } break;
+    case C_AMOUNT: {                    // as the LFO page's DEP: +12.50
+        int a = v < 0 ? -v : v, w = a >> 8, f = ((a & 255) * 100 + 128) >> 8, i = 0;
+        if (f > 99)
+            f = 99;
+        b[i++] = v > 0 ? '+' : v < 0 ? '-' : ' ';
+        if (w >= 10)
+            b[i++] = (char)('0' + w / 10);
+        b[i++] = (char)('0' + w % 10);
+        b[i++] = '.';
+        b[i++] = (char)('0' + f / 10);
+        b[i++] = (char)('0' + f % 10);
+        b[i] = 0;
+        if (b[0] == ' ')
+            for (int j = 0; j <= i; j++)
+                b[j] = b[j + 1];
+        break;
+    }
     case C_SENS:
-    case C_AMOUNT:
     case C_MWCC:
     case C_ATCC: {
         char d[6];
         int n = 0, a = v < 0 ? -v : v, i = 0;
-        if (cell_of(t, k)->kind == C_AMOUNT && v > 0) b[i++] = '+';
         if (v < 0) b[i++] = '-';
         do { d[n++] = (char)('0' + a % 10); a /= 10; } while (a);
         while (n) b[i++] = d[--n];
@@ -489,7 +577,7 @@ static void draw_cell(void *bmp, int t, int k)
         knob(bmp, x, y, v * 127 / VEL_SENS_MAX, 0);
         break;
     case C_AMOUNT:
-        knob(bmp, x, y, (v + 64) * 127 / 128, 1);
+        knob(bmp, x, y, (v + AMOUNT_MAX) * 127 / (2 * AMOUNT_MAX), 1);
         break;
     case C_ONOFF:
         box(bmp, x + 1, y + 4, x + 17, y + 12);
@@ -556,10 +644,9 @@ static void draw_list(void *bmp, int t, int k)
 // Over the header's title ("Trig Parameters"): ours, in the same font.
 static void draw_title(void *bmp)
 {
-    int off = !me_pb_on && !me_at_on && !me_mw_on;
     FILLRECT(bmp, 18, 54, 126, 63, 0);
     FILLRECT(bmp, 17, 55, 127, 62, 0);
-    TEXT(bmp, TITLE_FONT, 19, 56, -1, "%s", off ? "Expression: THRU off" : "Expression");
+    TEXT(bmp, TITLE_FONT, 19, 56, -1, "%s", "Expression");
     FILLRECT(bmp, 18, 54, 126, 63, -1);
     FILLRECT(bmp, 17, 55, 17, 62, -1);
     FILLRECT(bmp, 127, 55, 127, 62, -1);
@@ -595,9 +682,12 @@ void me_page_tick(void *ctrl)
         ticks = 0;
         enc_decay();
     }
-    for (int k = 0; k < CELLS; k++)
+    for (int k = 0; k < CELLS; k++) {
         if (shown[k])
             shown[k]--;
+        if (snap_rest[k])
+            snap_rest[k]--;
+    }
     if (list_t && !--list_t)
         list_cell = -1;
     if ((me_page_open || recompose) && ctrl) {
@@ -635,8 +725,8 @@ int me_page_key(void *brain, void *ev)
         }
         return 0;                       // the stock page always sees these keys
     }
-    if (KEYPRESS(ev) && !(id >= K_PUSH_A && id < K_PUSH_A + CELLS))
-        list_cell = -1;                 // any key closes the list, as on the stock page
+    if (KEYPRESS(ev) && (!(id >= K_PUSH_A && id < K_PUSH_A + CELLS) || id - K_PUSH_A == list_cell))
+        list_cell = -1;                 // any key, or a push of its own knob, closes the list
     switch (id) {
     case K_TRIG:
         if (KEYHELD(K_FUNC)) {          // FUNC + TRIG: the stock quantize page
@@ -662,7 +752,7 @@ int me_page_key(void *brain, void *ev)
         if (id >= 24 && id <= 39)       // the trig keys
             return 0;
         if (id >= K_PUSH_A && id < K_PUSH_A + CELLS)
-            return 1;                   // the knobs' pushes: the push multiplier, nothing else
+            return 1;                   // the knobs' pushes: the push multiplier (and the list above)
         if (KEYPRESS(ev))
             close_page();               // another page or a menu: stock takes it from here
         return 0;
@@ -692,8 +782,11 @@ int me_page_enc(void *brain, void *ev)
         list_cell = -1;
     if (c->kind == C_NONE)
         return 1;
-    if (KEYHELD(K_FUNC)) {              // FUNC + turn: the default
-        me_page_change(t, k, 0, 1);
+    if (KEYHELD(K_FUNC)) {              // FUNC + turn: the next useful value, then a rest
+        if (!snap_rest[k]) {
+            me_page_change(t, k, n, 1);
+            snap_rest[k] = SNAP_REST;
+        }
         acc[k] = 0;
     } else {
         int w = enc_words(k, sid_of(c->kind), n, KEYHELD(K_PUSH_A + k) != 0);
@@ -704,12 +797,16 @@ int me_page_enc(void *brain, void *ev)
             if (idle_counts[k] >= IDLE_LIMIT)
                 w = n * 256 / RAW_DETENT;
         }
-        acc[k] += w;
-        int steps = acc[k] / 256;
-        acc[k] -= steps * 256;
-        if (c->kind == C_ONOFF && !steps && n)
-            steps = n > 0 ? 1 : -1;     // a switch follows the first detent
-        me_page_change(t, k, steps, 0);
+        if (c->kind == C_AMOUNT) {      // a depth takes the words as they are: 1/256 steps
+            me_page_change(t, k, w, 0);
+        } else {
+            acc[k] += w;
+            int steps = acc[k] / 256;
+            acc[k] -= steps * 256;
+            if (c->kind == C_ONOFF && !steps && n)
+                steps = n > 0 ? 1 : -1; // a switch follows the first detent
+            me_page_change(t, k, steps, 0);
+        }
     }
     shown[k] = SHOW_TICKS;
     if (c->kind == C_DEST) {

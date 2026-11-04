@@ -15,7 +15,7 @@ void h_fillrect(void *bmp, int x0, int y0, int x1, int y1, int colour);
 #define STOCK_NAME(a, sid) ((void)(sid), "Name")
 static void *trig_page(void *ctrl) { (void)ctrl; return h_trig_page ? (void *)1 : 0; }
 // The accelerator: 256 words a raw count, so a slow turn is one step a detent.
-static int h_enc_last_sid, h_enc_zero;
-static int enc_words(int k, int sid, int n, int pushed) { (void)k; h_enc_last_sid = sid; return h_enc_zero ? 0 : n * 256 * (pushed ? 4 : 1); }
+static int h_enc_last_sid, h_enc_zero, h_enc_fine;
+static int enc_words(int k, int sid, int n, int pushed) { (void)k; h_enc_last_sid = sid; return h_enc_zero ? 0 : h_enc_fine ? 4 * n : n * 256 * (pushed ? 4 : 1); }
 static void enc_reset(void) {}
 static void enc_decay(void) {}

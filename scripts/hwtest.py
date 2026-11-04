@@ -190,20 +190,20 @@ On the Digitakt (with the MIDI Expression build):
   SETTINGS > MIDI CONFIG > CHANNELS: note AUTO CHANNEL and TRACK A CHANNEL.
   Select MIDI track A (TRK + trig 9); on its SRC page press FUNC + knob A so
       CHAN is on, and note its channel.
-  SETTINGS: tick PB THRU, AT THRU and MW THRU. On each track's EXPRESSION page
-      (TRIG, then tap TRIG) leave the defaults for now: BEND 2, MW, VEL and
-      AT destinations none (---), V.SNS 100 %; MIDI A: all ON, MW AS CC 1, AT AS AFTERTCH.
+  On each track's EXPRESSION page (TRIG, then tap TRIG) leave the defaults
+      (they come back at every power-on): BEND 2, MW, VEL and AT none (---),
+      depths 0, V.SNS 100 %; MIDI A: PB, AT, MW ON, MW> CC 1, AT> AT.
   Nothing else should send to this MIDI input during the tests.''')
         for key, label in (('auto', 'AUTO CHANNEL'), ('track_a', 'TRACK A CHANNEL'), ('chan', "MIDI track A's CHAN")):
             a = ask('%s (1-16) [%d]:' % (label, c[key] + 1)).strip()
             if a.isdigit() and 1 <= int(a) <= 16:
                 c[key] = int(a) - 1
-        ask('Press Enter when MIDI track A is selected and the three THRU rows are ticked.')
+        ask('Press Enter when MIDI track A is selected.')
         self.note('  auto ch %d, track A ch %d, out ch %d' % (c['auto'] + 1, c['track_a'] + 1, c['chan'] + 1))
 
     def passthru(self):
         c = self.cfg
-        self.note('\n== passthru (MIDI track A selected, THRU rows ticked)')
+        self.note('\n== passthru (MIDI track A selected)')
         for label, ch in (('auto channel', c['auto']), ("track A's channel", c['track_a'])):
             o = c['chan']
             self.expect('passthru', 'note via %s' % label, [self.non(ch, 60)], [self.non(o, 60)])
@@ -218,14 +218,14 @@ On the Digitakt (with the MIDI Expression build):
 
     def unticked(self):
         c = self.cfg
-        self.note('\n== unticked (stock behaviour)')
-        ask('Untick PB THRU, AT THRU and MW THRU in SETTINGS, keep MIDI track A selected, then press Enter.')
+        self.note('\n== switched off (stock behaviour)')
+        ask('On MIDI track A\'s EXPRESSION page turn PB, AT and MW (knobs A-C) OFF, keep MIDI track A selected, then press Enter.')
         ch, o = c['auto'], c['chan']
         self.expect('unticked', 'notes still pass', [self.non(ch, 62), self.noff(ch, 62)],
                     [self.non(o, 62), bytes([0x90 | o, 62, 0])])
         self.expect('unticked', 'PB, AT, MW dropped as stock',
                     [self.pb(ch, 12000), self.at(ch, 50), self.mw(ch, 50)], [])
-        ask('Tick PB THRU, AT THRU and MW THRU again, then press Enter.')
+        ask('Turn PB, AT and MW back ON, then press Enter.')
 
     def restore(self):
         c = self.cfg
@@ -295,7 +295,7 @@ synth or a long LOOP). The program plays it with a note on track 1's own
 channel (TRACK 1 CHANNEL in MIDI CONFIG > CHANNELS).''')
         a = ask('TRACK 1 CHANNEL (1-16) [1]:').strip()
         t1 = int(a) - 1 if a.isdigit() and 1 <= int(a) <= 16 else 0
-        ask('Select audio track 1 (TRK + trig 1). Its EXPRESSION page (TRIG, tap TRIG): BEND 2. PB THRU ticked. Press Enter.')
+        ask('Select audio track 1 (TRK + trig 1). Its EXPRESSION page (TRIG, tap TRIG): BEND 2. Press Enter.')
         ch = c['auto']
         m = self.io.mark()
         self.io.send(self.non(t1, 60))
@@ -322,7 +322,7 @@ channel (TRACK 1 CHANNEL in MIDI CONFIG > CHANNELS).''')
         self.io.send(self.noff(t1, 60))
         self.result('audio', 'BEND 12: an octave up, an octave down (heard)',
                     yes('Did it jump an octave up, then an octave down, then back?'))
-        ask('EXPRESSION page: MW (knob C) FLTR:Frequency, M.DEP (D) +32; on the FLTR page close the filter about halfway. Press Enter.')
+        ask('EXPRESSION page: MW (knob C) FLTR:Frequency, M.DEP (D) +32 (FUNC + turn D twice); on the FLTR page close the filter about halfway. Press Enter.')
         self.io.send(self.non(t1, 60))
         for v in list(range(0, 128, 4)) + list(range(127, -1, -4)):
             self.io.send(self.mw(ch, v))
@@ -332,7 +332,7 @@ channel (TRACK 1 CHANNEL in MIDI CONFIG > CHANNELS).''')
         self.io.send(self.noff(t1, 60))
         self.result('audio', 'mod wheel opens the filter and closes it again (heard)',
                     yes('Did the filter open and close smoothly, back where it was?'))
-        ask('EXPRESSION page: AT (knob G) LFO1:Depth, A.DEP (H) +32; give track 1 LFO1 a slow wave on pitch or filter with DEP 0. Press Enter.')
+        ask('EXPRESSION page: AT (knob G) LFO1:Depth, A.DEP (H) +32 (FUNC + turn H twice); give track 1 LFO1 a slow wave on pitch or filter with DEP 0. Press Enter.')
         self.io.send(self.non(t1, 60))
         for v in list(range(0, 128, 4)) + [127] * 20 + list(range(127, -1, -4)):
             self.io.send(self.at(ch, v))
@@ -355,11 +355,11 @@ channel (TRACK 1 CHANNEL in MIDI CONFIG > CHANNELS).''')
         three_notes()
         self.result('audio', 'V.SNS: 100 % follows velocity, 0 % plays every note full (heard)',
                     loud and yes('Were they all equally loud now?'))
-        ask('V.SNS back to 100 % (FUNC + turn B). VEL (knob E) FLTR:Frequency, V.DEP (F) +32; the filter closed about halfway. Press Enter.')
+        ask('V.SNS back to 100 % (FUNC + turn B right). VEL (knob E) FLTR:Frequency, V.DEP (F) +32 (FUNC + turn F twice); the filter closed about halfway. Press Enter.')
         three_notes()
         self.result('audio', 'VEL to the filter: harder notes brighter (heard)',
                     yes('Did the harder notes sound brighter?'))
-        ask('EXPRESSION page: FUNC + turn knobs A, C, E and G (back to their defaults). Press Enter.')
+        ask('EXPRESSION page: set MW, VEL and AT (knobs C, E, G) back to none (FUNC + turn left until ---), BEND (A) back to 2. Press Enter.')
 
     def clock(self, seconds=15):
         c = self.cfg
@@ -369,7 +369,7 @@ Set up the worst case you can:
   SETTINGS > MIDI CONFIG > SYNC: CLOCK SEND ticked.
   A pattern with trigs on several MIDI tracks (chords if you like), all with
   CHAN on, ideally on every step, at 150 BPM or more.
-  MIDI track A selected, the THRU rows ticked.''')
+  MIDI track A selected, its PB, AT and MW ON.''')
         ask('Press PLAY on the Digitakt, then Enter here.')
         ch = c['auto']
 
