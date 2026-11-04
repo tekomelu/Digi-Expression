@@ -1,0 +1,40 @@
+# Elektron firmware and anything derived from it: never commit.
+*.syx
+*.SYX
+*.bin
+*.elf
+*.img
+*.hex
+*.dump
+*.lst
+*.dis
+*.disasm
+firmware/
+os/
+build/
+out/
+dist/
+
+# Emulator state, captures and memory dumps
+digiemu/
+emu-state/
+*.state
+*.snapshot
+captures/
+
+# Local clones of upstream projects (build environment only)
+modwerk/
+elekloader/
+
+# Toolchains and caches
+toolchain/
+node_modules/
+.cache/
+__pycache__/
+*.pyc
+
+# Editors and OS
+.DS_Store
+.vscode/
+.idea/
+*.swp
