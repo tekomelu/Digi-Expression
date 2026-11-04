@@ -2,7 +2,7 @@
   "schemaVersion": 3,
   "id": "midi-expression",
   "name": "MIDI Expression",
-  "version": "0.1.0-experimental",
+  "version": "0.2.0-experimental",
   "machine": "digitakt",
   "category": "midi-usb",
   "exclusive": false,
@@ -18,13 +18,13 @@
   "presentation": {
     "label": "MIDI EXPRESSION",
     "family": "MIDI",
-    "summary": "Pitch bend, channel aftertouch and the mod wheel from MIDI IN reach the synth a MIDI track plays, on the route its notes take.",
-    "overview": "Stock, the Digitakt passes the notes of an external keyboard through to the synth a MIDI track plays, but drops pitch bend, aftertouch and the mod wheel. With SETTINGS > PB THRU, AT THRU and MW THRU ticked, those messages follow the notes: on the AUTO CHANNEL to the active MIDI track, and on a track's own TRACK CHANNEL to that track, re-channelled to the track's CHAN and sent out of MIDI OUT. The sequencer's own notes and controls keep priority: expression waits while the DIN output is busy, and only the newest value of each control is kept. Unticked, MIDI handling is stock.",
+    "summary": "Pitch bend, channel aftertouch and the mod wheel from MIDI IN add to what a MIDI track sends its synth, on the route its notes take.",
+    "overview": "Stock, the Digitakt passes the notes of an external keyboard through to the synth a MIDI track plays, but drops pitch bend, aftertouch and the mod wheel. With SETTINGS > PB THRU, AT THRU and MW THRU ticked, those messages follow the notes and are added to the track's own values (its knob, parameter locks and LFO), capped to the MIDI limits: on the AUTO CHANNEL to the active MIDI track, and on a track's own TRACK CHANNEL to that track, on the track's CHAN out of MIDI OUT. Selecting another track gives the previous synth back the track's own values. For live playing: nothing is recorded into the sequencer. Unticked, MIDI handling is stock.",
     "highlights": [
       "Play a synth through a MIDI track with pitch bend, aftertouch and the mod wheel.",
-      "Follows the stock AUTO CHANNEL and TRACK CHANNEL routing of the notes, and each track's CHAN.",
-      "Sequencer notes and controls go out first; expression only uses free room on the DIN output.",
-      "Three SETTINGS rows; unticked, MIDI is stock."
+      "Adds to the track's LFO and parameter locks instead of fighting them, within the MIDI limits.",
+      "Follows the stock AUTO CHANNEL and TRACK CHANNEL routing of the notes; leaving a track restores its own values.",
+      "Sequencer notes and controls go out first; three SETTINGS rows; unticked, MIDI is stock."
     ],
     "usage": [
       "Connect a keyboard to MIDI IN on the AUTO CHANNEL and a synth to MIDI OUT.",
@@ -48,19 +48,19 @@
     {
       "name": "PB THRU",
       "default": null,
-      "doc": "Ticked: pitch bend arriving at MIDI IN goes out of MIDI OUT on the CHAN of each MIDI track the notes on that channel would play. Unticked: dropped, as stock. Unticked at every power-on; not saved.",
+      "doc": "Ticked: pitch bend from MIDI IN is added to the track's own pitch bend (knob, parameter locks, LFO), within 0-16383, and sent on the CHAN of each MIDI track the notes on that channel would play. Unticked: dropped, as stock, and the track's own value is restored. Unticked at every power-on; not saved.",
       "labels": null
     },
     {
       "name": "AT THRU",
       "default": null,
-      "doc": "Ticked: channel aftertouch, routed like PB THRU. Poly aftertouch is not passed. Unticked: dropped, as stock.",
+      "doc": "Ticked: channel aftertouch is added to the track's own AT, within 0-127, routed like PB THRU. Poly aftertouch is not passed. Unticked: dropped, as stock.",
       "labels": null
     },
     {
       "name": "MW THRU",
       "default": null,
-      "doc": "Ticked, with PORT CONFIG > RECEIVE CC/NRPN ticked: the mod wheel (CC 1), routed like PB THRU, after the stock control-change handling. Unticked: CC 1 is handled as stock only.",
+      "doc": "Ticked, with PORT CONFIG > RECEIVE CC/NRPN ticked: the mod wheel (CC 1) is added to the track's own MW, within 0-127, routed like PB THRU, after the stock control-change handling. Unticked: CC 1 is handled as stock only.",
       "labels": null
     }
   ],
@@ -75,8 +75,8 @@
       "Not saved: the three rows start unticked (stock) at every power-on.",
       "Sends to DIN MIDI OUT only, not USB: the stock USB sender is not safe to call from the MIDI input task.",
       "Only MIDI tracks A-H with CHAN on receive; audio tracks ignore pitch bend, as stock.",
-      "A MIDI track still sends its own PB, AT and MW values with its trigs, so a held bend jumps back at the track's next trig.",
-      "Changing the selected track while bending leaves the previous synth at its last value."
+      "Not recorded: the sequencer never sees the live values.",
+      "A bend can reach the synth a few milliseconds before the note played with it."
     ]
   },
   "platform": {
@@ -94,7 +94,7 @@
     ]
   },
   "resources": {
-    "memoryBytes": 1468,
+    "memoryBytes": 2704,
     "fastBytes": 0,
     "load": {
       "display": "Not measured yet",
@@ -104,7 +104,7 @@
   },
   "evidence": {
     "tier": "none",
-    "moduleVersion": "0.1.0-experimental",
+    "moduleVersion": "0.2.0-experimental",
     "sourceSha256": null,
     "reports": [],
     "hardware": null,
@@ -112,7 +112,7 @@
   },
   "tests": {
     "report": "TESTING.md",
-    "summary": "Emulator (digiemu): with the rows ticked, pitch bend, channel aftertouch and CC 1 reach a MIDI track's CHAN on the same route as the notes, from the auto channel and from TRACK CHANNEL; unticked, MIDI OUT is identical to stock; the stock CC handling is unchanged; beside FX Track and CC Recall. Hardware not yet tested."
+    "summary": "Host unit tests (34 checks): sums with the track's own PB/AT/MW, MIDI limits, take-over, release on track change, priority and routing. Emulator (digiemu): pass-through on the notes' route from the auto channel and TRACK CHANNEL; unticked identical to stock; stock CC handling unchanged; beside FX Track and CC Recall. Hardware not yet tested."
   },
   "license": {
     "spdx": "GPL-3.0-or-later",

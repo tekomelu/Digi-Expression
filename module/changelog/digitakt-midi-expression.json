@@ -1,5 +1,16 @@
 [
   {
+    "version": "0.2.0-experimental",
+    "date": "2026-11-04",
+    "changes": [
+      "Pitch bend, aftertouch and the mod wheel now add to the MIDI track's own value (its knob, parameter locks and LFO), capped to the MIDI limits.",
+      "A held bend no longer jumps back when the track sends its own value.",
+      "Selecting another track gives the previous synth back the track's own values; the new track follows only when you next move a control.",
+      "Unticking a row gives the track its own value back.",
+      "Known issue: not yet tested on a unit."
+    ]
+  },
+  {
     "version": "0.1.0-experimental",
     "date": "2026-11-04",
     "changes": [

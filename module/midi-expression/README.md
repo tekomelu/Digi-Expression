@@ -1,18 +1,18 @@
 # MIDI Expression
 
-Module version `0.1.0-experimental`, for the original Digitakt on OS 1.54, Core 2.1.
+Module version `0.2.0-experimental`, for the original Digitakt on OS 1.54, Core 2.1.
 
 ## Overview
 
-Stock, the Digitakt passes an external keyboard's notes through a MIDI track to the synth it plays, but drops pitch bend, aftertouch and the mod wheel. With **SETTINGS > PB THRU**, **AT THRU** and **MW THRU** ticked, those messages follow the notes: on the AUTO CHANNEL to the active MIDI track, and on a track's TRACK CHANNEL to that track, re-channelled to the track's CHAN and sent out of MIDI OUT. The sequencer's own notes and controls keep priority. Unticked, MIDI handling is stock.
+Stock, the Digitakt passes an external keyboard's notes through a MIDI track to the synth it plays, but drops pitch bend, aftertouch and the mod wheel. With **SETTINGS > PB THRU**, **AT THRU** and **MW THRU** ticked, those messages follow the notes and are **added to what the track itself sends**: on the AUTO CHANNEL to the active MIDI track, and on a track's TRACK CHANNEL to that track, on the track's CHAN out of MIDI OUT. A track's LFO bending its synth by a semitone and a live bend of a semitone give two. It is for live playing: nothing is recorded into the sequencer. Unticked, MIDI handling is stock.
 
 ## Controls
 
 | Control | What it does |
 | --- | --- |
-| PB THRU | Ticked: pitch bend from MIDI IN goes out at its full 14-bit value on the CHAN of each MIDI track that notes on its channel would play. Unticked: dropped, as stock. |
-| AT THRU | Ticked: channel aftertouch, routed the same way. Poly aftertouch is not passed. Unticked: dropped, as stock. |
-| MW THRU | Ticked, and PORT CONFIG > RECEIVE CC/NRPN ticked: the mod wheel (CC 1), routed the same way, after the stock control-change handling. Unticked: CC 1 is handled as stock only. |
+| PB THRU | Ticked: pitch bend from MIDI IN is added to the track's own pitch bend (its PB knob, parameter locks and LFO), at full 14-bit resolution and within 0–16383. Unticked: dropped, as stock. |
+| AT THRU | Ticked: channel aftertouch is added to the track's own AT, within 0–127. Poly aftertouch is not passed. Unticked: dropped, as stock. |
+| MW THRU | Ticked, and PORT CONFIG > RECEIVE CC/NRPN ticked: the mod wheel (CC 1) is added to the track's own MW, within 0–127, after the stock control-change handling. Unticked: CC 1 is handled as stock only. |
 
 All three start unticked at every power-on and are not saved with the project.
 
@@ -27,38 +27,46 @@ SETTINGS, below SYSTEM: PB THRU, AT THRU and MW THRU. YES toggles a row, RIGHT t
 1. Connect a keyboard to MIDI IN, set it to the Digitakt's AUTO CHANNEL (SETTINGS > MIDI CONFIG > CHANNELS), and connect a synth to MIDI OUT.
 2. Select MIDI track A (TRK + trig 9). On its SRC page press FUNC + knob A to switch CHAN on, and set it to the synth's channel.
 3. Open SETTINGS and tick PB THRU, AT THRU and MW THRU.
-4. Play the keyboard: notes, bends, pressure and the mod wheel reach the synth. Select another MIDI track and they follow it.
+4. Play the keyboard: notes, bends, pressure and the mod wheel reach the synth. Set the track's LFO to PB and bend on top of it.
+5. Select another track: the synth gets the track's own values back, as if nothing had been played. The new track follows when you next move a wheel or press.
 
 ## Message map
 
 | In at MIDI IN | Taken when | Out of MIDI OUT | Stock handling |
 | --- | --- | --- | --- |
-| Pitch bend (Ex), any channel | PB THRU ticked | Ex on each routed MIDI track's CHAN, same 14-bit value | none (stock drops it) |
-| Channel aftertouch (Dx) | AT THRU ticked | Dx on each routed track's CHAN | none (stock drops it) |
-| CC 1 (Bx 01) | MW THRU and RECEIVE CC/NRPN ticked | Bx 01 on each routed track's CHAN | unchanged: the stock handler runs first, always |
+| Pitch bend (Ex), any channel | PB THRU ticked | Ex on each routed MIDI track's CHAN: track's PB + (input − 8192), within 0–16383 | none (stock drops it) |
+| Channel aftertouch (Dx) | AT THRU ticked | Dx on each routed track's CHAN: track's AT + input, within 0–127 | none (stock drops it) |
+| CC 1 (Bx 01) | MW THRU and RECEIVE CC/NRPN ticked | Bx 01 on each routed track's CHAN: track's MW + input, within 0–127 | unchanged: the stock handler runs first, always |
 | Every other message | never | as stock | unchanged |
 
-**Routing** is the stock note router's: a message on the AUTO CHANNEL goes to the active track only; otherwise to every track whose TRACK CHANNEL matches. Of those, only MIDI tracks A-H with CHAN on send anything. A message on the AUTO CHANNEL with an audio track selected is dropped, as stock.
+**Routing** is the stock note router's: a message on the AUTO CHANNEL goes to the active track only; otherwise to every track whose TRACK CHANNEL matches. Of those, only MIDI tracks A–H with CHAN on send anything. A message on the AUTO CHANNEL with an audio track selected is dropped, as stock.
+
+**The track's own values.** A MIDI track sends its PB, AT and MW (knob, parameter locks, LFO, and the forced send at its first trig after a pattern change) as stock. While no live input has reached a channel, those go out untouched. Once it has, the mod sends the sum on that channel instead of the track's value, so the two never fight.
+
+**Leaving a track.** When the active track changes, every channel that AUTO CHANNEL input reached gets the track's own PB, AT and MW back, and the mod stops adding to them. A track reached through its own TRACK CHANNEL keeps the live value, as stock routing keeps its notes. Unticking a row does the same for that message.
 
 ## How it hooks in
 
-The MIDI task hands each incoming message to one of sixteen handlers from a table, by message type. Stock's pitch bend and channel aftertouch entries are an empty function. This module points those two entries at its own handlers and the control-change entry at a wrapper that calls the stock handler first. Three 4-byte pointer sites, no stock instruction changed; claimed in `build.json`.
+- **Input:** the MIDI task hands each incoming message to one of sixteen handlers from a table, by type. Stock's pitch bend and channel aftertouch entries are an empty function. The mod points them at its own handlers and the control-change entry at a wrapper that calls the stock handler first. Three 4-byte pointer sites.
+- **The track's own values:** an 8-byte site at the entry of the MIDI tracks' `send(track, channel, id, value, force)` lets the mod see and, while live input is active, take over the track's PB (id 21), AT (22) and MW (23) sends. Every other parameter passes untouched.
+- **Priority:** each output channel keeps one pending flag per message type, and the value is worked out when it goes out. It goes through the stock DIN driver only while its transmit ring holds at most 24 bytes (about 8 ms of line time), so it never queues in front of a burst of sequencer notes. What waits goes with the next message or within one UI tick (33 ms).
 
-**Priority.** Each output channel keeps one waiting value per message type; a newer value replaces one not yet sent. Values go out through the stock DIN driver only while its transmit ring holds at most 24 bytes (about 8 ms of line time), so they never queue in front of a burst of sequencer notes. What waits goes with the next incoming message or within one UI tick (33 ms).
+All four sites are claimed in `build.json`; no other Modwerk Digitakt module patches them (CC Recall calls `send` and links beside this module).
 
 ## Compatibility and limitations
 
 - Built for OS 1.54 only.
 - Not saved: the rows start unticked at every power-on.
-- DIN MIDI OUT only, not USB: the stock USB sender is not safe to call from the MIDI input task.
-- A MIDI track still sends its own PB, AT and MW values with its trigs, so a held bend jumps back at the track's next trig.
-- Changing the selected track while bending leaves the previous synth at its last value.
-- Links and runs beside FX Track and CC Recall (emulator). No site overlap with any Modwerk Digitakt module checked so far.
+- DIN MIDI OUT only, not USB.
+- Not recorded: the sequencer never sees the live values.
+- A bend can reach the synth a few milliseconds before the note played with it: live notes go through the MIDI tracks' task (about 6 ms in the emulator), pass-through goes straight out.
+- The track's PB, AT and MW knobs on screen show the track's own value, not the sum.
+- Links beside FX Track and CC Recall.
 
 ## Tests
 
-See [TESTING.md](TESTING.md). Emulator only; not yet tested on a unit.
+See [TESTING.md](TESTING.md). Emulator and host unit tests only; not yet tested on a unit.
 
 ## Credits
 
-Design and code: tekomelu. The SETTINGS rows follow the row record and OS 1.54 addresses documented by FX Track (draadpiraat, GPL-3.0-or-later). Licence: GPL-3.0-or-later.
+Design and code: tekomelu. The SETTINGS rows follow the row record and OS 1.54 addresses documented by FX Track (draadpiraat, GPL-3.0-or-later); CC Recall (draadpiraat) documented the MIDI tracks' task. Licence: GPL-3.0-or-later.

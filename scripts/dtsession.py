@@ -61,6 +61,10 @@ def parse(text):
             steps.append(('flood', int(tok[0], 16), int(tok[1]), float(tok[2])))
         elif verb.lower() == 'mark':
             steps.append(('mark', rest.strip()))
+        elif verb.lower() == 'poke':
+            # poke <addr hex> <value>: write a 32-bit word (test setup only)
+            tok = rest.split()
+            steps.append(('poke', int(tok[0], 16), int(tok[1], 0)))
         else:
             steps.extend(fwcompare.parse_script(line))
     return steps
@@ -79,15 +83,24 @@ class Midi:
         self.out.append((ms, bytes(data)))
         self.log.append((ms, 'OUT ' + data.hex(' ')))
 
+    attached = os.environ.get('DTSESSION_MIDI_ATTACH') == '1'
+
     def on_machine(self, s):
         self.session = s
         self.midi_out.install(s.m)
         self.midi_out.attach(s.m, s.ips)
-        s.sources = tuple(s.sources) + (self.midi_out,)
+        extra = (self.midi_out,)
+        if self.attached:                # as digiemu's app: an event source on emulated time
+            self.midi_in.attach(s.m, s.ips)
+            extra = (self.midi_in, self.midi_out)
+        s.sources = tuple(s.sources) + extra
 
     def send(self, s, data):
         self.log.append((s.ms, 'IN  ' + data.hex(' ')))
         self.midi_in.put(data)
+        if self.attached:
+            s.run_ms(MIDI_SETTLE_MS)
+            return
         for _ in range(200):             # the vector may be masked for a moment
             if self.midi_in.deliver(s.m):
                 s.pc = s.m.uc.reg_read(UC_M68K_REG_PC)
@@ -186,6 +199,9 @@ def main(argv=None):
                 io.flood(s, *step[1:])
             elif step[0] == 'mark':
                 io.log.append((s.ms, '--- ' + step[1]))
+            elif step[0] == 'poke':
+                s.m.uc.mem_write(step[1], (step[2] & 0xFFFFFFFF).to_bytes(4, 'big'))
+                io.log.append((s.ms, 'POKE %#010x = %d' % (step[1], step[2])))
             else:
                 marks.extend(run_script(s, [step]))
             if s.halted:

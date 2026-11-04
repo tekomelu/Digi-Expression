@@ -2,7 +2,8 @@
   "schemaVersion": 1,
   "sources": [
     "src/expr.c",
-    "src/rows.s"
+    "src/rows.s",
+    "src/send.s"
   ],
   "defsym": {},
   "cflags": [],
@@ -55,6 +56,13 @@
           "stockSha256": "37e61de8713c438b0ba60815fcf2e70015cec54871b189d684dc09b3de0d0c6c",
           "op": "ptr",
           "target": "me_pitch_bend"
+        },
+        {
+          "addr": "0x400e0ddc",
+          "len": 8,
+          "stockSha256": "93c277eff201aa4134d6da0d4d80fa9dac2728da3e8b05ce07869a2756a3f47d",
+          "op": "jmp",
+          "target": "me_send_entry"
         }
       ]
     }

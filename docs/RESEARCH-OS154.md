@@ -63,8 +63,22 @@ Other functions of the MIDI tracks' task: append(len, bytes) 0x400e0dac copies i
 - **Single bytes, 0x400029fa.** Writes the UART data register directly when idle, otherwise queues to a 1 KB byte queue (count 0x4060f7f8) that UART9's interrupt drains. This is the path for single real-time bytes.
 - **USB, 0x40004990.** Busy-waits on its own ring (0x40610478 against 4091) with no interrupt lock, so it is only safe from the MIDI tracks' task. Version 1 of the mod sends to DIN only.
 
+## 7. The MIDI tracks' send(track, channel, id, value, force), 0x400e0ddc
+
+Every parameter a MIDI track sends goes through it, in the MIDI tracks' task (CC Recall calls it too). A table built on its stack gives each id a kind and a number:
+
+| id | Kind | Message | Value | Stock's last-sent cache |
+| --- | --- | --- | --- | --- |
+| 21 | 4 | pitch bend `Ex` | 14-bit, 8192 centre (capped at 16383) | word per channel at 0x439cc91c |
+| 22 | 3 | channel aftertouch `Dx` | 8.8 fixed point, MIDI value in the top byte | byte per channel at 0x439cc90c |
+| 23 | 2 | CC 1 (mod wheel) | 8.8 | 0x439cb6b4 + channel × 128 + CC |
+| 24 | 2 | CC 2 (breath) | 8.8 | as above |
+| 25–32 | 1 | the CC VAL slots, CC number from CC SEL (parameters 33–40) | 8.8 | as above |
+
+Unless `force` is set it skips a value equal to the cache, then builds the message, adds it with append (0x400e0dac) and updates the cache. Its first two instructions are 8 bytes (link and a register save), the site MIDI Expression 0.2 uses.
+
 ## Open
 
 - Where MIDI clock (0xF8) is sent from, and its timing on hardware under heavy aftertouch: digiemu sends DMA buffers at once rather than at 31250 baud, so DIN timing can only be judged on the unit.
 - What the three predicates in the note router (0x4007851a, 0x40078528, 0x4007853a) check.
-- Resets on track change and STOP, and holding back the track's own trig-time PB/AT/MW while a live gesture is held (version 2).
+- In digiemu c1b5735 the UI task stops (no redraw, no keys, no `ev_tick`) once the MIDI task has handled a message, on the stock OS too.

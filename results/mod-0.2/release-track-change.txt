@@ -1,0 +1,21 @@
+    300.0  --- live bend, pressure and wheel on the auto channel
+    300.0  IN  ed 00 60
+    300.0  OUT e0 00 60
+    325.6  IN  dd 50
+    325.6  OUT d0 50
+    346.2  IN  bd 01 30
+    346.2  OUT b0 01 30
+    366.7  --- select audio track 1: expect PB centre, AT 0, MW 0 (the track's own)
+    366.7  POKE 0x4197c6b4 = 0
+    466.7  --- PB on the auto channel with the audio track selected: expect nothing
+    466.7  IN  ed 00 70
+    500.0  --- select A again, then live PB via track A's own channel 9
+    500.0  POKE 0x4197c6b4 = 8
+    600.0  IN  e8 00 50
+    600.0  OUT e0 00 50
+    605.6  OUT d0 00 b0 01 00
+    625.6  --- select audio track 1: track-channel input is not released, expect nothing
+    625.6  POKE 0x4197c6b4 = 0
+    733.4  --- centre from channel 9
+    733.4  IN  e8 00 40
+    745.6  OUT e0 00 40
