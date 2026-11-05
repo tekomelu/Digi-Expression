@@ -42,7 +42,7 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
 from hwtest import Io, ask, hexs, wait, ROOT  # noqa: E402
 
-VERSION = '0.12.0-experimental'
+VERSION = '0.12.1-experimental'
 SETTLE = 0.06                   # the Digitakt answers in about 4..40 ms
 
 SETUP = '''
@@ -609,7 +609,9 @@ class Qual:
         P = 'ui'
         self.note('\n== ui: the page, presets and 0.12\'s changes (by eye)')
         q = [
-            'TRIG, TRIG opens the EXPRESSION page; TRIG or NO closes it; other page keys work as stock',
+            'TRIG, TRIG opens the EXPRESSION page; a tap of TRIG or NO closes it; other page keys work as stock',
+            'TRIG held on the EXPRESSION page: after a moment V.SNS and the depths show values (LEV too), as on the stock pages; letting go keeps the page',
+            'TRIG held on the TRIG page shows the stock values, and letting go does not open the EXPRESSION page',
             'BEND turns in fine steps (2.00, 2.01 ...) and its box shows tenths (2.5)',
             'FUNC + turn on BEND snaps to whole semitones OFF, 1, 2 ... 12',
             'Depths turn finely; FUNC + turn jumps in 16s; destination lists open and close with the knob',

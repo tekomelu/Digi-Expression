@@ -2,7 +2,7 @@
   "schemaVersion": 3,
   "id": "midi-expression",
   "name": "MIDI Expression",
-  "version": "0.12.0-experimental",
+  "version": "0.12.1-experimental",
   "machine": "digitakt",
   "category": "midi-usb",
   "exclusive": false,
@@ -96,7 +96,7 @@
       "Sends where OUTPUT TO says (MIDI OUT, USB or both), with the track's own values, through the MIDI tracks' own task.",
       "Not recorded: the sequencer never sees the live values; recorded notes keep their velocity as played.",
       "Digi Perform opens its own page with the same gesture (TRIG again on the TRIG page): the two are not built together.",
-      "With Digi Slicer 1.3 KB of RAM is left: the two fit, with no room for a third mod of any size.",
+      "With Digi Slicer 1.2 KB of RAM is left: the two fit, with no room for a third mod of any size.",
       "Avoid a MIDI loop: a synth echoing MIDI OUT back into MIDI IN on the same channel feeds the mod's output back as input.",
       "Two values a MIDI track sends on one CC number are merged while anything live is aimed at them; the track's own value is the one that changed last.",
       "Writing a settings file holds the UI for a moment; the power-on file waits until nothing has played for 2 seconds."
@@ -128,7 +128,7 @@
   },
   "evidence": {
     "tier": "none",
-    "moduleVersion": "0.12.0-experimental",
+    "moduleVersion": "0.12.1-experimental",
     "sourceSha256": null,
     "reports": [],
     "hardware": null,

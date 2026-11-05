@@ -1,11 +1,11 @@
 {
   "schemaVersion": 1,
   "algorithm": "sha256 of canonical sorted JSON {sources,build}; UTF-8, compact separators",
-  "sha256": "22ee5c0152c632eb3574d77052af000cf278c7e5dcfbfa5f73478787b35578b1",
+  "sha256": "899ed350dc0e5a793a6842369d6215cf7b5ab6852b6c9d235fa84b8c6624442f",
   "sources": {
     "src/expr.c": "48d38dd746fa888f0666e215e7f064769c8226a98539e3043e7f9fb19956fd44",
     "src/audio.c": "4b1c4fda024e2d88cb5dd6593ab2d495b21f48aff5adf8eec8bf97d42ce19c37",
-    "src/page.c": "06e60d5a5b232fdba14468a43680c5decd62b85fb0f440c399ad7cbf46b1ef90",
+    "src/page.c": "9752d9a3115d22cbf8eb71b4715a37f11358c69246fdb907b441d6308ee2f7be",
     "src/send.s": "923dab3ac90ae345d49263d19b019c64f9fba35522851cb093bdcd193542fd86",
     "src/render.s": "7a61b72637fe0fcf7812ef18eadee4e33ff62d1e87d2dfcf1fbcc014da6cda32",
     "src/lfo.s": "af48088c0a05e678f6f46fd806ab489c692121ec2a1d8e8b696f7a5e2cc8a77a",

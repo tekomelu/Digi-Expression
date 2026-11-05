@@ -46,7 +46,7 @@ Each run writes `results/hardware/qual-LABEL-DATE/`: `summary.md` (the table for
 
 **By eye (about 10 minutes):**
 
-- **ui:** the page opens and closes; fine BEND and FUNC snapping to whole semitones; depths and destination lists; the preset menu (a one-second push, a twist cancels it); LEVEL one row a detent; FUNC typing; SAVE over a used slot asks; LOAD and RESET change the current track only; SELECT DEFAULT for new projects; audio and MIDI presets kept apart; an 0.11 file with BEND=5 loads as 5.00; the MIDI LFO destinations; a value switched off on its page; the track's own LFO and parameter locks with the live input added.
+- **ui:** the page opens and closes; TRIG held shows the knobs' values and letting go keeps the page, as on the stock pages (and a hold on the TRIG page does not open it); fine BEND and FUNC snapping to whole semitones; depths and destination lists; the preset menu (a one-second push, a twist cancels it); LEVEL one row a detent; FUNC typing; SAVE over a used slot asks; LOAD and RESET change the current track only; SELECT DEFAULT for new projects; audio and MIDI presets kept apart; an 0.11 file with BEND=5 loads as 5.00; the MIDI LFO destinations; a value switched off on its page; the track's own LFO and parameter locks with the live input added.
 
 ## Not covered by the program
 

@@ -1058,8 +1058,33 @@ int main(void)
     CHECK(!me_page_open, "the TRIG page gone: closed");
     reset();
     OPEN();
-    CHECK(KEY(19, 1, 0) == 1 && me_page_open && KEY(19, 0, 0) == 1 && !me_page_open, "TRIG again: back to the first page");
+    CHECK(KEY(19, 1, 0) == 0 && me_page_open && KEY(19, 0, 0) == 0 && !me_page_open, "TRIG tapped again: back to the first page (stock sees TRIG too)");
     CHECK(ENC(1, 1) == 0, "closed: knobs are stock's");
+    // TRIG held, as on a stock page: the knobs' values in place of their labels, and letting go stays
+    reset();
+    h_active_track = 0;
+    OPEN();
+    me_audio_cfg[0].vel_sens = 80; me_audio_cfg[0].mw_amount = 12 * 256 + 128;
+    KEY(19, 1, 0);
+    h_trig_held = 1;                                   // the stock page shows its values now
+    drawn[0] = 0; me_page_draw((void *)1, (void *)1);
+    CHECK(strstr(drawn, "80%") && strstr(drawn, "+12.50") && strstr(drawn, "BEND") && strstr(drawn, "MW"),
+          "TRIG held: V.SNS and depths show values, boxes keep labels: %s", drawn);
+    KEY(19, 0, 0);
+    CHECK(me_page_open, "let go after the values showed: the page stays");
+    h_trig_held = 0;
+    drawn[0] = 0; me_page_draw((void *)1, (void *)1);
+    CHECK(strstr(drawn, "V.SNS") && strstr(drawn, "M.DEP"), "let go: the labels again: %s", drawn);
+    KEY(19, 1, 0);
+    for (int i = 0; i < TAP_TICKS + 2; i++) me_page_tick(0);
+    KEY(19, 0, 0);
+    CHECK(me_page_open, "a long hold (no values seen) also stays");
+    KEY(19, 1, 0); KEY(19, 0, 0);
+    CHECK(!me_page_open, "a tap closes");
+    h_trig_held = 1;                                   // on the TRIG page: a hold that showed the values opens nothing
+    KEY(19, 1, 0); KEY(19, 0, 0);
+    CHECK(!me_page_open, "TRIG page: a hold that showed stock's values does not open the page");
+    h_trig_held = 0;
 
     // 40. Kept with the project (store.c): text files on the +Drive.
     {

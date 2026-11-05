@@ -21,8 +21,10 @@
 //
 // Opening it. On the TRIG page, a tap of TRIG (stock: nothing; a hold stays
 // the stock page's, showing its values, with TRIG + REC/STOP/PLAY). FUNC +
-// TRIG stays the stock quantize page. Leaving: TRIG or NO, or any other page
-// or menu key, which then does its stock job. The trig keys, TRK + trig,
+// TRIG stays the stock quantize page. Leaving: a tap of TRIG, NO, or any
+// other page or menu key, which then does its stock job. TRIG held on this
+// page shows the knobs' values in place of their labels, as a held page key
+// does on the stock pages, and letting go after that keeps the page. The trig keys, TRK + trig,
 // FUNC, PTN, BANK, the transport and the LEVEL knob keep their stock jobs.
 //
 // Knobs. A turn goes through the firmware's own encoder accelerator with the
@@ -122,6 +124,17 @@ static void *trig_page(void *ctrl)
     return (void *)view;
 }
 
+// TRIG held on the TRIG page: after a moment the stock page shows its values
+// in place of the labels (VEL 100, LEN 1/16, LEV 100), and letting go then
+// changes nothing; a quick tap is a tap. The view keeps that state in the
+// byte at +0x190 (1 while the values show; measured in digiemu on OS 1.54,
+// set about 0.4 s after the press, cleared on the release). Only read.
+static int trig_held(void *ctrl)
+{
+    void *v = trig_page(ctrl);
+    return v && *(volatile uint8_t *)((char *)v + 0x190) != 0;
+}
+
 static int enc_state[64];               // the accelerator's state, 0x14 bytes an encoder from 0x20
 
 static void enc_reset(void)
@@ -170,6 +183,8 @@ enum {
 
 int me_page_open;                       // read by the tests
 static int pend;                        // TRIG went down on the TRIG page
+static int trig_down;                   // TRIG went down on this page
+static int values_held;                 // drawing: the stock page shows its values (TRIG held)
 static int hold;                        // UI ticks since
 static void *ctrl_seen;                 // the view controller, from ev_tick / ev_draw
 static int recompose;                   // the page just closed: one more frame for the stock page
@@ -192,6 +207,7 @@ static void close_page(void)
         recompose = 1;
     me_page_open = 0;
     list_cell = -1;
+    trig_down = 0;
 }
 
 // ---- destinations ------------------------------------------------------------
@@ -697,7 +713,9 @@ static void draw_cell(void *bmp, int t, int k)
     }
     }
     // the label under it, or the value for a moment after a turn
-    centred(bmp, LABEL_FONT, x + 9, y - 7, shown[k] && c->kind != C_DEST && c->kind != C_NONE ? val : c->label);
+    int value = (shown[k] && c->kind != C_DEST && c->kind != C_NONE)
+                || (values_held && (c->kind == C_SENS || c->kind == C_AMOUNT));   // TRIG held: the knobs' values, as stock
+    centred(bmp, LABEL_FONT, x + 9, y - 7, value ? val : c->label);
 }
 
 // The LFO page's destination list: the right of the page, seven rows, the
@@ -1098,6 +1116,7 @@ void me_page_draw(void *bmp, void *ctrl)
         close_page();
         return;
     }
+    values_held = trig_down && trig_held(ctrl);
     int t = track();
     FILLRECT(bmp, 16, 0, 127, 53, 0);   // the stock track box and LEV meter stay
     draw_title(bmp);
@@ -1121,7 +1140,7 @@ void me_page_tick(void *ctrl)
 {
     if (ctrl)
         ctrl_seen = ctrl;
-    if (pend && hold < 255)
+    if ((pend || trig_down) && hold < 255)
         hold++;
     if (++ticks >= 3) {                 // the firmware decays its accelerators ten times a second
         ticks = 0;
@@ -1158,6 +1177,7 @@ static void open_page(void)
 {
     me_page_open = 1;
     list_cell = -1;
+    trig_down = values_held = 0;
     enc_reset();
     for (int k = 0; k < CELLS; k++)
         acc[k] = shown[k] = 0;
@@ -1173,8 +1193,8 @@ int me_page_key(void *brain, void *ev)
                 pend = !KEYHELD(K_FUNC) && trig_page(ctrl) != 0;
                 hold = 0;
             } else if (!KEYDOWN(ev) && pend) {
-                pend = 0;
-                if (hold < TAP_TICKS && trig_page(ctrl))
+                pend = 0;               // a tap opens it; a hold that showed the values does not
+                if (hold < TAP_TICKS && trig_page(ctrl) && !trig_held(ctrl))
                     open_page();
             }
         } else if (pend && KEYPRESS(ev)) {
@@ -1194,9 +1214,15 @@ int me_page_key(void *brain, void *ev)
             close_page();
             return 0;
         }
-        if (!KEYDOWN(ev))
-            close_page();               // a tap of TRIG goes back to the first page
-        return 1;
+        if (KEYPRESS(ev)) {
+            trig_down = 1;
+            hold = 0;
+        } else if (!KEYDOWN(ev) && trig_down) {
+            trig_down = 0;              // a tap goes back to the first page; after a hold
+            if (hold < TAP_TICKS && !trig_held(ctrl))   // that showed the values, nothing changes
+                close_page();
+        }
+        return 0;                       // the stock page sees TRIG too: its hold, its LEV value
     case K_NO:
         if (KEYPRESS(ev))
             close_page();

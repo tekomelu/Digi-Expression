@@ -3,7 +3,7 @@
 **Mod for the original Digitakt (mk1, OS 1.54) to add support for pitch-bend, modwheel, aftertouch and breath controller messages.**
 
 A [Modwerk](https://modwerk.app/) module,\
-version 0.12.0-experimental.
+version 0.12.1-experimental.
 
 ![The EXPRESSION page of audio track 2: BEND 2, MW to SRC Length, VEL to AMP Attack, AT to LFO1 Depth](docs/img/expression-audio-hero.png)
 
@@ -22,7 +22,7 @@ Modwerk is an independent project, not affiliated with or endorsed by Elektron. 
 **Other mods.** It links with every other Modwerk Digitakt module except:
 
 * **Digi Perform**: it opens its own page with the same gesture (TRIG again on the TRIG page), so the two cannot be installed together.
-* **Digi Slicer**: works, but only 1.3 KB of RAM is left with both, so no third mod of any size fits beside them.
+* **Digi Slicer**: works, but only 1.2 KB of RAM is left with both, so no third mod of any size fits beside them.
 
 The others were linked with it one at a time ([results/compat/pairs.txt](results/compat/pairs.txt)); RAM decides which combinations of three or more fit. FX Track sees its CCs, and CC Recall's sends and Digi Matrix's routings add up with it.
 
@@ -39,7 +39,7 @@ The others were linked with it one at a time ([results/compat/pairs.txt](results
 
 ### Open the page
 
-Select a track, press **TRIG** for its TRIG page, then **tap TRIG again**: the EXPRESSION page. TRIG or NO goes back; every other key keeps its stock job.
+Select a track, press **TRIG** for its TRIG page, then **tap TRIG again**: the EXPRESSION page. A tap of TRIG or NO goes back; holding TRIG shows the knobs' values in place of their labels, as on the stock pages, and letting go then keeps the page. Every other key keeps its stock job.
 
 | The TRIG page… | …tap TRIG again |
 | --- | --- |
@@ -207,7 +207,7 @@ The research behind every address is in [docs/RESEARCH-OS154.md](docs/RESEARCH-O
 
 Experimental. Tested with about 2.4 million host unit checks (including thousands of random broken files), on the firmware in the [digiemu](https://github.com/irpina/digiemu) emulator (MIDI-track sums and merging, saving and loading through the firmware's own menus, the preset menu, memory and CPU use), and on the author's own Digitakt (mk1, OS 1.54): every feature, over DIN MIDI and USB MIDI, sequencing several synths at once, saving and loading projects and presets, plus a hardware stress test of the MIDI tracks, 25 of 25. Details: [module/midi-expression/TESTING.md](module/midi-expression/TESTING.md).
 
-**Resources** (emulator): no memory is allocated, and hundreds of file writes and reads leave the firmware's heap exactly as it was. CPU in the module area: about 1.2 % of the emulated CPU idle and 1.8 % with every route of every track live under a flood of MIDI at the wire rate (the emulator counts 64 million instructions a second; the unit's CPU is faster). RAM: in an image of its own, 93 KB of the module area stay free; 1.3 KB beside Digi Slicer.
+**Resources** (emulator): no memory is allocated, and hundreds of file writes and reads leave the firmware's heap exactly as it was. CPU in the module area: about 1.2 % of the emulated CPU idle and 1.8 % with every route of every track live under a flood of MIDI at the wire rate (the emulator counts 64 million instructions a second; the unit's CPU is faster). RAM: in an image of its own, 93 KB of the module area stay free; 1.2 KB beside Digi Slicer.
 
 ## Build it
 

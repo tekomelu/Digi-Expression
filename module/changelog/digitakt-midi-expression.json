@@ -1,5 +1,13 @@
 [
   {
+    "version": "0.12.1-experimental",
+    "date": "2026-11-05",
+    "changes": [
+      "TRIG works on the EXPRESSION page as a page key does on the stock pages: held, the knobs show their values in place of their labels (V.SNS and the depths, as stock shows VEL and LEN), and letting go after that keeps the page; a quick tap still goes back.",
+      "On the TRIG page, a hold of TRIG that shows the stock values no longer opens the EXPRESSION page when you let go."
+    ]
+  },
+  {
     "version": "0.12.0-experimental",
     "date": "2026-11-05",
     "changes": [
