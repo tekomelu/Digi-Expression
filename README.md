@@ -1,6 +1,7 @@
 # MIDI Expression for the Digitakt
 
 **Mod for the original Digitakt (mk1, OS 1.54) to add support for pitch-bend, modwheel, aftertouch and breath controller messages**
+
 A [Modwerk](https://modwerk.app/) module,
 version 0.12.0-experimental.
 
