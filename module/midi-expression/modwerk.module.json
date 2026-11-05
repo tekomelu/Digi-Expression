@@ -2,7 +2,7 @@
   "schemaVersion": 3,
   "id": "midi-expression",
   "name": "MIDI Expression",
-  "version": "0.9.3-experimental",
+  "version": "0.10.0-experimental",
   "machine": "digitakt",
   "category": "midi-usb",
   "exclusive": false,
@@ -19,7 +19,7 @@
     "label": "MIDI EXPRESSION",
     "family": "MIDI",
     "summary": "Pitch bend, aftertouch, the mod wheel, breath and velocity from MIDI IN play a MIDI track's synth and the Digitakt's own audio tracks, with each track's routings on a second TRIG page.",
-    "overview": "Stock, the Digitakt passes the notes of an external keyboard through to the synth a MIDI track plays, but drops pitch bend, aftertouch and the mod wheel. Those messages now follow the notes: on the AUTO CHANNEL to the active track, and on a track's own TRACK CHANNEL to that track. A MIDI track adds them to its own PB, AT and MW (its knob, parameter locks and LFO), within the MIDI limits, on its CHAN out of MIDI OUT. An audio track bends its TUNE and moves two parameters of its choice. Each track's settings are on the TRIG page's second page: tap TRIG on the TRIG page. Selecting another track gives the previous one its own values back. For live playing: nothing is recorded into the sequencer.",
+    "overview": "Stock, the Digitakt passes the notes of an external keyboard through to the synth a MIDI track plays, but drops pitch bend, aftertouch and the mod wheel. Those messages now follow the notes: on the AUTO CHANNEL to the active track, and on a track's own TRACK CHANNEL to that track. A MIDI track adds them to its own PB, AT and MW (its knob, parameter locks and LFO), within the MIDI limits, on its CHAN out of MIDI OUT. An audio track bends its TUNE and moves two parameters of its choice. Each track's settings are on the TRIG page's second page: tap TRIG on the TRIG page. Selecting another track gives the previous one its own values back. The settings are saved with the project. For live playing: the live values are not recorded into the sequencer.",
     "highlights": [
       "Play a synth through a MIDI track with pitch bend, aftertouch, the mod wheel and breath, added to the track's own values.",
       "Route the wheel, aftertouch and velocity to any value the MIDI LFO reaches (PB, AT, MW, BC, CC VAL 1-8), or to any SRC, FLTR, AMP or LFO amount of an audio track.",
@@ -61,19 +61,19 @@
       "name": "V.SNS",
       "default": null,
       "labels": null,
-      "doc": "Audio knob B, MIDI knob D: 0-100 %, how much velocity counts in what plays, live or from the sequencer; 50 % plays 0-127 as 64-127, 0 % plays every note full. The sequencer records the velocity as played, so V.SNS can be changed afterwards. Default 100 %."
+      "doc": "Knob B: 0-100 %, how much velocity counts in what plays, live or from the sequencer; 50 % plays 0-127 as 64-127, 0 % plays every note full. The sequencer records the velocity as played, so V.SNS can be changed afterwards. Default 100 %."
     },
     {
       "name": "MW / VEL / AT",
       "default": null,
       "labels": null,
-      "doc": "Knobs C, E, G: what the wheel, the velocity and aftertouch move. Audio track: an SRC, FLTR, AMP or LFO amount. MIDI track: the MIDI LFO page's list, PB, AT, MW, BC or CC VAL 1-8 (on its SEL's CC number). VEL is the velocity of the last note the track played, live or from the sequencer. Default none."
+      "doc": "Knobs C, E, G: what the wheel, the velocity and aftertouch move. Audio track: an SRC, FLTR, AMP or LFO amount. MIDI track: the MIDI LFO page's list (PB, AT, MW, BC, CC VAL 1-8 on its SEL's CC number), then the track's own LFO Speed, Multiplier, Fade, Start Phase and Depth. VEL is the velocity of the last note the track played, live or from the sequencer. Default none."
     },
     {
       "name": "M.DEP / V.DEP / A.DEP",
       "default": null,
       "labels": null,
-      "doc": "Audio track, knobs D, F, H: -64.00 to +64.00, how far, as finely as the LFO page's DEP, in the stock LFO's scale. Default 0."
+      "doc": "Knobs D, F, H: -64.00 to +64.00, how far, as finely as the LFO page's DEP, in the stock LFO's scale. Default 0."
     }
   ],
   "compatibility": {
@@ -86,11 +86,11 @@
     ],
     "limitations": [
       "Built for OS 1.54 only.",
-      "Not saved: every track's settings start at their defaults at every power-on. With BEND set to OFF and no destinations, an audio track is stock; a MIDI track with PB, AT and MW OFF is stock.",
-      "Sends to MIDI OUT and USB, as OUTPUT TO says, not USB: the stock USB sender is not safe to call from the MIDI input task.",
-      "Not recorded: the sequencer never sees the live values.",
-      "A bend can reach the synth a few milliseconds before the note played with it.",
+      "Settings are saved per project name in a file of the mod's own on the +Drive (/cfw/expression.a and .b, 32 projects), not inside the project: copying a sound or track does not copy them, and two projects with the same name share them.",
+      "Sends where OUTPUT TO says (MIDI OUT, USB or both), with the track's own values, through the MIDI tracks' own task.",
+      "Not recorded: the sequencer never sees the live values; recorded notes keep their velocity as played.",
       "Digi Perform opens its own page with the same gesture (TRIG again on the TRIG page): the two are not built together.",
+      "With Digi Slicer about 5 KB of RAM are left: not every combination of three or more mods fits.",
       "Avoid a MIDI loop: a synth echoing MIDI OUT back into MIDI IN on the same channel feeds the mod's output back as input.",
       "Two values a MIDI track sends on one CC number are merged while anything live is aimed at them; the track's own value is the one that changed last."
     ]
@@ -120,7 +120,7 @@
   },
   "evidence": {
     "tier": "none",
-    "moduleVersion": "0.9.3-experimental",
+    "moduleVersion": "0.10.0-experimental",
     "sourceSha256": null,
     "reports": [],
     "hardware": null,
@@ -128,7 +128,7 @@
   },
   "tests": {
     "report": "TESTING.md",
-    "summary": "Host unit tests (1955 checks) and the digiemu emulator: routing, sums within limits, release on track change, velocity sensitivity and source, the LFO-stage routes, and the page's keys and knobs. Which parameter words the engine reads, and when, measured with scripts/probe-reads.py. Hardware: 0.4 on the unit by the author (internal sounds)."
+    "summary": "Host unit tests (about 2.4 million checks, also under AddressSanitizer and UBSan), the digiemu emulator on the firmware (MIDI-track sums and merging, 330 checks; saving and loading with the project and at power-on; the page), and a link check with every other Modwerk Digitakt module. Hardware: the audio-track features (0.4-0.7) and the MIDI-track stress test, 25 of 25 (0.9.2), by the author. Saving and the MIDI LFO destinations are not yet tested on a unit."
   },
   "license": {
     "spdx": "GPL-3.0-or-later",
@@ -149,15 +149,15 @@
       "path": "media/page-audio.png",
       "kind": "screenshot",
       "caption": "The EXPRESSION page on an audio track: bend range, velocity sensitivity and three routes",
-      "alt": "The EXPRESSION page on audio track 1: BEND 2, V.SNS, MW to FLTR Frequency, VEL to LFO1 Depth, AT to AMP Pan, on the Digitakt monochrome LCD",
+      "alt": "The EXPRESSION page on audio track 1: BEND 2, V.SNS, MW to FLTR Frequency, VEL to AMP Volume, AT to FLTR Resonance, on the Digitakt monochrome LCD",
       "credit": "Modwerk documentation capture; Elektron interface; tekomelu module",
       "license": "LicenseRef-Digi-UI-Documentation",
       "source": "original",
       "capture": {
         "type": "emulator",
         "release": "1.54",
-        "moduleVersion": "0.6.0-experimental",
-        "imageSha256": "cfbc6a2c7a33370ed4e01c128d83540d0d9d5294b6a19a6783e2b4228cb69dcf",
+        "moduleVersion": "0.10.0-experimental",
+        "imageSha256": "563592b6b777ce58940e8ef0f33b555d80c76638ec1f559770107f25e04e2ab6",
         "setup": "Pinned digiemu c1b5735, firmware-native drawing, disposable first-boot project, settings set in memory for the picture. No audio or timing qualification."
       }
     },
@@ -165,15 +165,15 @@
       "path": "media/page-midi.png",
       "kind": "screenshot",
       "caption": "The EXPRESSION page on a MIDI track: THRU, velocity sensitivity and three routes",
-      "alt": "The EXPRESSION page on MIDI track A: THRU on, V.SNS, MW to CC VAL1 on CC 74, VEL to BC, AT to pitch bend, on the Digitakt monochrome LCD",
+      "alt": "The EXPRESSION page on MIDI track A: THRU ON, V.SNS, MW to CC VAL2 on CC 74, VEL to BC, AT to the track's LFO Depth, on the Digitakt monochrome LCD",
       "credit": "Modwerk documentation capture; Elektron interface; tekomelu module",
       "license": "LicenseRef-Digi-UI-Documentation",
       "source": "original",
       "capture": {
         "type": "emulator",
         "release": "1.54",
-        "moduleVersion": "0.9.3-experimental",
-        "imageSha256": "7aad5ba72c827f4891488f22dae2ef7afaaa241a358153d59e1731954bf0876c",
+        "moduleVersion": "0.10.0-experimental",
+        "imageSha256": "563592b6b777ce58940e8ef0f33b555d80c76638ec1f559770107f25e04e2ab6",
         "setup": "Pinned digiemu c1b5735, firmware-native drawing, disposable first-boot project, settings set in memory for the picture. No audio or timing qualification."
       }
     }

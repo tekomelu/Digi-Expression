@@ -1,0 +1,21 @@
+digislicer: links, ramSpare:5568
+cc-names (+dt-support): links, ramSpare:45332
+digimono (+digichain): links, ramSpare:63368
+cc-recall: links, ramSpare:97096
+digichain: links, ramSpare:95788
+digieq: links, ramSpare:88544
+digihealth: links, ramSpare:91996
+digimatrix: links, ramSpare:93340
+digineighbor: links, ramSpare:71008
+digiperform:   midi-expression 0.10.0-experimental conflicts with digiperform   midi-expression 0.9.3-experimental and digiperform 0.1.2-experimental both claim ui:TRIG page:second page, TRIG pressed again  Node.js v24.22.2 
+digipoly (+digichain): links, ramSpare:90208
+digisophie: links, ramSpare:88968
+digistring (+machine-pages): links, ramSpare:68768
+digiutils: links, ramSpare:88612
+euclidean (+dt-support): links, ramSpare:63236
+fx-track: links, ramSpare:94984
+input-prefader: links, ramSpare:97252
+midi-retrig: links, ramSpare:96220
+note-accumulator: links, ramSpare:94512
+ram-machines (+machine-pages): links, ramSpare:88648
+sample-tools: links, ramSpare:89988

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Latency of live pitch bend to MIDI track A, in digiemu (0.9). Run like emu-midi-whacky.py."""
 import os, sys
-sys.path.insert(0, 'scripts')
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import dtsession
 from emu.session import Session, run_script
 syx=os.environ['DT2_SYX']; snap=os.path.abspath(os.environ['DT2_SNAPSHOT'])

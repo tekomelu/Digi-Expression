@@ -1,7 +1,0 @@
-    300.0  --- ch3 PB (audio track 3 only)
-    300.0  IN  e2 00 60
-    325.6  --- ch10 PB (track B, CHAN off)
-    325.6  IN  e9 00 60
-    346.2  --- ch9 PB (track A)
-    346.2  IN  e8 00 61
-    346.2  OUT e0 00 61

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """0.9.2 in digiemu: before MIDI track A sends anything, live input adds to its parameters (MW 10, PB 12288)."""
 import os, sys
-sys.path.insert(0, 'scripts')
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import dtsession
 from emu.session import Session, run_script
 syx=os.environ['DT2_SYX']; snap=os.path.abspath(os.environ['DT2_SNAPSHOT'])

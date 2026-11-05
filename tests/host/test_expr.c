@@ -8,6 +8,7 @@ static int16_t h_os_vel[8];
 #define OS_VEL h_os_vel
 #include "../../module/midi-expression/src/audio.c"
 #include "../../module/midi-expression/src/page.c"
+#include "../../module/midi-expression/src/store.c"
 #include <stdarg.h>
 
 volatile int32_t h_auto_channel = 13, h_active_track = 8, h_track_channel[16], h_receive_cc = 1;
@@ -37,6 +38,13 @@ static uint8_t sent[256][3];
 static int sent_len[256], nsent, stock_cc_calls;
 
 int32_t h_channel(int32_t m) { return chan_of[m]; }
+int h_cc_appends;
+void h_cc_append(int32_t len, const uint8_t *b)   // 0x400e0dac: no length check, as stock
+{
+    for (int i = 0; i < len; i++) h_ccs[1 + h_ccs[0] + i] = b[i];
+    h_ccs[0] = (uint8_t)(h_ccs[0] + len);
+    h_cc_appends++;
+}
 // The task's buffers as midi_out sends them: message by message into sent[].
 static void drain(volatile uint8_t *buf)
 {
@@ -275,6 +283,7 @@ int main(void)
     CHECK(nsent == stock_msgs + 8, "next pass: the other six: %d", nsent - stock_msgs);
     for (int i = stock_msgs; i < nsent; i++) CHECK(sent[i][0] >= 0xE0 && sent[i][0] < 0xE8, "a bend on A-H's channel: %02x", sent[i][0]);
     CHECK(h_in_queue_max <= 1, "never more than one wake queued: %d", h_in_queue_max);
+    CHECK(h_cc_appends >= 8, "through the task's CC append (FX Track sees them): %d", h_cc_appends);
 
     // 9b. The task calls send() again and again with an unchanged value (hardware: its LFO,
     //     every pass): what did not change is not sent again; a change, or a forced send, is.
@@ -1017,6 +1026,88 @@ int main(void)
     OPEN();
     CHECK(KEY(19, 1, 0) == 1 && me_page_open && KEY(19, 0, 0) == 1 && !me_page_open, "TRIG again: back to the first page");
     CHECK(ENC(1, 1) == 0, "closed: knobs are stock's");
+
+    // 40. Kept with the project (store.c): a file of its own on the +Drive.
+    {
+        reset();
+        memset(&me_store, 0, sizeof me_store); st_loaded = 0; st_dirty = 0; st_wait = 0;
+        h_file_len[0] = h_file_len[1] = -1; h_dir = 0; me_store_saves = 0;
+        h_mounted = 0;
+        me_tick(0);
+        CHECK(!st_loaded, "drive not mounted: waits");
+        h_mounted = 1; h_owner = 1;
+        me_tick(0);
+        CHECK(!st_loaded, "drive busy: waits");
+        h_owner = 0;
+        me_tick(0);
+        CHECK(st_loaded && h_file_len[0] < 0 && h_file_len[1] < 0, "no file yet: nothing to load, nothing written");
+        // a change: the working record, a second later
+        me_midi_cfg[0].mw_dest = 7; me_midi_cfg[0].mw_amount = 20 * 256; me_audio_cfg[3].range = 7;
+        for (int i = 0; i < SAVE_WAIT; i++) me_tick(0);
+        CHECK(h_file_len[0] < 0 && h_file_len[1] < 0, "not before a second");
+        me_tick(0);
+        CHECK(me_store_saves == 1 && h_dir && (h_file_len[0] > 0 || h_file_len[1] > 0), "then written, /cfw made");
+        // SAVE PROJECT AS "SONG A"
+        me_project_saving("SONG A");
+        me_tick(0);
+        CHECK(find("SONG A") && find("SONG A")->midi[0].mw_dest == 7 && find("SONG A")->audio[3].range == 7, "saved as SONG A");
+        // edits after the save, then LOAD PROJECT SONG A: back as saved
+        me_midi_cfg[0].mw_dest = 2; me_audio_cfg[3].range = 1;
+        for (int i = 0; i < 40; i++) me_tick(0);
+        me_project_loading("SONG A");
+        me_tick(0);
+        CHECK(me_midi_cfg[0].mw_dest == 7 && me_audio_cfg[3].range == 7, "loaded SONG A: as saved (%d %d)", me_midi_cfg[0].mw_dest, me_audio_cfg[3].range);
+        // a project without a record: the defaults
+        me_project_loading("OTHER");
+        me_tick(0);
+        CHECK(me_midi_cfg[0].mw_dest == 0 && me_audio_cfg[3].range == 2 && me_midi_cfg[0].thru == 1 && me_audio_cfg[0].vel_sens == 100, "unknown project: defaults");
+        me_midi_cfg[5].vel_sens = 40;
+        for (int i = 0; i < 40; i++) me_tick(0);
+        // power-off and on: RAM gone, the file read back, the working record applied
+        u32 saves = me_store_saves;
+        memset(&me_store, 0, sizeof me_store); st_loaded = 0; st_dirty = 0;
+        defaults();
+        me_tick(0);
+        CHECK(me_midi_cfg[5].vel_sens == 40 && me_midi_cfg[0].mw_dest == 0, "power-on: as at power-off (%d)", me_midi_cfg[5].vel_sens);
+        CHECK(same_name(me_store.work.name, "OTHER"), "the working project's name kept");
+        me_project_loading("SONG A");
+        me_tick(0);
+        CHECK(me_midi_cfg[0].mw_dest == 7 && me_midi_cfg[5].vel_sens == 100, "and SONG A still as saved");
+        // a torn write: the newer file broken, the older one used
+        for (int i = 0; i < 40; i++) me_tick(0);
+        int newer = (int)(me_store.seq & 1);
+        h_file[newer][20] ^= 0xff;
+        memset(&me_store, 0, sizeof me_store); st_loaded = 0; st_dirty = 0;
+        me_tick(0);
+        CHECK(st_loaded && me_store.magic == ST_MAGIC && find("SONG A"), "a broken newer file: the older one is read");
+        // garbage in a record cannot put a value out of range
+        struct st_rec *r = place("BAD");
+        memset(r, 0x7f, sizeof *r); copy_name(r->name, "BAD"); r->used = 1;
+        me_project_loading("BAD");
+        me_tick(0);
+        CHECK(me_midi_cfg[0].mw_dest < MIDI_DESTS && me_audio_cfg[0].range <= PB_RANGE_MAX && me_midi_cfg[0].thru <= 1
+              && me_audio_cfg[0].mw_amount <= AMOUNT_MAX && me_audio_cfg[0].vel_sens <= 100, "a bad record: values held in range");
+        // a failed write: tried again later, not lost
+        h_write_fail = 1;
+        me_midi_cfg[1].thru = 0;
+        u32 fails = me_store_fails;
+        for (int i = 0; i < 40; i++) me_tick(0);
+        CHECK(me_store_fails == fails + 1 && st_dirty, "a failed write: counted, still to save");
+        h_write_fail = 0;
+        for (int i = 0; i < RETRY + 2; i++) me_tick(0);
+        CHECK(!st_dirty, "saved on the retry");
+        // more projects than records: the one saved longest ago goes
+        for (int i = 0; i < NREC + 2; i++) { char n[17]; snprintf(n, sizeof n, "P%03d", i); me_project_saving(n); me_tick(0);
+            if (i == 5) { me_project_saving("P000"); me_tick(0); } }       // P000 saved again: newest then
+        char last[17]; snprintf(last, sizeof last, "P%03d", NREC + 1);
+        CHECK(find(last) && find("P000") && !find("SONG A") && !find("P001") && find("P003"), "full: the least recently saved go");
+        int usedn = 0; for (int i = 0; i < NREC; i++) usedn += me_store.rec[i].used != 0;
+        CHECK(usedn == NREC, "every record in use: %d", usedn);
+        me_project_saving("P003"); me_tick(0);
+        CHECK(me_store.rec[NREC - 1].used && same_name(me_store.rec[NREC - 1].name, "P003"), "a saved project moves to the newest end");
+        (void)saves;
+        defaults();
+    }
 
     printf("%d checks, %d failures\n", checks, failures);
     return failures != 0;

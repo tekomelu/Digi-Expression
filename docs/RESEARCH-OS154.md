@@ -1,6 +1,6 @@
 # OS 1.54 research notes: the MIDI input path
 
-Digitakt mk1 OS 1.54, stock file SHA-256 f78ba80f…3cf6, MAIN OS image loaded at 0x40000400. Found in digiemu c1b5735 with `scripts/trace-midi-in.py` and m68k-elf-objdump on the user's own image. Addresses and behaviour only; no firmware bytes are kept here.
+Digitakt mk1 OS 1.54, stock file SHA-256 f78ba80f…3cf6, MAIN OS image loaded at 0x40000400. Found in digiemu c1b5735 with `scripts/research/trace-midi-in.py` and m68k-elf-objdump on a locally supplied official OS image. Addresses and behaviour only; no firmware bytes are kept here.
 
 ## 1. From the jack to the MIDI task
 
@@ -27,7 +27,7 @@ A loop that takes messages from the DIN queue and the USB queue in turn. For eac
 | 0xE pitch bend | 0x400d44aa | **`rts`: dropped** |
 | 0xF system | 0x400d44ac | second table at 0x401b8d30, by the low nibble |
 
-Trace (`results/stock-expression-os154.txt` setup): a note is read at 0x400d4920 and then by the note handler; pitch bend and aftertouch are read once at 0x400d4920 and never again; CC1 continues into 0x400d4cb8.
+Trace (stock OS, a fresh project): a note is read at 0x400d4920 and then by the note handler; pitch bend and aftertouch are read once at 0x400d4920 and never again; CC1 continues into 0x400d4cb8.
 
 **For the mod:** the table is data. Pointing entries 0xD and 0xE at the mod's own handlers is a 4-byte pointer site each, the kind Digi Poly already uses, with no instruction patched. CC1 can be handled by pointing entry 0xB at a wrapper that handles CC1 and then calls the stock 0x400d4cb8 for everything.
 
@@ -48,7 +48,7 @@ Gated by RECEIVE CC/NRPN (0x4197c77c). Same routing as notes: if the channel is 
 
 ## 5. From a live note to MIDI OUT
 
-Traced with `scripts/trace-calls.py` (a note on the auto channel, MIDI track A selected):
+Traced with `scripts/research/trace-calls.py` (a note on the auto channel, MIDI track A selected):
 
 1. The MIDI input task (stack around 0x421a90xx): router → live note 0x400d5604(track 8, note, velocity, flag 0x10, 0, −1, −1).
 2. The live note posts a record to the **MIDI tracks' task**: a 20-byte slot in a 64-entry ring at 0x421b5210 (type word 1 for a note, +16 a pointer to an event from the pool 0x400e0cb0), sent with `queue_send(0x421b51f0, slot)` at 0x400e1fb6. Other record types are posted at 0x400e0cde (type 4), 0x400e0d1e (4) and 0x400e0d56 (5).
@@ -85,7 +85,7 @@ Unless `force` is set it skips a value equal to the cache, then builds the messa
 
 ## 8. Which page is up (for the EXPRESSION page, 0.4)
 
-Measured in digiemu (c1b5735) on stock OS 1.54 and on MX01 builds with this mod, with `scripts/probe-view.py`:
+Measured in digiemu (c1b5735) on stock OS 1.54 and on MX01 builds with this mod, with `scripts/research/probe-view.py`:
 
 - `Brain::key(brain, event)` is 0x400084fe; the brain is 0x429b70b0 here, also held at 0x421fac10. The core's `ev_key` and `ev_enc` hand handlers the brain; `ev_tick` and `ev_draw` the view controller, brain + 0x40 (its +0x20 is the recompose byte).
 - Controller + 0x14 / + 0x18: a std::list of layers (first, last), nodes `{next, prev, view}`. + 0x1c: the layer with focus. With nothing over the page, focus == first. SETTINGS (GLOBAL) and the scale setup (FUNC + PAGE) put their own layer last and give it focus.
@@ -99,7 +99,7 @@ Stock heap addresses are the same from boot to boot in the emulator but are not 
 ## 9. The render's parameter words, the LFO stage, velocity (0.5)
 
 - Render block (from 0x40077e94): `0x40074b9e(0x800014f0)` returns the words (0x80002760 in fast SRAM); `0x400ed766(words, *0x4020df10, d5)` at 0x40077eac is the LFO stage; `0x400ece8e(words, 0x4199f466, *0x4020df10, d3)` at 0x40077eea follows.
-- `scripts/probe-reads.py` (memory-read hooks on the words): slots 1–16 are read only inside the LFO stage; 17–36 and 38–45 only after it; 37 never. A route into an LFO slot must be added before 0x400ed766 runs.
+- `scripts/research/probe-reads.py` (memory-read hooks on the words): slots 1–16 are read only inside the LFO stage; 17–36 and 38–45 only after it; 37 never. A route into an LFO slot must be added before 0x400ed766 runs.
 - LFO stage entry: `lea -64(%sp),%sp; movem.l %d2-%d7/%a2-%a6,(%sp)` (8 bytes, SHA-256 2f00d9fd…e663), then 0x400ed76e. Its only caller is 0x40077eac (Digi Poly's site at 0x40077eaa replaces that call and calls the function itself, so an entry hook still runs).
 - Note router 0x400d5c1c: for each routed track, `lea %pc@(0x400d5604),%a2` at 0x400d5d5e, then per track `live_note(track, note, velocity, flag, 0, -1, -1)` by `jsr (%a2)` at 0x400d5d8e and `lea 28(%sp),%sp` (6 bytes together, SHA-256 db11bfa4…a21f). Velocity is the router's own argument. This is MIDI IN only; the unit's keys reach the live note elsewhere (Digi Poly's 0x40028bae).
 - Encoder accelerator 0x400c06ae(state, encoder, raw × multiplier, curve, pushed): the stock pages call it from 0x40032bbe after 0x40065794(id) (the UI record) and 0x400c047e. A detent is 4 raw counts in digiemu; there the accelerator returns 0 for stock pages too.
@@ -127,8 +127,14 @@ The task (0x400e11e4) waits on its queue at 0x400e11f4 (`queue_receive(0x421b51f
 
 **Audio sounds (the kit).** Modwerk's shared `kitstore.h` (Digi Matrix, Digi EQ, Digi Poly, Digi Perform) records it: the firmware saves only parameter slots 0..45 of a sound (46..52 are RAM only), and every sound carries just six bytes that are saved and loaded but never used: the reserved long at sound + 0x00..0x03 and parameter slot 0 (sound + 0x14..0x15). Measured by those authors: zero in every saved sound, they survive save and load, untouched by every knob, and the audio is the same with them set. All 48 (6 x 8 tracks) are claimed: bytes 0-2 of every track Digi Matrix, byte 3 bit 7 Digi Poly, bytes 3-5 tracks 1-4 Digi EQ, bytes 3 (bits 0-6) to 5 tracks 5-8 Digi Perform. Slot 37 is not free either: the render never reads it, but it is the FLTR 2/2 page's ROUT (Digi Perform's TESTING.md, digiemu). Loading a single sound zeroes its six bytes and all 53 slots; the mods tell that from a whole-kit load with a marker each in a RAM-only slot (50, 51, 52; Digi Perform 49) and put their bytes back.
 
-**MIDI tracks (the pattern).** A MIDI track's parameters live in the pattern, not the kit: the MIDI tracks' task loads them with LOAD(src, track) (0x400e0918) from pattern + 0x59a + 112 x track (0x400e0b3a, 0x400e158a); the pattern pointer is at 0x421c9144. Measured in digiemu (`scripts/probe-save.py`): every one of track A's 53 words filled with a marker, and its bytes 106-107, then SETTINGS > PROJECT > SAVE PROJECT AS to slot 002; in what the card was sent (two copies of a 3.6 MB project, at 0xfc00000 and 0x10400000), words 0..40 are saved, field by field (word 0, then the two LFO sets interleaved: 1, 9, 2, 10, ..., then 17..40), and words 41..52 and bytes 106-107 are not (RAM only). Saved but on no page: word 0, and words 9..16, a second LFO set (defaults SPD 48, MULT 3, WAVE 1) that the MIDI LFO function (0x400ed438) runs too: its DEST word (12) must stay 0, or it modulates. No Modwerk module claims any of a MIDI track's words.
+**MIDI tracks (the pattern).** A MIDI track's parameters live in the pattern, not the kit: the MIDI tracks' task loads them with LOAD(src, track) (0x400e0918) from pattern + 0x59a + 112 x track (0x400e0b3a, 0x400e158a); the pattern pointer is at 0x421c9144. Measured in digiemu (`scripts/research/probe-save.py`): every one of track A's 53 words filled with a marker, and its bytes 106-107, then SETTINGS > PROJECT > SAVE PROJECT AS to slot 002; in what the card was sent (two copies of a 3.6 MB project, at 0xfc00000 and 0x10400000), words 0..40 are saved, field by field (word 0, then the two LFO sets interleaved: 1, 9, 2, 10, ..., then 17..40), and words 41..52 and bytes 106-107 are not (RAM only). Saved but on no page: word 0, and words 9..16, a second LFO set (defaults SPD 48, MULT 3, WAVE 1) that the MIDI LFO function (0x400ed438) runs too: its DEST word (12) must stay 0, or it modulates. No Modwerk module claims any of a MIDI track's words.
 
 So: no free saved bytes are left in the audio sounds; a MIDI track has word 0 (2 bytes a track, 16 a pattern) and, with care, the second LFO set's words. Not enough for 16 tracks' EXPRESSION settings (about 6 bytes each packed). Not yet measured: whether word 0 and words 9-16 come back on a project load, survive a pattern copy, and are left alone by a stock OS.
 
 **The other way.** Digi Slicer keeps its slices in its own files on the +Drive (`/cfw/slices.a` and `.b`, written a second after an edit, alternating so a power cut never leaves both broken) with the firmware's own ekFS calls (open, read, write, close).
+
+## 14. Project save and load (0.10)
+
+The project jobs format their progress messages with sprintf (0x40000e82): "SAVING '%.16s'" (0x401c5c29) once, at 0x4004da62 in the SAVE PROJECT AS job (0x4004da16; its name is the job's second argument's string), and "LOADING '%.16s'" (0x401c5dc1) at 0x4004fe28 in the load job, with the name 0x400e3bc0 returns. Both calls are `jsr 0x40000e82` (6 bytes): MIDI Expression puts a jsr site over each (store.s), takes the name from the call's third argument and jumps on into sprintf. Measured in digiemu (`scripts/emu-store.py`): SAVE PROJECT AS to slot 003 and LOAD PROJECT of it and of the factory project each pass through them once; a load takes about 20 emulated seconds, and the settings are applied at its start. The project menu keeps its cursor between visits (a script must step up to LOAD PROJECT). The current project's header (magic `be ef ba ce`, then its name) is in RAM at 0x419a8244; the project files' list is at 0x42a3e6c4 (56 bytes an entry).
+
+The settings file uses Digi Slicer's ekFS calls (open 0x400cf3a0, read 0x400cf0e6, write 0x400cf146, close 0x400cf35e, mkdir 0x400ce034, lookup 0x400d0ccc; the filesystem's mutex at 0x42686690, mounted flag 0x420eec50), called from the UI tick only while the mutex is free.

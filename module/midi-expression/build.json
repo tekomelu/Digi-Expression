@@ -9,7 +9,9 @@
     "src/lfo.s",
     "src/vel.s",
     "src/task.s",
-    "src/midilfo.s"
+    "src/midilfo.s",
+    "src/store.c",
+    "src/store.s"
   ],
   "defsym": {},
   "cflags": [],
@@ -119,6 +121,20 @@
           "stockSha256": "af4f568eeb9318ab8f13f58caf9a702396a3e356920226dfa75c2ccc8eaff2f5",
           "op": "jmp",
           "target": "me_midi_lfo_entry"
+        },
+        {
+          "addr": "0x4004da62",
+          "len": 6,
+          "stockSha256": "89a4609c26f61725941af230de02fab3aa52c859d8fc34108e5b984f0c5046d9",
+          "op": "jsr",
+          "target": "me_saving_hook"
+        },
+        {
+          "addr": "0x4004fe28",
+          "len": 6,
+          "stockSha256": "89a4609c26f61725941af230de02fab3aa52c859d8fc34108e5b984f0c5046d9",
+          "op": "jsr",
+          "target": "me_loading_hook"
         }
       ]
     }

@@ -1,5 +1,15 @@
 [
   {
+    "version": "0.10.0-experimental",
+    "date": "2026-11-05",
+    "changes": [
+      "Each track's EXPRESSION settings are saved with the project: SAVE PROJECT AS stores them under the project's name, LOAD PROJECT brings them back, and at power-on they come back as they were. Kept in /cfw/expression.a and .b on the +Drive (32 projects).",
+      "A MIDI track's CCs go through the firmware's own CC append, so FX Track sees them.",
+      "Checked to link with every other Modwerk Digitakt module except Digi Perform.",
+      "Known issue: saving and the MIDI LFO destinations are not yet tested on a unit."
+    ]
+  },
+  {
     "version": "0.9.3-experimental",
     "date": "2026-11-05",
     "changes": [

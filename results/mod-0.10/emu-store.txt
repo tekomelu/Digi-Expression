@@ -1,0 +1,9 @@
+probe 47be57b4, settings 47be56f4, store 47be66c0
+PASS the store was read at power-on (drive mounted)
+PASS a change: the working record written a second later (1 saves, 0 failed)
+PASS SAVE PROJECT AS: a record named 'NEW PROJECT' in the store
+PASS LOAD PROJECT NEW PROJECT: MW -> VAL3 +20 back as saved (1, 7, 0, 0, 100, 5120, 0, 0)
+PASS LOAD PROJECT PRESETS (never saved with the mod): the defaults (1, 0, 0, 0, 100, 0, 0, 0)
+PASS power-on: the file read back, as it was at power-off (track F V.SNS 40)
+PASS no failed write (0)
+0 failures

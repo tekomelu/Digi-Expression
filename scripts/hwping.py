@@ -2,7 +2,7 @@
 """Is the loop wired? Sends a note, a bend and the mod wheel on the auto
 channel to the Digitakt's MIDI IN and prints what its MIDI OUT sends back.
 
-    ~/.venvs/dt/bin/python scripts/hwping.py "USB Midi 4i4o Portti 1"
+    ~/.venvs/dt/bin/python scripts/hwping.py "My Interface"
     ~/.venvs/dt/bin/python scripts/hwping.py --list
 """
 import sys

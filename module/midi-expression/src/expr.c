@@ -53,7 +53,8 @@
 // per-track pass and then sends its two buffers, the notes (0x421b6620) and
 // the CCs (0x421b6a21), with midi_out (0x400e0992: DIN and/or USB, as OUTPUT TO
 // says). A 6-byte jsr site just before that (task.s) calls me_task_pass, which
-// appends what is pending to the CC buffer. A velocity route goes into the
+// appends what is pending to the CC buffer with the task's own CC append
+// (0x400e0dac), so a mod that hooks it (FX Track) sees these CCs too. A velocity route goes into the
 // notes buffer just before its note. Both buffers count their bytes in one
 // byte, so the mod fills them only to ROOM bytes; what does not fit goes with
 // the next pass.
@@ -80,6 +81,8 @@
 #define NOTES_BUF      ((volatile uint8_t *)0x421b6621)
 #define CCS_LEN        (*(volatile uint8_t *)0x421b6a21)
 #define CCS_BUF        ((volatile uint8_t *)0x421b6a22)
+// The task's own CC append, cc_append(len, bytes): FX Track hooks its entry.
+#define CC_APPEND      ((void (*)(int32_t, const uint8_t *))0x400e0dac)
 
 typedef int32_t (*channel_fn)(int32_t midi_track);
 typedef void (*queue_send_fn)(void *queue, void *item);
@@ -323,7 +326,7 @@ static void wake(void)
 
 // In the MIDI tracks' task only: append what is pending to a buffer, up to
 // ROOM bytes in it. Returns 0 when something had to wait.
-static int emit(volatile uint8_t *len, volatile uint8_t *buf)
+static int emit(volatile uint8_t *len, volatile uint8_t *buf, int via_append)
 {
     for (int ch = 0; ch < 16; ch++) {
         struct chan *c = &chans[ch];
@@ -361,9 +364,13 @@ static int emit(volatile uint8_t *len, volatile uint8_t *buf)
                 me_skipped++;
                 continue;
             }
-            for (uint8_t i = 0; i < n; i++)
-                buf[at + i] = out[i];
-            *len = (uint8_t)(at + n);
+            if (via_append) {
+                CC_APPEND(n, out);      // as stock appends its CCs: another mod's hook there sees them
+            } else {
+                for (uint8_t i = 0; i < n; i++)
+                    buf[at + i] = out[i];
+                *len = (uint8_t)(at + n);
+            }
             me_sent++;
         }
     }
@@ -377,7 +384,7 @@ void me_task_pass(void)
     me_passes++;
     if (!initialised)
         return;
-    if (!emit(&CCS_LEN, CCS_BUF))
+    if (!emit(&CCS_LEN, CCS_BUF, 1))
         wake();
 }
 
@@ -691,15 +698,18 @@ const uint8_t *me_note_out(int32_t len, const uint8_t *bytes)
         }
         i += n;
     }
-    if (routed && !emit(&NOTES_LEN, NOTES_BUF))  // the velocity's route before its note
+    if (routed && !emit(&NOTES_LEN, NOTES_BUF, 0))  // the velocity's route before its note
         wake();
     return changed ? note_copy : bytes;
 }
 
 // ---- ev_tick: track changes, values that waited ------------------------------
+void me_store_tick(void);
+
 void me_tick(void *ctrl)
 {
     me_page_tick(ctrl);
+    me_store_tick();
     init();
     check_track();
     for (int ch = 0; ch < 16; ch++)

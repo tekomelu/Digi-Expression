@@ -1,9 +1,0 @@
-    300.0  IN  ed 00 60
-    300.0  OUT e0 00 60
-    325.6  IN  dd 50
-    325.6  OUT d0 50
-    346.2  IN  bd 01 30
-    346.2  OUT b0 01 30
-    366.7  --- poke to audio track 1
-    366.7  POKE 0x4197c6b4 = 0
-   1866.7  --- end

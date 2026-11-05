@@ -8,8 +8,8 @@
 
 enum { PB, AT, MW, KINDS };                     // live sources an audio track takes
 
-// Per track, on the TRIG page's second page (page.c). Defaults at power-on;
-// held in RAM only, not saved with the project. Audio and MIDI tracks share
+// Per track, on the TRIG page's second page (page.c). Kept with the project
+// in a file of the mod's own on the +Drive (store.c). Audio and MIDI tracks share
 // the layout: knob A is BEND on an audio track, THRU on a MIDI track.
 #define PB_RANGE_MAX 12                         // an octave each way at most
 #define AMOUNT_MAX   (64 * 256)                 // depths in 1/256: -64.00..+64.00

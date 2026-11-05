@@ -19,6 +19,8 @@ void h_stock_cc(const uint8_t *msg, int32_t len, int32_t flag);
 #define NOTES_BUF      (h_notes + 1)
 #define CCS_LEN        h_ccs[0]
 #define CCS_BUF        (h_ccs + 1)
+void h_cc_append(int32_t len, const uint8_t *b);
+#define CC_APPEND      h_cc_append
 #define CHANNEL        h_channel
 #define QUEUE_SEND     h_queue_send
 #define STOCK_CC       h_stock_cc

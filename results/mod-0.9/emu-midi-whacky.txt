@@ -1,8 +1,0 @@
-settings: audio 47be4abc, MIDI 47be4a5c
---- 1. VAL1 = CC 1 merged with the mod wheel, LFOs on both
---- 2. track change: CC 1 back to the latest own value, then stock
---- 3. velocity -> BC: the CC before its note; V.SNS 50 on the note
---- 4. pressure -> pitch bend -64 with the bend down: capped at 0
---- 5. two slots on one CC, a slot on CC 2 with BC, SEL off, wheel on wheel
---- 6. 600 random events: inputs, own sends, notes, settings, SEL numbers, track changes
-330 checks, 0 failures; 482 DIN messages
