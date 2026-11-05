@@ -1,4 +1,4 @@
-settings: audio 47be45e8, MIDI 47be4588
+settings: audio 47be4abc, MIDI 47be4a5c
 --- 1. VAL1 = CC 1 merged with the mod wheel, LFOs on both
 --- 2. track change: CC 1 back to the latest own value, then stock
 --- 3. velocity -> BC: the CC before its note; V.SNS 50 on the note

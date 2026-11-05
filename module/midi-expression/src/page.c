@@ -203,8 +203,8 @@ static const int8_t dest_order[] = {
 
 // A MIDI track's destinations are its LFO page's: None, SRC Pitch Bend,
 // Aftertouch, Mod Wheel, BC, then CC VAL 1-8 (on the CC numbers their SEL
-// picks); value = list position.
-#define MIDI_DEST_COUNT (OUTPUTS + 1)
+// picks); then its own LFO's SPD, MULT, FADE, PHAS, DEP. Value = list position.
+#define MIDI_DEST_COUNT MIDI_DESTS
 
 static int dest_count(int mid)
 {
@@ -240,6 +240,7 @@ static const char *dest_short(int mid, int s)
     };
     static const char *const m[MIDI_DEST_COUNT] = {
         "---", "PB", "AT", "MW", "BC", "VAL1", "VAL2", "VAL3", "VAL4", "VAL5", "VAL6", "VAL7", "VAL8",
+        "SPD", "MULT", "FADE", "PHAS", "DEP",
     };
     if (mid)
         return s >= 0 && s < MIDI_DEST_COUNT ? m[s] : "---";
@@ -250,7 +251,7 @@ static const char *dest_short(int mid, int s)
 static const char *dest_page(int mid, int s)
 {
     if (mid)
-        return s <= 0 ? "" : s <= 4 ? "SRC" : "CC";
+        return s <= 0 ? "" : s <= 4 ? "SRC" : s < MIDI_LFO_FIRST ? "CC" : "LFO";
     return s <= 0 ? "" : s <= 8 ? "LFO1" : s <= 16 ? "LFO2" : s <= 24 ? "SRC" : s <= 37 ? "FLTR" : "AMP";
 }
 
@@ -258,7 +259,7 @@ static const char *dest_page(int mid, int s)
 static int dest_group(int mid, int s)
 {
     if (mid)
-        return s <= 0 ? 0 : s <= 4 ? 1 : 2;
+        return s <= 0 ? 0 : s <= 4 ? 1 : s < MIDI_LFO_FIRST ? 2 : 3;
     return s <= 0 ? 0 : s <= 8 ? 4 : s <= 16 ? 5 : s <= 24 ? 1 : s <= 37 ? 2 : 3;
 }
 
@@ -281,14 +282,18 @@ static int slot_id(int s)
 }
 
 // The list's line for a destination: "FLTR:Frequency", "SRC:Mod Wheel",
-// "CC:CC3 Value #74" (the CC number its SEL picks on this track).
+// "CC:CC3 VAL #74" (the CC number its SEL picks on this track; "Value" left
+// no room for a two-digit number).
 static void dest_line(char *line, int size, int mid, int m, int s)
 {
     static const char *const src[4] = { "Pitch Bend", "Aftertouch", "Mod Wheel", "BC" };
     int n = 0;
     const char *p = s ? dest_page(mid, s) : "None", *name = "";
+    static const int8_t lfo_slot[5] = { 1, 2, 3, 6, 8 };   // the audio LFO's slots: the same names
     if (s && !mid)
         name = STOCK_NAME(0, slot_id(s));
+    else if (s >= MIDI_LFO_FIRST)
+        name = STOCK_NAME(0, slot_id(lfo_slot[s - MIDI_LFO_FIRST]));
     else if (s && s <= 4)
         name = src[s - 1];
     if (!name)
@@ -299,13 +304,13 @@ static void dest_line(char *line, int size, int mid, int m, int s)
         line[n++] = ':';
     while (*name && n < size - 1)
         line[n++] = *name++;
-    if (mid && s > 4 && n < size - 12) {
+    if (mid && s > 4 && s < MIDI_LFO_FIRST && n < size - 12) {
         int k = s - 5, sel = me_midi_sel(m, k);
         const char *t = "CC";
         while (*t)
             line[n++] = *t++;
         line[n++] = (char)('1' + k);
-        t = " Value";
+        t = " VAL";
         while (*t)
             line[n++] = *t++;
         if (sel >= 0) {
@@ -631,7 +636,7 @@ static void draw_cell(void *bmp, int t, int k)
         char top[6];
         const char *pg = dest_page(mid, v);
         int i = 0;
-        if (mid && v > 4) {             // a CC VAL slot: its CC number on top
+        if (mid && v > 4 && v < MIDI_LFO_FIRST) {   // a CC VAL slot: its CC number on top
             int sel = me_midi_sel(t - 8, v - 5);
             top[i++] = '#';
             if (sel < 0) {

@@ -329,6 +329,39 @@ int main(void)
     pb_in(13, 8192 + 100, AUTO);
     CHECK(pb_of(nsent - 1) == 12288 + 100, "PB parameter 12288 + 100: %d", pb_of(nsent - 1));
 
+    // 9d. MIDI LFO as a destination: added just before the LFO runs, the words back after.
+    reset();
+    {
+        static int16_t lp[8 * 53];
+        for (int i = 0; i < 8 * 53; i++) lp[i] = (int16_t)(i * 3);
+        lp[1] = 0x7000; lp[2] = 0x0400; lp[8] = 0x4000;              // track A: SPD 48, MULT 4, DEP 0
+        me_midi_cfg[0].mw_dest = MIDI_LFO_FIRST + 0; me_midi_cfg[0].mw_amount = 16 * 256;   // wheel -> SPD +16
+        me_midi_cfg[0].at_dest = MIDI_LFO_FIRST + 4; me_midi_cfg[0].at_amount = -64 * 256;  // pressure -> DEP -64
+        me_midi_cfg[0].vel_dest = MIDI_LFO_FIRST + 4; me_midi_cfg[0].vel_amount = 32 * 256; // velocity -> DEP +32
+        me_midi_lfo_pre(lp, 0);
+        CHECK(lp[1] == 0x7000 && lp[8] == 0x4000, "nothing live: untouched");
+        me_midi_lfo_post(lp, 0);
+        me_midi_cfg[0].thru = 0;
+        before = nsent;
+        mw_in(13, 20, AUTO); at_in(13, 64, AUTO);
+        CHECK(nsent == before, "an LFO route sends nothing itself: %d", nsent - before);
+        me_midi_lfo_pre(lp, 0);
+        CHECK(lp[1] == 0x7000 + 20 * 16 * 256 / 64 && lp[8] == 0x4000 - 64 * 64 * 256 / 64,
+              "SPD + wheel x 16, DEP - pressure x 64: %04x %04x", (uint16_t)lp[1], (uint16_t)lp[8]);
+        CHECK(lp[2] == 0x0400 && lp[53 + 1] == 54 * 3 - 3 + 3, "MULT and track B untouched");
+        lp[8] = (int16_t)(lp[8] + 100);                                 // the function wrote it itself
+        me_midi_lfo_post(lp, 0);
+        CHECK(lp[1] == 0x7000 && lp[8] == 0x4000 + 100, "back after (keeping the function's own change): %04x %04x", (uint16_t)lp[1], (uint16_t)lp[8]);
+        mw_in(13, 127, AUTO); at_in(13, 127, AUTO);
+        me_midi_lfo_pre(lp, 0);
+        CHECK(lp[1] == 32512 && lp[8] == 0, "held within 0..32512: %04x %04x", (uint16_t)lp[1], (uint16_t)lp[8]);
+        me_midi_lfo_post(lp, 0);
+        int16_t was1 = lp[53 + 1];
+        me_midi_lfo_pre(lp, 1); me_midi_lfo_post(lp, 1);
+        CHECK(lp[53 + 1] == was1, "track B (CHAN off): untouched");
+        me_midi_cfg[0].mw_dest = 0; me_midi_cfg[0].at_dest = 0; me_midi_cfg[0].vel_dest = 0;
+    }
+
     // 10. Routing: CHAN off, audio track selected, unmatched channel.
     reset();
     chan_of[0] = -1;
@@ -733,11 +766,16 @@ int main(void)
     ENC(3, 3);
     CHECK(me_midi_cfg[0].mw_dest == 3 && list_cell == 2, "C MW -> SRC Mod Wheel (3rd), the list opens: %d", me_midi_cfg[0].mw_dest);
     ENC(3, 100);
-    CHECK(me_midi_cfg[0].mw_dest == 12, "to the end: CC VAL8: %d", me_midi_cfg[0].mw_dest);
+    CHECK(me_midi_cfg[0].mw_dest == MIDI_DESTS - 1, "to the end: LFO DEP: %d", me_midi_cfg[0].mw_dest);
+    memset(drawn, 0, sizeof drawn);
+    me_page_draw((void *)1, (void *)1);
+    CHECK(strstr(drawn, "LFO:") && strstr(drawn, "DEP"), "the LFO's lines and box: %s", drawn);
+    ENC(3, -5);
+    CHECK(me_midi_cfg[0].mw_dest == 12, "back to CC VAL8: %d", me_midi_cfg[0].mw_dest);
     SEL(0, 7, 74);
     memset(drawn, 0, sizeof drawn);
     me_page_draw((void *)1, (void *)1);
-    CHECK(strstr(drawn, "CC:CC8 Value #74") && strstr(drawn, "#74") && strstr(drawn, "VAL8"), "the list and box show SEL 74: %s", drawn);
+    CHECK(strstr(drawn, "CC:CC8 VAL #74") && strstr(drawn, "#74") && strstr(drawn, "VAL8"), "the list and box show SEL 74: %s", drawn);
     KEY(42, 1, 0); KEY(42, 0, 0);
     h_func_held = 1;
     ENC(3, -1); for (int i = 0; i < SNAP_REST; i++) me_page_tick(0);

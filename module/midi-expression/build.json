@@ -8,7 +8,8 @@
     "src/render.s",
     "src/lfo.s",
     "src/vel.s",
-    "src/task.s"
+    "src/task.s",
+    "src/midilfo.s"
   ],
   "defsym": {},
   "cflags": [],
@@ -111,6 +112,13 @@
           "stockSha256": "96a01ce03e91f73d58c09abfbc50fe76956388f1a10d0b7d296062ecba010bdc",
           "op": "jsr",
           "target": "me_task_hook"
+        },
+        {
+          "addr": "0x400ed438",
+          "len": 8,
+          "stockSha256": "af4f568eeb9318ab8f13f58caf9a702396a3e356920226dfa75c2ccc8eaff2f5",
+          "op": "jmp",
+          "target": "me_midi_lfo_entry"
         }
       ]
     }

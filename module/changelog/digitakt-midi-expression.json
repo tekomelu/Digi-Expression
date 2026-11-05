@@ -1,5 +1,14 @@
 [
   {
+    "version": "0.9.3-experimental",
+    "date": "2026-11-05",
+    "changes": [
+      "MIDI tracks: MW, VEL and AT can move the track's own LFO: LFO:Speed, Multiplier, Fade, Start Phase and Depth, at the end of the destination list.",
+      "The list shows a CC VAL slot as \"CC:CC2 VAL #74\" (\"Value\" left no room for the number's second digit).",
+      "Known issue: the LFO destinations are not yet tested on a unit."
+    ]
+  },
+  {
     "version": "0.9.2-experimental",
     "date": "2026-11-05",
     "changes": [

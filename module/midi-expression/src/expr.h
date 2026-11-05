@@ -31,6 +31,10 @@ extern struct me_cfg me_midi_cfg[8];
 // A MIDI track's destinations, as its LFO page lists them: what its send()
 // ids 21..32 are. dest = output + 1.
 enum { O_PB, O_AT, O_MW, O_BC, O_VAL1, OUTPUTS = O_VAL1 + 8 };
+// A MIDI track's destinations: 0 none, 1..OUTPUTS its twelve values (output
+// + 1), then its LFO's SPD, MULT, FADE, PHAS and DEP.
+#define MIDI_LFO_FIRST (OUTPUTS + 1)
+#define MIDI_DESTS     (MIDI_LFO_FIRST + 5)
 
 #define AUDIO_KINDS (KINDS + 1)                 // audio sources: PB, AT, MW and the velocity
 #define VELK KINDS
@@ -54,5 +58,7 @@ const uint8_t *me_note_out(int32_t len, const uint8_t *bytes);
 void me_midi_changed(int m);
 // The CC number a MIDI track's CC VAL slot k (0..7) sends on (its SEL), or -1.
 int32_t me_midi_sel(int m, int k);
+void me_midi_lfo_pre(volatile int16_t *params, int32_t track);
+void me_midi_lfo_post(volatile int16_t *params, int32_t track);
 
 #endif

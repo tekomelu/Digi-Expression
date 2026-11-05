@@ -1,6 +1,6 @@
 # MIDI Expression
 
-Module version `0.9.2-experimental`, for the original Digitakt on OS 1.54, Core 2.1.
+Module version `0.9.3-experimental`, for the original Digitakt on OS 1.54, Core 2.1.
 
 ## Overview
 
@@ -25,7 +25,7 @@ Select a track, press **TRIG** for its TRIG page, then **tap TRIG again**. The p
 
 **Velocity.** V.SNS scales the velocity of what the track plays, live from MIDI IN or from the sequencer: 100 % as played, 50 % plays 0–127 as 64–127, 0 % plays every note at full velocity. The sequencer records the velocity as played, so recorded notes keep their full range and V.SNS can be changed afterwards. As a source, VEL is the velocity of the last note the track played (live or from the sequencer, before V.SNS), held until its next note, so velocity routes play back from the sequencer as they were played live. On a MIDI track, V.SNS scales the velocity of the notes it sends to its synth.
 
-**MIDI destinations** are the MIDI LFO page's: SRC Pitch Bend, Aftertouch, Mod Wheel, BC, and CC VAL 1–8 (FLTR page), each on the CC number its SEL picks (AMP page); the list and the box show that number ("CC:CC1 Value #74"). Every one of these twelve values goes out as **the track's own value** (its knob, parameter locks and LFO) **plus everything live aimed at it** (THRU, and any route), capped to the MIDI range, as one message. Routes and THRU add up: the wheel routed to PB bends on top of the bend wheel; the wheel routed to MW with THRU on counts twice (M.DEP −64.00 cancels it).
+**MIDI destinations** are the MIDI LFO page's: SRC Pitch Bend, Aftertouch, Mod Wheel, BC, and CC VAL 1–8 (FLTR page), each on the CC number its SEL picks (AMP page); the list and the box show that number ("CC:CC1 VAL #74"). After them, the track's own **LFO**: Speed, Multiplier, Fade, Start Phase and Depth (0.9.3), moved for as long as the source is, the LFO page untouched. Every one of these twelve values goes out as **the track's own value** (its knob, parameter locks and LFO) **plus everything live aimed at it** (THRU, and any route), capped to the MIDI range, as one message. Routes and THRU add up: the wheel routed to PB bends on top of the bend wheel; the wheel routed to MW with THRU on counts twice (M.DEP −64.00 cancels it).
 
 **Two values on one CC number are merged.** The mod wheel is CC 1 and BC is CC 2; a CC VAL slot whose SEL is 1 or 2, or two slots with the same SEL, send on the same number, which on a stock Digitakt makes the synth jump between two values. While anything live is aimed at any of them, they go out as one CC: the track's own value is whichever of them changed last (what the synth heard last, as on a stock Digitakt), plus everything live aimed at any of them. With an LFO on one of them, that one keeps being "the last".
 
@@ -71,10 +71,11 @@ PORT CONFIG > RECEIVE NOTES and, for the mod wheel and breath, RECEIVE CC/NRPN m
 
 - **Velocity:** an 8-byte site at 0x40077a60, right after the render stores a note's velocity for its voice, and a 6-byte site at the entry of the MIDI tracks' notes_append (0x400e1002) apply V.SNS to what plays (vel.s). The note router and recording are untouched.
 - **The LFO slots:** an 8-byte site at the LFO stage's entry, 0x400ed766 (lfo.s).
+- **A MIDI track's LFO:** an 8-byte site at the entry of the MIDI tracks' LFO function, 0x400ed438 (midilfo.s): the routes go into the LFO's words just before it runs and come out right after.
 - **The page:** the core's key, encoder, draw and tick hooks only. Which page is up is read from the UI's view controller (measured, see docs/RESEARCH-OS154.md); nothing there is written.
 - **Audio tracks:** a 6-byte site at 0x40077eea, the first call after the render's LFO stage that takes the parameter words (after Digi Matrix's and Digi Poly's sites), adds the live values to them.
 
-All nine sites are claimed in `build.json`; no other Modwerk Digitakt module patches them. It links beside Digi Matrix, Digi Poly, Digichain, FX Track and CC Recall together.
+All ten sites are claimed in `build.json`; no other Modwerk Digitakt module patches them. It links beside Digi Matrix, Digi Poly, Digichain, FX Track and CC Recall together.
 
 ## Compatibility and limitations
 

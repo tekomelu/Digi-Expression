@@ -557,6 +557,87 @@ int32_t me_filter(int32_t track, int32_t channel, int32_t id, int32_t value, int
 
 void me_page_tick(void *ctrl);
 
+// ---- the MIDI tracks' LFO as a destination -----------------------------------
+// The MIDI tracks' task runs each track's LFO with 0x400ed438(params, track,
+// mask) (at 0x400e130a for all eight, 0x400e1886 for one), which reads the
+// track's LFO parameters from its parameters in use (0x421c9188, 53 words a
+// track: 1 SPD, 2 MULT, 3 FADE, 4 DEST, 5 WAVE, 6 SPH, 7 MODE, 8 DEP, 8.8;
+// SPD, FADE and DEP centred on 0x4000; 9-16 a second set the page does not
+// show). Those words are loaded from the pattern only at a trig, so a route
+// cannot stay in them: an 8-byte site at the function's entry (midilfo.s)
+// adds the live routes just before it runs and puts the words back just after.
+// Both in the MIDI tracks' task, which is the only one that writes them.
+static const int8_t lfo_param[5] = { 1, 2, 3, 6, 8 };
+static struct {
+    int8_t n;
+    int8_t param[3];
+    int16_t was[3], put[3];
+} lfo_mod;
+
+// For tests: a marker, then how often the LFO site ran and how often a route was in.
+volatile uint32_t me_lfo_probe[3] = { 0x4d454c46, 0, 0 };   // "MELF"
+
+void me_midi_lfo_pre(volatile int16_t *params, int32_t t)
+{
+    lfo_mod.n = 0;
+    me_lfo_probe[1]++;
+    if (!initialised || t < 0 || t > 7)
+        return;
+    int32_t ch = CHANNEL(t);
+    if (ch < 0 || ch > 15)
+        return;
+    const struct chan *c = &chans[ch];
+    if (c->owner != t)
+        return;
+    const struct me_cfg *cfg = &me_midi_cfg[t];
+    const struct { int8_t dest; int16_t amount; int src; } r[3] = {
+        { cfg->mw_dest, cfg->mw_amount, S_MW },
+        { cfg->at_dest, cfg->at_amount, S_AT },
+        { cfg->vel_dest, cfg->vel_amount, S_VEL },
+    };
+    int32_t add[5] = { 0, 0, 0, 0, 0 };
+    int any = 0;
+    for (int i = 0; i < 3; i++) {
+        int k = r[i].dest - MIDI_LFO_FIRST;
+        if (k < 0 || k > 4 || !(c->touched & BIT(r[i].src)) || !c->in[r[i].src])
+            continue;
+        add[k] += c->in[r[i].src] * clamp(r[i].amount, -AMOUNT_MAX, AMOUNT_MAX) / 64;
+        any = 1;
+    }
+    if (!any)
+        return;
+    volatile int16_t *w = params + 53 * t;
+    for (int k = 0; k < 5 && lfo_mod.n < 3; k++) {
+        if (!add[k])
+            continue;
+        int p = lfo_param[k];
+        int16_t was = w[p], put = (int16_t)clamp(was + add[k], 0, 32512);
+        lfo_mod.param[lfo_mod.n] = (int8_t)p;
+        lfo_mod.was[lfo_mod.n] = was;
+        lfo_mod.put[lfo_mod.n] = put;
+        lfo_mod.n++;
+        w[p] = put;
+    }
+    me_lfo_probe[2]++;
+}
+
+void me_midi_lfo_post(volatile int16_t *params, int32_t t)
+{
+    if (t < 0 || t > 7) {
+        lfo_mod.n = 0;
+        return;
+    }
+    volatile int16_t *w = params + 53 * t;
+    for (int i = 0; i < lfo_mod.n; i++) {
+        int p = lfo_mod.param[i];
+        int16_t now = w[p];
+        // the function itself may have written it (a second LFO aimed at it):
+        // keep that change, without this mod's part
+        w[p] = now == lfo_mod.put[i] ? lfo_mod.was[i] : (int16_t)(now - (lfo_mod.put[i] - lfo_mod.was[i]));
+    }
+    lfo_mod.n = 0;
+}
+
 // ---- the MIDI tracks' notes: V.SNS and VEL ---------------------------------
 // The MIDI tracks' task collects the notes it sends, from the sequencer and
 // from MIDI IN alike, with notes_append(len, bytes) at 0x400e1002 into the

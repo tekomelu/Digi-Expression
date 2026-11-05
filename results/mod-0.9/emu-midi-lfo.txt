@@ -1,0 +1,8 @@
+PASS wheel   0: SPD outside the LFO 7000 (was 7000); state change in 300 ms []
+PASS wheel 127: SPD outside the LFO 7000 (was 7000); state change in 300 ms []
+PASS wheel   0: SPD outside the LFO 7000 (was 7000); state change in 300 ms []
+PASS wheel 127: SPD outside the LFO 7000 (was 7000); state change in 300 ms []
+INFO the LFO site ran 0 times (through the mod), 0 with the wheel route in; marker at 47be4a30
+INFO the LFO state does not change (digiemu cannot PLAY; the MIDI LFO may not run here at all: check on a unit)
+PASS the unit runs on
+0 failures
