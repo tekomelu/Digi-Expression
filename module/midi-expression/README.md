@@ -141,7 +141,7 @@ All twelve sites are claimed in `build.json`; no other Modwerk Digitakt module p
 
 ## Tests
 
-See [TESTING.md](TESTING.md). Host unit tests and the emulator for everything; on a unit, the MIDI-track stress test (0.9.2, 25 of 25) and the audio-track features (0.4–0.7). Saving, presets and the MIDI LFO destinations are not yet tested on a unit.
+See [TESTING.md](TESTING.md). Host unit tests and the emulator for everything; on a unit, every feature over DIN MIDI and USB MIDI, sequencing several synths at once (saving, presets and the MIDI LFO destinations included), and the MIDI-track stress test (0.9.2, 25 of 25).
 
 ## Credits
 

@@ -202,9 +202,9 @@ The research behind every address is in [docs/RESEARCH-OS154.md](docs/RESEARCH-O
 
 ## Status and tests
 
-Experimental. Tested with about 2.4 million host unit checks (including thousands of random broken files), on the firmware in the [digiemu](https://github.com/irpina/digiemu) emulator (MIDI-track sums and merging, saving and loading through the firmware's own menus, the preset menu, memory and CPU use), and on one unit: the audio-track features and a hardware stress test of the MIDI tracks, 25 of 25. Details: [module/midi-expression/TESTING.md](module/midi-expression/TESTING.md).
+Experimental. Tested with about 2.4 million host unit checks (including thousands of random broken files), on the firmware in the [digiemu](https://github.com/irpina/digiemu) emulator (MIDI-track sums and merging, saving and loading through the firmware's own menus, the preset menu, memory and CPU use), and on the author's own Digitakt (mk1, OS 1.54): every feature, over DIN MIDI and USB MIDI, sequencing several synths at once, saving and loading projects and presets, plus a hardware stress test of the MIDI tracks, 25 of 25. Details: [module/midi-expression/TESTING.md](module/midi-expression/TESTING.md).
 
-**Resources** (emulator): no memory is allocated, and hundreds of file writes and reads leave the firmware's heap exactly as it was. CPU in the module area: about 1.2 % of the emulated CPU idle and 1.8 % with every route of every track live under a flood of MIDI at the wire rate (the emulator counts 64 million instructions a second; the unit's CPU is faster). RAM: in an image of its own, 92 KB of the module area stay free.
+**Resources** (emulator): no memory is allocated, and hundreds of file writes and reads leave the firmware's heap exactly as it was. CPU in the module area: about 1.2 % of the emulated CPU idle and 1.8 % with every route of every track live under a flood of MIDI at the wire rate (the emulator counts 64 million instructions a second; the unit's CPU is faster). RAM: in an image of its own, 93 KB of the module area stay free; 1.3 KB beside Digi Slicer.
 
 ## Build it
 

@@ -39,7 +39,7 @@ Routing (auto channel, TRACK CHANNEL, CHAN off, audio tracks); sums within the M
 - **0.4–0.7, audio tracks** (internal sounds, by the author): bend, routes, the page and its knobs, velocity sensitivity, the LFO destinations of audio tracks.
 - **0.8, MIDI tracks:** froze the unit. 0.8 sent MIDI itself from the MIDI input and UI tasks; on hardware that held everything back or let a second task into the DIN driver. 0.9 sends only through the MIDI tracks' own task.
 - **0.9.0–0.9.2:** `hwping.py` showed each value once, as expected, after 0.9.1 stopped resending unchanged values. `hwstress.py` on 0.9.2: 25 of 25 (own values, THRU on 200 random PB/AT/MW/BC, MW and VAL1 merged on CC 1, release and return, wheel to CC 74, pressure to PB −64, velocity to BC before its note, V.SNS 50 % live and from the sequencer, an LFO on MW merged with the wheel, recording as played). Measured round trip through a USB MIDI interface: live notes 12 ms median, pitch bend 11 ms, CC 1 4 ms. The flood phase was left out (the interface hung under it).
-- **Not yet on a unit:** saving and presets (0.10–0.12), fine BEND (0.12), the MIDI LFO destinations (0.9.3), the flood phase.
+- **0.10–0.12, everything** (by the author): every feature on audio and MIDI tracks, over DIN MIDI and USB MIDI, sequencing several synths at once; saving and loading projects, power-on, presets (LOAD, SAVE, RESET, DEFAULT, naming), the MIDI LFO destinations, fine BEND. The flood phase of `hwstress.py` was left out (the interface hung under it).
 
 ## Measured resources
 
