@@ -6,6 +6,7 @@ extern volatile uint32_t h_output_to;
 extern volatile uint8_t h_notes[1 + 1024], h_ccs[1 + 1024];
 
 int32_t h_channel(int32_t midi_track);
+int32_t h_enabled(int32_t track, int32_t id);
 void h_queue_send(void *queue, void *item);
 void h_stock_cc(const uint8_t *msg, int32_t len, int32_t flag);
 
@@ -22,6 +23,7 @@ void h_stock_cc(const uint8_t *msg, int32_t len, int32_t flag);
 void h_cc_append(int32_t len, const uint8_t *b);
 #define CC_APPEND      h_cc_append
 #define CHANNEL        h_channel
+#define ENABLED        h_enabled
 #define QUEUE_SEND     h_queue_send
 #define STOCK_CC       h_stock_cc
 

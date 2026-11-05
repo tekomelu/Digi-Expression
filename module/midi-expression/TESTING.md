@@ -1,6 +1,6 @@
 # MIDI Expression testing
 
-Version 0.11.0-experimental, Digitakt I OS 1.54 (stock file SHA-256 f78ba80f…3cf6), Core 2.1.
+Version 0.11.1-experimental, Digitakt I OS 1.54 (stock file SHA-256 f78ba80f…3cf6), Core 2.1.
 
 ## Evidence tier
 
@@ -12,7 +12,7 @@ All commands from the source repository's root, with the build environment of it
 
 | What | Command | Result (0.11.0) |
 | --- | --- | --- |
-| Host unit tests: expr.c, audio.c, page.c and store.c compiled for the computer, with stand-ins for the firmware and an in-memory +Drive | `cc -std=c11 -Wall -Wextra -DME_HOST_TEST -I tests/host tests/host/test_expr.c -o build/test_expr && build/test_expr` | 2,442,700 checks, 0 failures; the same under `-fsanitize=address,undefined` (`results/mod-0.11/host-unit-tests.txt`) |
+| Host unit tests: expr.c, audio.c, page.c and store.c compiled for the computer, with stand-ins for the firmware and an in-memory +Drive | `cc -std=c11 -Wall -Wextra -DME_HOST_TEST -I tests/host tests/host/test_expr.c -o build/test_expr && build/test_expr` | 2,442,713 checks, 0 failures; the same under `-fsanitize=address,undefined` (`results/mod-0.11/host-unit-tests.txt`) |
 | MIDI tracks on the firmware: odd combinations of live input, routes, merged CC numbers, the track's own sends and track changes, against a model of the sums | `scripts/emu-midi-whacky.py` | 330 checks, 0 failures |
 | Saving through the firmware's own menus and +Drive code: SAVE PROJECT AS into slot 003, LOAD PROJECT of it and of one saved without the mod, the slot numbers the jobs give, and a power-on | `scripts/emu-store.py` | 11 checks, 0 failures (`emu-store.txt`) |
 | Memory: the firmware's heap and its allocations while the mod writes and reads its files 80 times, against the same time idle | `scripts/emu-resources.py memory` | new and delete balance exactly; the heap's state words unchanged (`emu-resources-memory.txt`) |

@@ -89,6 +89,9 @@ typedef void (*queue_send_fn)(void *queue, void *item);
 typedef void (*handler_fn)(const uint8_t *msg, int32_t len, int32_t flag);
 
 #define CHANNEL        ((channel_fn)0x400e09d8)   // a MIDI track's CHAN, -1 when off
+// enabled(track, id): the parameter is switched on (FUNC + its knob on the
+// SRC, FLTR or AMP page); off, the track sends nothing for it (CC Recall's ENABLED).
+#define ENABLED        ((int32_t (*)(int32_t, int32_t))0x400e0966)
 #define QUEUE_SEND     ((queue_send_fn)0x40001b7a)
 #define STOCK_CC       ((handler_fn)0x400d4cb8)
 #endif
@@ -259,7 +262,11 @@ static int group_live(const struct chan *c, int o)
 // its centre, measured in digiemu).
 static int32_t own_of(const struct chan *c, int o)
 {
-    if (c->seen[o] || c->owner < 0 || c->owner > 7)
+    if (c->owner < 0 || c->owner > 7)
+        return c->own[o];
+    if (!ENABLED(c->owner, ID_FIRST + o))   // switched off on its page: the track has no value of its own
+        return o == O_PB ? 8192 : 0;
+    if (c->seen[o])
         return c->own[o];
     const volatile int8_t *w = &PARAMS[106 * c->owner + 2 * (ID_FIRST + o)];
     if (o == O_PB)
@@ -291,14 +298,17 @@ static uint8_t compose(const struct chan *c, int ch, int o, uint8_t *out)
         out[1] = (uint8_t)clamp(own_of(c, O_AT) + th + round256(rt), 0, 127);
         return 2;
     }
-    int32_t cc = cc_of(c, o), own = own_of(c, o), sum_th = 0, sum_rt = 0;
-    uint16_t latest = c->stamp[o];
+    int32_t cc = cc_of(c, o), own = 0, sum_th = 0, sum_rt = 0, any = 0;
+    uint16_t latest = 0;
     for (int p = O_MW; p < OUTPUTS; p++) {
         if (cc_of(c, p) != cc)
             continue;
-        if ((int16_t)(c->stamp[p] - latest) > 0) {   // the one that changed last
+        // the track's own value: the one that changed last, of those switched on
+        int on = c->owner < 0 || c->owner > 7 || ENABLED(c->owner, ID_FIRST + p);
+        if (on && (!any || (int16_t)(c->stamp[p] - latest) > 0)) {
             latest = c->stamp[p];
             own = own_of(c, p);
+            any = 1;
         }
         live_parts(c, p, &th, &rt);
         sum_th += th;

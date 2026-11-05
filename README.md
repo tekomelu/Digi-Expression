@@ -1,6 +1,6 @@
 # MIDI Expression for the Digitakt
 
-**Play the original Digitakt (mk1, OS 1.54) and the synths it sequences with pitch bend, aftertouch, the mod wheel, breath and velocity from your keyboard.** A [Modwerk](https://modwerk.app/) module, version 0.11.0-experimental.
+**Play the original Digitakt (mk1, OS 1.54) and the synths it sequences with pitch bend, aftertouch, the mod wheel, breath and velocity from your keyboard.** A [Modwerk](https://modwerk.app/) module, version 0.11.1-experimental.
 
 ![The EXPRESSION page of a MIDI track](docs/img/expression-midi.png)
 
@@ -52,13 +52,13 @@ Turning a destination knob opens a list like the LFO page's DEST; push the same 
 
 ### Presets
 
-Hold **knob A pushed for a second**: the preset menu, with LOAD, SAVE, RESET and DEFAULT. Move with UP/DOWN or the LEVEL knob, choose with YES, go back with NO, as in the stock menus.
+Hold **knob A pushed for a second**: the preset menu, with LOAD, SAVE, RESET TO DEFAULT and SELECT DEFAULT. Move with UP/DOWN or the LEVEL knob, choose with YES (or a push of a knob), go back with NO, as in the stock menus; any page key leaves it. Naming works like SAVE PROJECT AS, with the letter grid on FUNC.
 
 | The menu | SAVE: a slot… | …and a name |
 | --- | --- | --- |
-| ![The preset menu](docs/img/menu.png) | ![The preset slots](docs/img/menu-save.png) | ![Naming a preset](docs/img/menu-name.png) |
+| ![The preset menu](docs/img/menu.png) | ![The preset slots](docs/img/menu-save.png) | ![Naming a preset, FUNC held for the letters](docs/img/menu-letters.png) |
 
-There are 64 presets for audio tracks and 64 for MIDI tracks. LOAD puts one on the current track; RESET puts the track back to the default; DEFAULT picks which preset new projects and RESET start from, FACTORY being the mod's own defaults. A preset is copied, never linked: changing it later does not change a project that used it.
+There are 64 presets for audio tracks and 64 for MIDI tracks. LOAD puts one on the current track; RESET TO DEFAULT puts the track back to the default; SELECT DEFAULT picks which preset new projects and RESET start from, FACTORY being the mod's own defaults. A preset is copied, never linked: changing it later does not change a project that used it.
 
 ![A MIDI track's LFO as a destination](docs/img/expression-midi-list.png)
 

@@ -728,10 +728,14 @@ static void draw_list(void *bmp, int t, int k)
 enum { M_OFF, M_MAIN, M_LOAD, M_SAVE, M_NAME, M_DEFAULT, M_RESET, M_OVERWRITE };
 #define LONG_PUSH  30                   // ticks: a second
 #define MSG_TICKS  30
-static const char *const main_items[4] = { "LOAD", "SAVE", "RESET", "DEFAULT" };
+static const char *const main_items[4] = { "LOAD", "SAVE", "RESET TO DEFAULT", "SELECT DEFAULT" };
+// FUNC held on the naming screen: the stock one's character grid (FUNC + arrows pick, letting go of FUNC writes it).
+static const char grid_chars[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-_.&+!# ";
+#define GRID_COLS 15
+static int grid_cur, grid_on;
 static const char name_chars[] = " ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-_.&+!#";
 int me_menu;                            // read by the tests (0: no menu)
-static int menu_cur[8], menu_top, push_a, msg_t, edit_pos, edit_slot;
+static int menu_cur[8], menu_top, push_a, push_twist, msg_t, edit_pos, edit_slot;
 static const char *msg;
 static char edit_name[ME_NAME_LEN + 1];
 
@@ -803,24 +807,39 @@ static void draw_menu(void *bmp, int t)
 {
     int mid = t >= 8, m = me_menu;
     FILLRECT(bmp, 16, 0, 127, 53, 0);
-    if (m == M_NAME) {                  // the naming screen: "05:LEAD" and the cursor
-        char line[24];
+    if (m == M_NAME) {                  // the naming screen: "05:LEAD", the character inverted
+        char line[24], pre[24];
         two_digits(line, edit_slot + 1);
         line[2] = ':';
-        int n = 3;
-        for (int i = 0; edit_name[i]; i++) line[n++] = edit_name[i];
+        int n = 3, len = 0;
+        for (int i = 0; edit_name[i]; i++) line[n++] = edit_name[i], len++;
         line[n] = 0;
-        TEXT(bmp, TITLE_FONT, 22, 34, -1, "%s", line);
-        int x = 22 + 5 * (3 + edit_pos);   // 5 px a character in the list font
-        FILLRECT(bmp, x - 1, 32, x + 4, 32, -1);
-        TEXT(bmp, LABEL_FONT, 22, 16, -1, "%s", "U/D:CHAR  L/R:CURSOR");
-        TEXT(bmp, LABEL_FONT, 22, 8, -1, "%s", "FUNC+YES/NO:INS/DEL");
+        box(bmp, 20, 30, 122, 43);
+        TEXT(bmp, TITLE_FONT, 23, 34, -1, "%s", line);
+        for (int i = 0; i < 3 + edit_pos; i++) pre[i] = line[i];
+        pre[3 + edit_pos] = 0;
+        char c[2] = { edit_pos < len ? edit_name[edit_pos] : ' ', 0 };
+        int x0 = 23 + text_width(TITLE_FONT, pre) + 1, w = c[0] == ' ' ? 3 : text_width(TITLE_FONT, c);
+        FILLRECT(bmp, x0 - 1, 33, x0 + w, 40, -1);   // proportional letters: measured, not counted
+        if (grid_on && KEYHELD(K_FUNC)) {   // the character grid, as the stock naming screen
+            for (int i = 0; grid_chars[i]; i++) {
+                int gx = 22 + 7 * (i % GRID_COLS), gy = 21 - 8 * (i / GRID_COLS);
+                char g[2] = { grid_chars[i], 0 };
+                TEXT(bmp, TITLE_FONT, gx, gy, -1, "%s", g[0] == ' ' ? "_" : g);
+                if (i == grid_cur)
+                    FILLRECT(bmp, gx - 1, gy - 1, gx + 5, gy + 6, -1);
+            }
+            return;
+        }
+        TEXT(bmp, LABEL_FONT, 22, 21, -1, "%s", "U/D:CHAR  L/R:CURSOR");
+        TEXT(bmp, LABEL_FONT, 22, 14, -1, "%s", "FUNC:LETTERS");
+        TEXT(bmp, LABEL_FONT, 22, 7, -1, "%s", "FUNC+YES/NO:INS/DEL");
         TEXT(bmp, LABEL_FONT, 22, 0, -1, "%s", "YES:SAVE  NO:ABORT");
         return;
     }
     if (m == M_RESET || m == M_OVERWRITE) {
         box(bmp, 24, 14, 120, 40);
-        TEXT(bmp, LABEL_FONT, 30, 30, -1, "%s", m == M_RESET ? "RESET THIS TRACK?" : "OVERWRITE PRESET?");
+        TEXT(bmp, LABEL_FONT, 30, 30, -1, "%s", m == M_RESET ? "RESET TO DEFAULT?" : "OVERWRITE PRESET?");
         TEXT(bmp, LABEL_FONT, 30, 19, -1, "%s", "YES / NO");
         return;
     }
@@ -968,30 +987,75 @@ static void menu_no(void)
     recompose = 1;
 }
 
+static int grid_index(char c)
+{
+    for (int i = 0; grid_chars[i]; i++)
+        if (grid_chars[i] == c)
+            return i;
+    return 0;
+}
+
 static int menu_key(void *ev, int t)
 {
-    int id = KEYID(ev);
-    if (!KEYPRESS(ev))
-        return 1;
-    switch (id) {
-    case K_UP:    menu_move(me_menu == M_NAME ? 1 : -1); break;
-    case K_DOWN:  menu_move(me_menu == M_NAME ? -1 : 1); break;
-    case K_LEFT:  if (me_menu == M_NAME && edit_pos > 0) edit_pos--; break;
-    case K_RIGHT:
+    int id = KEYID(ev), press = KEYPRESS(ev);
+    if (id == 1) {                      // FUNC: always stock's too (a swallowed release sticks it)
         if (me_menu == M_NAME) {
+            if (press) {
+                int len = 0;
+                while (edit_name[len]) len++;
+                grid_cur = grid_index(edit_pos < len ? edit_name[edit_pos] : ' ');
+                grid_on = 1;
+            } else if (!KEYDOWN(ev) && grid_on) {   // letting go: the picked character
+                grid_on = 0;
+                int len = 0;
+                while (edit_name[len]) len++;
+                if (edit_pos >= len && len < ME_NAME_LEN)
+                    edit_name[len] = ' ', edit_name[len + 1] = 0;
+                if (edit_pos < ME_NAME_LEN)
+                    edit_name[edit_pos] = grid_chars[grid_cur];
+            }
+            recompose = 1;
+        }
+        return 0;
+    }
+    if ((id >= 24 && id <= 39) || id == 9 || id == 10 || id == 11 || id == 2)
+        return 0;                       // the trig keys, REC, PLAY, STOP and TRK, as stock
+    int ours = id == K_UP || id == K_DOWN || id == K_LEFT || id == K_RIGHT || id == K_YES || id == K_NO
+               || (id >= K_PUSH_A && id <= K_PUSH_A + 8);
+    if (!ours) {                        // another page or menu key: the page goes, stock does its job
+        if (press)
+            close_page();
+        return id == K_TRIG ? 1 : 0;
+    }
+    if (!press)
+        return 1;
+    int grid = me_menu == M_NAME && grid_on && KEYHELD(K_FUNC);
+    switch (id) {
+    case K_UP:
+        if (grid) grid_cur = (grid_cur - GRID_COLS + (int)sizeof grid_chars - 1) % ((int)sizeof grid_chars - 1);
+        else menu_move(me_menu == M_NAME ? 1 : -1);
+        break;
+    case K_DOWN:
+        if (grid) grid_cur = (grid_cur + GRID_COLS) % ((int)sizeof grid_chars - 1);
+        else menu_move(me_menu == M_NAME ? -1 : 1);
+        break;
+    case K_LEFT:
+        if (grid) grid_cur = (grid_cur + (int)sizeof grid_chars - 2) % ((int)sizeof grid_chars - 1);
+        else if (me_menu == M_NAME && edit_pos > 0) edit_pos--;
+        break;
+    case K_RIGHT:
+        if (grid) {
+            grid_cur = (grid_cur + 1) % ((int)sizeof grid_chars - 1);
+        } else if (me_menu == M_NAME) {
             int len = 0;
             while (edit_name[len]) len++;
             if (edit_pos < len && edit_pos < ME_NAME_LEN - 1) edit_pos++;
         }
         break;
-    case K_YES:   menu_yes(t); break;
     case K_NO:    menu_no(); break;
-    case K_TRIG:  me_menu = M_OFF; close_page(); break;
-    default:
-        if (id >= 24 && id <= 39) return 0;     // the trig keys play, as stock
-        if (id == 1 || id == 9 || id == 10 || id == 11) return 0;   // FUNC, REC, PLAY, STOP
-        break;
+    default:      menu_yes(t); break;     // YES, or a push of a knob: into the item, as YES
     }
+    recompose = 1;
     return 1;
 }
 
@@ -1000,9 +1064,12 @@ static void draw_title(void *bmp)
 {
     FILLRECT(bmp, 18, 54, 126, 63, 0);
     FILLRECT(bmp, 17, 55, 127, 62, 0);
-    TEXT(bmp, TITLE_FONT, 19, 56, -1, "%s",
-         me_menu == M_OFF ? "Expression" : me_menu == M_LOAD ? "Load preset" : me_menu == M_SAVE || me_menu == M_NAME
-         || me_menu == M_OVERWRITE ? "Save preset" : me_menu == M_DEFAULT ? "Default preset" : "Presets");
+    const char *what = me_menu == M_LOAD ? "Load preset" : me_menu == M_SAVE || me_menu == M_NAME
+                       || me_menu == M_OVERWRITE ? "Save preset" : me_menu == M_DEFAULT ? "Select default" : "Expr. presets";   // the bar holds about 22 characters
+    if (me_menu == M_OFF)
+        TEXT(bmp, TITLE_FONT, 19, 56, -1, "%s", "Expression");
+    else                                // which kind of track's presets, as in the stock sound menus
+        TEXT(bmp, TITLE_FONT, 19, 56, -1, "%s %s", track() >= 8 ? "[MIDI]" : "[SND]", what);
     FILLRECT(bmp, 18, 54, 126, 63, -1);
     FILLRECT(bmp, 17, 55, 17, 62, -1);
     FILLRECT(bmp, 127, 55, 127, 62, -1);
@@ -1105,7 +1172,7 @@ int me_page_key(void *brain, void *ev)
     if (me_menu)
         return menu_key(ev, track());
     if (id == K_PUSH_A && KEYPRESS(ev))
-        push_a = 1;
+        push_a = 1, push_twist = 0;
     if (KEYPRESS(ev) && (!(id >= K_PUSH_A && id < K_PUSH_A + CELLS) || id - K_PUSH_A == list_cell))
         list_cell = -1;                 // any key, or a push of its own knob, closes the list
     switch (id) {
@@ -1149,17 +1216,17 @@ int me_page_enc(void *brain, void *ev)
     int id = *(int *)((char *)ev + 12);
     int n = *(int *)((char *)ev + 16);
     if (me_menu) {                      // the LEVEL knob moves, as in the stock menus
-        static int menu_acc;
-        if (id == 9 && n) {
-            menu_acc += n;
-            int steps = menu_acc / RAW_DETENT;
-            menu_acc -= steps * RAW_DETENT;
-            if (steps) menu_move(me_menu == M_NAME ? steps : steps);
+        if (id == 9 && n) {              // one step a turn event, however fast: as the stock lists
+            menu_move(n > 0 ? 1 : -1);
+            recompose = 1;
         }
         return 1;
     }
-    if (id == 1)
-        push_a = 0;                     // a turn of knob A: a push for the multiplier, not the menu
+    if (id == 1 && push_a) {            // a twist while A is held: a real turn (the push
+        push_twist += n < 0 ? -n : n;   // multiplier) cancels the menu; a nudge does not
+        if (push_twist > 3 * RAW_DETENT)
+            push_a = 0;
+    }
     if (id < 1 || id > CELLS)
         return 0;                       // LEVEL: the track level, as stock
     if (!n)

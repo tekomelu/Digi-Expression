@@ -1,5 +1,17 @@
 [
   {
+    "version": "0.11.1-experimental",
+    "date": "2026-11-05",
+    "changes": [
+      "MIDI tracks: a value switched off on its page (FUNC + its knob, such as SRC MW or a CC VAL slot) no longer keeps its last value under the live input: the mod wheel runs from 0 again.",
+      "Preset menu: FUNC's release always reaches the Digitakt (a FUNC key could stick); the trig keys' releases too.",
+      "Preset menu: a push of any knob works as YES; the LEVEL knob moves one step a turn; SRC, FLTR, AMP, LFO and the other page and menu keys leave the menu and do their own job.",
+      "Opening the menu: a small twist of knob A while it is held no longer cancels it.",
+      "Names: the character being edited is inverted, measured with the font's own widths; holding FUNC shows the letter grid of the stock naming screen (FUNC + arrows pick, letting go of FUNC writes the letter).",
+      "Titles: [SND] or [MIDI] Expr. presets; RESET TO DEFAULT and SELECT DEFAULT."
+    ]
+  },
+  {
     "version": "0.11.0-experimental",
     "date": "2026-11-05",
     "changes": [

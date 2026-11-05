@@ -1,4 +1,4 @@
-probe 47be66c8, settings 47be6608
+probe 47be6a14, settings 47be6954
 PASS the store was read at power-on (drive mounted)
 current.txt written after 3800 ms
 PASS a change: current.txt written once nothing plays (1 saves, 0 failed)

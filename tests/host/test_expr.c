@@ -38,6 +38,8 @@ static uint8_t sent[256][3];
 static int sent_len[256], nsent, stock_cc_calls;
 
 int32_t h_channel(int32_t m) { return chan_of[m]; }
+static uint8_t h_off[8][64];                 // a parameter switched off (FUNC + knob)
+int32_t h_enabled(int32_t t, int32_t id) { return t >= 0 && t < 8 && id >= 0 && id < 64 ? !h_off[t][id] : 1; }
 int h_cc_appends;
 void h_cc_append(int32_t len, const uint8_t *b)   // 0x400e0dac: no length check, as stock
 {
@@ -102,6 +104,7 @@ static void reset(void)
     h_notes[0] = h_ccs[0] = 0; h_task_auto = 1; h_queued = 0; h_in_queue_max = 0; h_task_busy = 0;
     clock_stamp = 0;
     memset((void *)h_params, 0, sizeof h_params);
+    memset(h_off, 0, sizeof h_off);
     for (int m = 0; m < 8; m++) h_params[106 * m + 2 * 21] = 0x20;   // PB's parameter at its centre, 0x2000
     for (int t = 0; t < 16; t++) h_track_channel[t] = t;   // tracks 1-8 ch 1-8, A-H ch 9-16
     for (int m = 0; m < 8; m++) chan_of[m] = -1;
@@ -370,6 +373,24 @@ int main(void)
         CHECK(lp[53 + 1] == was1, "track B (CHAN off): untouched");
         me_midi_cfg[0].mw_dest = 0; me_midi_cfg[0].at_dest = 0; me_midi_cfg[0].vel_dest = 0;
     }
+
+    // 9e. A parameter switched off on its page (FUNC + knob): its own value is gone, the wheel runs from 0.
+    reset();
+    track_mw(0, 64);                                      // SRC MW 64, sent
+    mw_in(13, 10, AUTO);
+    CHECK(last_cc(1) == 74, "MW 64 + wheel 10: %d", last_cc(1));
+    h_off[0][ID_MW] = 1;                                  // FUNC + G: MW off
+    mw_in(13, 0, AUTO);
+    CHECK(last_cc(1) == 0, "MW off: wheel 0 sends 0: %d", last_cc(1));
+    mw_in(13, 30, AUTO);
+    CHECK(last_cc(1) == 30, "and 30 is 30: %d", last_cc(1));
+    h_params[2 * 25] = 50; SEL(0, 0, 1);                  // VAL1 on CC 1, 50, then switched off too
+    h_off[0][25] = 1;
+    mw_in(13, 5, AUTO);
+    CHECK(last_cc(1) == 5, "VAL1 on CC 1 off as well: 5: %d", last_cc(1));
+    h_off[0][25] = 0;
+    mw_in(13, 6, AUTO);
+    CHECK(last_cc(1) == 56, "VAL1 on again: its 50 + 6: %d", last_cc(1));
 
     // 10. Routing: CHAN off, audio track selected, unmatched channel.
     reset();
@@ -1213,7 +1234,7 @@ int main(void)
         KEY(K_YES, 1, 0);                                    // LOAD
         TICKS(10);
         CHECK(me_menu == M_LOAD && me_presets_ready(0), "LOAD: the audio presets");
-        { int ev2[8] = { 0, 0, 0, 9, RAW_DETENT * 4, 0, 0, 0 }; me_page_enc(0, ev2); }   // LEVEL: four down
+        for (int i = 0; i < 4; i++) { int ev2[8] = { 0, 0, 0, 9, RAW_DETENT * 3, 0, 0, 0 }; me_page_enc(0, ev2); }   // LEVEL: four turns down, one step each
         CHECK(menu_cur[M_LOAD] == 4, "LEVEL moves the cursor: %d", menu_cur[M_LOAD]);
         KEY(K_YES, 1, 0);
         TICKS(1);
@@ -1230,6 +1251,34 @@ int main(void)
         CHECK(me_menu == M_DEFAULT && menu_cur[M_DEFAULT] == 0, "DEFAULT: the cursor on the current one, FACTORY");
         KEY(K_NO, 1, 0); KEY(K_NO, 1, 0);
         CHECK(me_menu == M_OFF, "NO, NO: back to the page");
+        // keys in the menu: FUNC's release reaches stock; a knob push is YES; another page key leaves
+        reset(); OPEN(); h_active_track = 0;
+        me_menu = M_MAIN; menu_cur[M_MAIN] = 0;
+        CHECK(KEY(1, 1, 0) == 0 && KEY(1, 0, 0) == 0, "FUNC down and up both go to stock (no stuck FUNC)");
+        CHECK(KEY(28, 1, 0) == 0 && KEY(28, 0, 0) == 0, "a trig key and its release play as stock");
+        KEY(43, 1, 0); KEY(43, 0, 0);                        // push of knob D: as YES
+        CHECK(me_menu == M_LOAD, "a knob push goes into LOAD");
+        CHECK(KEY(21, 1, 0) == 0 && !me_page_open && me_menu == M_OFF, "FLTR: the page and its menu go, stock opens FLTR");
+        // the name: FUNC held shows the letters, arrows pick, letting go writes it
+        reset(); OPEN(); h_active_track = 0;
+        me_menu = M_NAME; edit_slot = 3; strcpy(edit_name, "AB"); edit_pos = 1;
+        h_func_held = 1; KEY(1, 1, 0);
+        CHECK(grid_on && grid_cur == 1, "FUNC: the grid, on B");
+        KEY(K_RIGHT, 1, 0); KEY(K_DOWN, 1, 0);                // C, then one row down: R
+        h_func_held = 0; KEY(1, 0, 0);
+        CHECK(!strcmp(edit_name, "AR"), "let go: R written (%s)", edit_name);
+        // a twist of A while held: a nudge keeps the menu coming, a real turn cancels it
+        reset(); OPEN();
+        KEY(40, 1, 0); h_push_held = 1;
+        { int e1[8] = { 0, 0, 0, 1, RAW_DETENT, 0, 0, 0 }; me_page_enc(0, e1); }
+        for (int i = 0; i < LONG_PUSH + 1; i++) me_page_tick(0);
+        CHECK(me_menu == M_MAIN, "a nudge while held: the menu still opens");
+        h_push_held = 0; KEY(40, 0, 0); me_menu = M_OFF;
+        KEY(40, 1, 0); h_push_held = 1;
+        { int e1[8] = { 0, 0, 0, 1, RAW_DETENT * 5, 0, 0, 0 }; me_page_enc(0, e1); }
+        for (int i = 0; i < LONG_PUSH + 1; i++) me_page_tick(0);
+        CHECK(me_menu == M_OFF, "a real turn while held: no menu (the push multiplier)");
+        h_push_held = 0; KEY(40, 0, 0);
         // a plain push of A (shorter than a second) does not open it
         KEY(40, 1, 0); h_push_held = 1;
         for (int i = 0; i < 10; i++) me_page_tick(0);

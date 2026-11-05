@@ -83,6 +83,9 @@ do('tap YES\nwait 400\n')                                         # slot 01: the
 for k in ('DOWN', 'DOWN', 'DOWN', 'RIGHT', 'DOWN', 'RIGHT', 'RIGHT', 'UP'):
     do('tap %s\nwait 400\n' % k)
 shot('menu-name')
+do('press FUNC 100\nwait 300\ntap RIGHT\nwait 300\ntap DOWN\nwait 300\n')   # FUNC held: the letters
+shot('menu-letters')
+do('release FUNC 100\nwait 300\n')
 do('tap YES\nwait 600\n')                                         # saved
 shot('menu-saved')
 do('wait 3000\ntap UP\nwait 300\ntap YES\nwait 6000\n')       # LOAD: the list, with it

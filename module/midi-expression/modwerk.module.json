@@ -2,7 +2,7 @@
   "schemaVersion": 3,
   "id": "midi-expression",
   "name": "MIDI Expression",
-  "version": "0.11.0-experimental",
+  "version": "0.11.1-experimental",
   "machine": "digitakt",
   "category": "midi-usb",
   "exclusive": false,
@@ -79,7 +79,7 @@
       "name": "PRESETS",
       "default": null,
       "labels": null,
-      "doc": "Knob A pushed for a second: LOAD, SAVE, RESET and DEFAULT, with 64 audio-track and 64 MIDI-track presets. UP/DOWN or LEVEL move, YES chooses, NO goes back; SAVE names a preset as SAVE PROJECT AS names a project. DEFAULT picks the preset new projects and RESET use (FACTORY: the mod's own defaults)."
+      "doc": "Knob A pushed for a second: LOAD, SAVE, RESET TO DEFAULT and SELECT DEFAULT, with 64 audio-track and 64 MIDI-track presets. UP/DOWN or LEVEL move, YES or a knob push chooses, NO goes back, a page key leaves. SAVE names a preset as SAVE PROJECT AS names a project, with the letter grid on FUNC. SELECT DEFAULT picks the preset new projects and RESET TO DEFAULT use (FACTORY: the mod's own defaults)."
     }
   ],
   "compatibility": {
@@ -127,7 +127,7 @@
   },
   "evidence": {
     "tier": "none",
-    "moduleVersion": "0.11.0-experimental",
+    "moduleVersion": "0.11.1-experimental",
     "sourceSha256": null,
     "reports": [],
     "hardware": null,
@@ -163,8 +163,8 @@
       "capture": {
         "type": "emulator",
         "release": "1.54",
-        "moduleVersion": "0.11.0-experimental",
-        "imageSha256": "64a682268fc96bc9d2aab6197da861bc3c5a9256c88b7550f62ce8b6a207a1e1",
+        "moduleVersion": "0.11.1-experimental",
+        "imageSha256": "7caa2000d7a1f124e93475a9626819e66902806d2c6bba6f9d2daeec6ff0c636",
         "setup": "Pinned digiemu c1b5735, firmware-native drawing, disposable first-boot project, settings set in memory for the picture. No audio or timing qualification."
       }
     },
@@ -179,8 +179,8 @@
       "capture": {
         "type": "emulator",
         "release": "1.54",
-        "moduleVersion": "0.11.0-experimental",
-        "imageSha256": "64a682268fc96bc9d2aab6197da861bc3c5a9256c88b7550f62ce8b6a207a1e1",
+        "moduleVersion": "0.11.1-experimental",
+        "imageSha256": "7caa2000d7a1f124e93475a9626819e66902806d2c6bba6f9d2daeec6ff0c636",
         "setup": "Pinned digiemu c1b5735, firmware-native drawing, disposable first-boot project, settings set in memory for the picture. No audio or timing qualification."
       }
     }

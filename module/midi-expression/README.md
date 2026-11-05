@@ -1,6 +1,6 @@
 # MIDI Expression
 
-Module version `0.11.0-experimental`, for the original Digitakt on OS 1.54, Core 2.1.
+Module version `0.11.1-experimental`, for the original Digitakt on OS 1.54, Core 2.1.
 
 ## Overview
 
@@ -69,14 +69,14 @@ Copying a sound or a track does not copy its EXPRESSION settings: they belong to
 
 ## Presets
 
-Hold **knob A pushed for a second** on the EXPRESSION page: the preset menu. It works like the stock menus: UP/DOWN or the LEVEL knob move, YES chooses, NO goes back.
+Hold **knob A pushed for a second** on the EXPRESSION page: the preset menu, titled [SND] or [MIDI] for the kind of track. It works like the stock menus: UP/DOWN or the LEVEL knob move, YES or a push of a knob chooses, NO goes back, and a page or menu key (SRC, FLTR, AMP, LFO, SETTINGS…) leaves it and does its own job.
 
 | Item | What it does |
 | --- | --- |
 | LOAD | the 64 presets of this kind of track (audio or MIDI): YES puts one on this track |
-| SAVE | pick a slot, then name it as SAVE PROJECT AS names a project: UP/DOWN the character, LEFT/RIGHT the cursor, FUNC + YES inserts, FUNC + NO deletes, YES saves (asking first over a used slot), NO aborts |
-| RESET | this track back to the default preset (asks first) |
-| DEFAULT | the preset new projects and RESET start from: FACTORY (the mod's own defaults) or one of yours, marked `*` |
+| SAVE | pick a slot, then name it as SAVE PROJECT AS names a project: UP/DOWN the character, LEFT/RIGHT the cursor, hold FUNC for the letter grid (FUNC + arrows pick, letting go writes it), FUNC + YES inserts, FUNC + NO deletes, YES saves (asking first over a used slot), NO aborts |
+| RESET TO DEFAULT | this track back to the default preset (asks first) |
+| SELECT DEFAULT | the preset new projects and RESET TO DEFAULT start from: FACTORY (the mod's own defaults) or one of yours, marked `*` |
 
 A preset is copied into the project, never linked: changing a preset later does not change a project that used it.
 
