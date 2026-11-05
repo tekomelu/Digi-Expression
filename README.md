@@ -14,6 +14,26 @@ Stock, the Digitakt passes an external keyboard's notes through to its tracks bu
 
 Modwerk is an independent project, not affiliated with or endorsed by Elektron. This repository contains no Elektron firmware: everyone builds from their own official OS download.
 
+## Known limits
+
+**Other mods.** It links with every other Modwerk Digitakt module except:
+
+* **Digi Perform**: it opens its own page with the same gesture (TRIG again on the TRIG page), so the two cannot be installed together.
+* **Digi Slicer**: works, but only 0.4 KB of RAM is left with both, so no third mod of any size fits beside them.
+
+The others were linked with it one at a time ([results/compat/pairs.txt](results/compat/pairs.txt)); RAM decides which combinations of three or more fit. FX Track sees its CCs, and CC Recall's sends and Digi Matrix's routings add up with it.
+
+**Other limits.**
+
+* Original Digitakt (mk1) with OS 1.54 only.
+* Live only: the sequencer never records the live pitch bend, aftertouch or wheel (it records notes, with their velocity as played).
+* Settings belong to the project's slot and the track's place (1–8, A–H): copying a sound or a track does not copy them; a preset carries them.
+* A project put into a slot from outside (with Transfer) takes that slot's old settings file, if one is left.
+* Writing a settings file holds the screen and the MIDI output for a moment (about 0.1 s in the emulator), so the power-on file is written only once nothing has played for 2 seconds.
+* Avoid a MIDI loop: a synth echoing MIDI OUT back into MIDI IN on the same channel feeds the mod's output back to it.
+* The track's PB, AT and MW knobs on screen show the track's own value, not the sum.
+* Not yet tested on a unit: saving, presets and the MIDI LFO destinations.
+
 ## How to use it
 
 ### Open the page
@@ -28,18 +48,85 @@ Select a track, press **TRIG** for its TRIG page, then **tap TRIG again**: the E
 
 | Knob | Audio track | MIDI track | Default |
 | --- | --- | --- | --- |
-| A | **BEND**: how many semitones pitch bend moves TUNE (OFF, 1–12) | **THRU**: pitch bend, aftertouch, mod wheel and breath pass to the synth (ON/OFF) | 2 / ON |
+| A | **BEND**: how far pitch bend moves TUNE, OFF to 12 semitones | **THRU**: pitch bend, aftertouch, mod wheel and breath pass to the synth (ON/OFF) | 2 / ON |
 | B | **V.SNS**: velocity sensitivity, 0–100 % | **V.SNS** | 100 % |
 | C, D | **MW** and its depth **M.DEP** | **MW** and **M.DEP** | none, 0 |
 | E, F | **VEL** and **V.DEP** | **VEL** and **V.DEP** | none, 0 |
 | G, H | **AT** and **A.DEP** | **AT** and **A.DEP** | none, 0 |
 
-Turning a destination knob opens a list like the LFO page's DEST; push the same knob (or wait) to close it. Depths run from −64.00 to +64.00, as finely as the LFO's depth. **FUNC + turn** jumps between useful values: depths in steps of 16, BEND 1, 2, 3, 5, 7, 12, V.SNS in quarters, destinations a page at a time.
+Turning a destination knob opens a list like the LFO page's DEST; push the same knob (or wait) to close it. Depths run from −64.00 to +64.00, as finely as the LFO's depth. **FUNC + turn** jumps between useful values: depths in steps of 16, BEND whole semitones (OFF, 1, 2 … 12), V.SNS in quarters, destinations a page at a time.
 
-| Audio track destinations | MIDI track destinations |
-| --- | --- |
-| ![The audio destination list](docs/img/expression-audio-list.png) | ![The MIDI destination list](docs/img/expression-midi-list-cc.png) |
-| SRC, FLTR, AMP, LFO1 and LFO2 amounts: the wheel can open the filter, velocity can raise the volume, aftertouch can add vibrato through an LFO's depth. | The MIDI LFO page's values: pitch bend, aftertouch, mod wheel, breath and CC VAL 1–8 on the CC numbers their SEL picks (shown as `CC:CC2 VAL #74`), and the track's own LFO speed, multiplier, fade, phase and depth. |
+*Coming in the next build:* BEND turns in fine steps (fractions of a semitone, as the other parameters), and FUNC + turn snaps it to whole semitones OFF, 1 … 12. In 0.11 BEND turns in whole semitones and FUNC jumps 1, 2, 3, 5, 7, 12.
+
+### Destinations
+
+Every destination adds to the track's own value (its knob, parameter locks and LFO) within the parameter's range; a depth of ±64 at a full source covers the whole range, as the stock LFO does.
+
+#### Audio tracks
+
+![The audio destination list](docs/img/expression-audio-list.png)
+
+* SRC: TUNE
+* SRC: BIT REDUCTION
+* SRC: START
+* SRC: LENGTH
+* SRC: SAMPLE LEVEL
+* FLTR: FREQUENCY
+* FLTR: RESONANCE
+* FLTR: ENV. DEPTH
+* FLTR: ATTACK TIME
+* FLTR: DECAY TIME
+* FLTR: SUSTAIN LEVEL
+* FLTR: RELEASE TIME
+* FLTR: BASE
+* FLTR: WIDTH
+* FLTR: ENV. DELAY
+* FLTR: SAMPLE-RATE REDUX
+* AMP: ATTACK TIME
+* AMP: HOLD TIME
+* AMP: DECAY TIME
+* AMP: OVERDRIVE
+* AMP: DELAY SEND
+* AMP: REVERB SEND
+* AMP: PAN
+* AMP: VOLUME
+* LFO1: SPEED
+* LFO1: MULTIPLIER
+* LFO1: FADE IN/OUT
+* LFO1: START PHASE
+* LFO1: DEPTH
+* LFO2: SPEED
+* LFO2: MULTIPLIER
+* LFO2: FADE IN/OUT
+* LFO2: START PHASE
+* LFO2: DEPTH
+
+#### MIDI tracks
+
+![The MIDI destination list](docs/img/expression-midi-list-cc.png)
+
+* SRC: PITCH BEND
+* SRC: AFTERTOUCH
+* SRC: MOD WHEEL
+* SRC: BC (breath, CC 2)
+* CC: CC1 VAL
+* CC: CC2 VAL
+* CC: CC3 VAL
+* CC: CC4 VAL
+* CC: CC5 VAL
+* CC: CC6 VAL
+* CC: CC7 VAL
+* CC: CC8 VAL
+* LFO: SPEED
+* LFO: MULTIPLIER
+* LFO: FADE IN/OUT
+* LFO: START PHASE
+* LFO: DEPTH
+
+Each CC VAL goes out on the CC number its AMP-page SEL picks; the list shows it (`CC:CC2 VAL #74`). The LFO destinations move the MIDI track's own LFO.
+
+![A MIDI track's LFO as a destination](docs/img/expression-midi-list.png)
+
 
 ### Quick tutorial: a synth with expression
 
@@ -50,17 +137,55 @@ Turning a destination knob opens a list like the LFO page's DEST; push the same 
 5. For an audio track: select it, open its EXPRESSION page, set BEND and route the wheel to FLTR Frequency.
 6. Save the project as usual: the EXPRESSION settings are saved with it.
 
-### Presets
+## Presets
 
-Hold **knob A pushed for a second**: the preset menu, with LOAD, SAVE, RESET TO DEFAULT and SELECT DEFAULT. Move with UP/DOWN or the LEVEL knob, choose with YES (or a push of a knob), go back with NO, as in the stock menus; any page key leaves it. Naming works like SAVE PROJECT AS, with the letter grid on FUNC.
+Presets keep one track's EXPRESSION settings, so a favourite routing can go on any track or project.
+
+**The menu.** Hold **knob A pushed for a second** on the EXPRESSION page. The title says which kind of track it is for, `[SND]` (audio tracks) or `[MIDI]`. Move with UP/DOWN or the LEVEL knob, choose with YES (or a push of a knob), go back with NO, as in the stock menus; any page or menu key (SRC, FLTR, AMP, LFO, SETTINGS…) leaves it.
 
 | The menu | SAVE: a slot… | …and a name |
 | --- | --- | --- |
 | ![The preset menu](docs/img/menu.png) | ![The preset slots](docs/img/menu-save.png) | ![Naming a preset, FUNC held for the letters](docs/img/menu-letters.png) |
 
-There are 64 presets for audio tracks and 64 for MIDI tracks. LOAD puts one on the current track; RESET TO DEFAULT puts the track back to the default; SELECT DEFAULT picks which preset new projects and RESET start from, FACTORY being the mod's own defaults. A preset is copied, never linked: changing it later does not change a project that used it.
+| Item | What it does |
+| --- | --- |
+| LOAD | lists the 64 presets of this kind of track; YES puts the chosen one on the current track |
+| SAVE | pick one of the 64 slots, then name it as SAVE PROJECT AS names a project: UP/DOWN change the letter, LEFT/RIGHT move, hold FUNC for the letter grid (FUNC + arrows pick, letting go writes the letter), FUNC + YES inserts, FUNC + NO deletes, YES saves (asking first over a used slot), NO aborts |
+| RESET TO DEFAULT | puts the current track back to the default preset (asks first) |
+| SELECT DEFAULT | picks the preset that new projects and RESET TO DEFAULT start from: FACTORY (the mod's own defaults) or one of yours, marked `*` |
 
-![A MIDI track's LFO as a destination](docs/img/expression-midi-list.png)
+**Separate sets.** There are 64 presets for audio tracks and 64 for MIDI tracks; an audio preset cannot go on a MIDI track, or the other way round.
+
+**Copied, never linked.** Loading a preset copies its settings into the track. Changing or overwriting the preset later does not change a project that used it; the project keeps its own copy.
+
+**Where they are.** On the +Drive, as plain text files, next to the project settings:
+
+| File | What |
+| --- | --- |
+| `/cfw/expression/audio/01.txt` … `64.txt` | the audio-track presets, the slot in the file name and the preset's name inside |
+| `/cfw/expression/midi/01.txt` … `64.txt` | the MIDI-track presets |
+| `/cfw/expression/config.txt` | which preset is the default for each kind of track |
+| `/cfw/expression/projects/003.txt` | project slot 003's settings for all 16 tracks |
+| `/cfw/expression/current.txt` | the settings as they are now, for power-on |
+| `/cfw/expression/_temp/…` | a safety copy of each: every file is written there first |
+
+A preset file reads like this, and can be edited by hand: a value out of range is held to the nearest valid one, an unknown line is skipped, a missing value is the factory default, and a file without its first line or its `END` line is not used (its `_temp` copy is, or the defaults).
+
+```
+MIDI EXPRESSION PRESET AUDIO 1
+NAME=Lead
+BEND=5
+V.SNS=100   ; %
+MW=26   ; FLTR:Frequency
+M.DEP=+32.00
+VEL=45   ; AMP:Volume
+V.DEP=+24.00
+AT=0   ; None
+A.DEP=+0.00
+END
+```
+
+To share a preset, copy its file to another Digitakt's `/cfw/expression/audio/` or `midi/` under a free number. (Whether Elektron Transfer can fetch and send these text files is not checked yet: the original Digitakt does not appear as a USB drive.)
 
 ## How it works
 
@@ -74,14 +199,6 @@ MIDI Expression is an elemod for Modwerk's Core 2.1: small, checksummed patches 
 - **Saving.** No byte of a saved sound or pattern is free (other mods use the few there are), so the settings are text files of the mod's own on the +Drive, in `/cfw/expression`: one per project slot (`projects/003.txt`, the project's name inside), one per preset (`audio/01.txt`, `midi/01.txt`), a `config.txt` and a `current.txt` for power-on. Hooks on the firmware's project save and load messages tell the mod the project's slot, so renaming a project or deleting another one changes nothing. Every file is written to `_temp` first and then in its place, and must end with an `END` line: a file cut short by a power cut, or broken, is skipped for its copy, then for the defaults. Hand-edited values out of range are held to the nearest valid one.
 
 The research behind every address is in [docs/RESEARCH-OS154.md](docs/RESEARCH-OS154.md); the module's own documentation is [module/midi-expression/README.md](module/midi-expression/README.md).
-
-## Compatibility
-
-- Original Digitakt (mk1), OS 1.54 only.
-- Links with every other Modwerk Digitakt module except **Digi Perform**, which opens its own page with the same TRIG gesture ([results/compat/pairs.txt](results/compat/pairs.txt), checked with 0.10). With Digi Slicer, 0.4 KB of RAM stays free: the two fit, but leave no room for a third.
-- FX Track sees the mod's CCs; CC Recall's sends and Digi Matrix's routings add up with it.
-- Avoid a MIDI loop: a synth that echoes MIDI OUT back into MIDI IN on the same channel feeds the mod's output back to it.
-- Settings belong to the project's slot and the track's place: copying a sound does not copy them (a preset carries them). The original Digitakt does not appear as a USB drive; whether Elektron Transfer can fetch the text files is not checked yet.
 
 ## Status and tests
 
