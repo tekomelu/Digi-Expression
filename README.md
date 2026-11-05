@@ -62,71 +62,75 @@ Turning a destination knob opens a list like the LFO page's DEST; push the same 
 
 Every destination adds to the track's own value (its knob, parameter locks and LFO) within the parameter's range; a depth of ±64 at a full source covers the whole range, as the stock LFO does.
 
-#### Audio tracks
-
-![The audio destination list](docs/img/expression-audio-list.png)
-
-* SRC: TUNE
-* SRC: BIT REDUCTION
-* SRC: START
-* SRC: LENGTH
-* SRC: SAMPLE LEVEL
-* FLTR: FREQUENCY
-* FLTR: RESONANCE
-* FLTR: ENV. DEPTH
-* FLTR: ATTACK TIME
-* FLTR: DECAY TIME
-* FLTR: SUSTAIN LEVEL
-* FLTR: RELEASE TIME
-* FLTR: BASE
-* FLTR: WIDTH
-* FLTR: ENV. DELAY
-* FLTR: SAMPLE-RATE REDUX
-* AMP: ATTACK TIME
-* AMP: HOLD TIME
-* AMP: DECAY TIME
-* AMP: OVERDRIVE
-* AMP: DELAY SEND
-* AMP: REVERB SEND
-* AMP: PAN
-* AMP: VOLUME
-* LFO1: SPEED
-* LFO1: MULTIPLIER
-* LFO1: FADE IN/OUT
-* LFO1: START PHASE
-* LFO1: DEPTH
-* LFO2: SPEED
-* LFO2: MULTIPLIER
-* LFO2: FADE IN/OUT
-* LFO2: START PHASE
-* LFO2: DEPTH
-
-#### MIDI tracks
-
-![The MIDI destination list](docs/img/expression-midi-list-cc.png)
-
-* SRC: PITCH BEND
-* SRC: AFTERTOUCH
-* SRC: MOD WHEEL
-* SRC: BC (breath, CC 2)
-* CC: CC1 VAL
-* CC: CC2 VAL
-* CC: CC3 VAL
-* CC: CC4 VAL
-* CC: CC5 VAL
-* CC: CC6 VAL
-* CC: CC7 VAL
-* CC: CC8 VAL
-* LFO: SPEED
-* LFO: MULTIPLIER
-* LFO: FADE IN/OUT
-* LFO: START PHASE
-* LFO: DEPTH
-
-Each CC VAL goes out on the CC number its AMP-page SEL picks; the list shows it (`CC:CC2 VAL #74`). The LFO destinations move the MIDI track's own LFO.
-
-![A MIDI track's LFO as a destination](docs/img/expression-midi-list.png)
-
+<table>
+<tr>
+<td width="50%" valign="top">
+<b>Audio tracks</b><br>
+<img src="docs/img/expression-audio-list.png" alt="The audio destination list"><br>
+<small>
+SRC: TUNE<br>
+SRC: BIT REDUCTION<br>
+SRC: START<br>
+SRC: LENGTH<br>
+SRC: SAMPLE LEVEL<br>
+FLTR: FREQUENCY<br>
+FLTR: RESONANCE<br>
+FLTR: ENV. DEPTH<br>
+FLTR: ATTACK TIME<br>
+FLTR: DECAY TIME<br>
+FLTR: SUSTAIN LEVEL<br>
+FLTR: RELEASE TIME<br>
+FLTR: BASE<br>
+FLTR: WIDTH<br>
+FLTR: ENV. DELAY<br>
+FLTR: SAMPLE-RATE REDUX<br>
+AMP: ATTACK TIME<br>
+AMP: HOLD TIME<br>
+AMP: DECAY TIME<br>
+AMP: OVERDRIVE<br>
+AMP: DELAY SEND<br>
+AMP: REVERB SEND<br>
+AMP: PAN<br>
+AMP: VOLUME<br>
+LFO1: SPEED<br>
+LFO1: MULTIPLIER<br>
+LFO1: FADE IN/OUT<br>
+LFO1: START PHASE<br>
+LFO1: DEPTH<br>
+LFO2: SPEED<br>
+LFO2: MULTIPLIER<br>
+LFO2: FADE IN/OUT<br>
+LFO2: START PHASE<br>
+LFO2: DEPTH
+</small>
+</td>
+<td width="50%" valign="top">
+<b>MIDI tracks</b><br>
+<img src="docs/img/expression-midi-list-cc.png" alt="The MIDI destination list"><br>
+<small>
+SRC: PITCH BEND<br>
+SRC: AFTERTOUCH<br>
+SRC: MOD WHEEL<br>
+SRC: BC (breath, CC 2)<br>
+CC: CC1 VAL<br>
+CC: CC2 VAL<br>
+CC: CC3 VAL<br>
+CC: CC4 VAL<br>
+CC: CC5 VAL<br>
+CC: CC6 VAL<br>
+CC: CC7 VAL<br>
+CC: CC8 VAL<br>
+LFO: SPEED<br>
+LFO: MULTIPLIER<br>
+LFO: FADE IN/OUT<br>
+LFO: START PHASE<br>
+LFO: DEPTH
+</small><br><br>
+<small>Each CC VAL goes out on the CC number its AMP-page SEL picks; the list shows it (CC:CC2 VAL #74). The LFO destinations move the MIDI track's own LFO.</small><br><br>
+<img src="docs/img/expression-midi-list.png" alt="A MIDI track's LFO as a destination">
+</td>
+</tr>
+</table>
 
 ### Quick tutorial: a synth with expression
 
