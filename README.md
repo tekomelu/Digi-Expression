@@ -6,13 +6,13 @@ version 0.12.0-experimental.
 
 ![The EXPRESSION page of a MIDI track](docs/img/expression-midi.png)
 
-Stock, the Digitakt passes an external keyboard's notes through to its tracks but drops pitch bend, aftertouch and the mod wheel. With MIDI Expression:
+Stock, the Digitakt passes an external keyboard's notes and velocity through to its tracks but drops pitch bend, mod wheel and aftertouch. With MIDI Expression:
 
-- **MIDI tracks A–H** pass pitch bend, aftertouch, the mod wheel (CC 1) and breath (CC 2) to the synth they play, **added to the track's own values**: its knob, parameter locks and LFO. Nothing jumps or fights.
-- **Audio tracks 1–8** bend their pitch, and the wheel, aftertouch and velocity move any SRC, FLTR, AMP or LFO amount of the sound.
-- **Every track has its own routings** on a new page, the TRIG page's second page: three sources (mod wheel, velocity, aftertouch), each to a destination of your choice with its own depth, plus velocity sensitivity.
-- **Velocity sensitivity** per track, for live notes and the sequencer alike; the sequencer still records the velocity as played.
-- **Saved with the project**, back at power-on, and **presets** for your favourite routings, as plain text files you can read and edit.
+- **MIDI tracks A–H** pass PB, MW, AT and BC to MIDI output.
+- **Audio tracks 1–8** parameters can be modulated with PB, MW, AT and velocity.
+- **Velocity sensitivity** adjustment per track for all tracks.
+- **Saved with the project**, back at power-on.
+- **Presets** for your favourite routings.
 
 Modwerk is an independent project, not affiliated with or endorsed by Elektron. This repository contains no Elektron firmware: everyone builds from their own official OS download.
 
@@ -34,7 +34,6 @@ The others were linked with it one at a time ([results/compat/pairs.txt](results
 * Writing a settings file holds the screen and the MIDI output for a moment (about 0.1 s in the emulator), so the power-on file is written only once nothing has played for 2 seconds.
 * Avoid a MIDI loop: a synth echoing MIDI OUT back into MIDI IN on the same channel feeds the mod's output back to it.
 * The track's PB, AT and MW knobs on screen show the track's own value, not the sum.
-* Not yet tested on a unit: saving, presets, the fine BEND and the MIDI LFO destinations.
 
 ## How to use it
 
