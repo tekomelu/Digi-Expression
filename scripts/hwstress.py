@@ -416,7 +416,7 @@ def main():
     ap.add_argument('--in', dest='inp')
     ap.add_argument('--out')
     ap.add_argument('--only', help='phases: own,thru,release,routes,sens,seq,lfo,record,flood')
-    ap.add_argument('--auto', type=int, default=14)
+    ap.add_argument('--auto', type=int, default=10)
     ap.add_argument('--chan', type=int, default=1)
     a = ap.parse_args()
     if a.list:

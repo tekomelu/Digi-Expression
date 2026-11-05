@@ -452,7 +452,7 @@ def main():
     ap.add_argument('--in', dest='inp', help='input port (part of its name): what the Digitakt sends to')
     ap.add_argument('--out', help='output port (part of its name): what goes to the Digitakt MIDI IN')
     ap.add_argument('--only', help='comma-separated tests: setup,passthru,unticked,restore,latency,audio,clock')
-    ap.add_argument('--auto', type=int, default=14, help='AUTO CHANNEL, 1-16 (asked again in setup)')
+    ap.add_argument('--auto', type=int, default=10, help='AUTO CHANNEL, 1-16 (asked again in setup)')
     ap.add_argument('--track-a', type=int, default=9, help='TRACK A CHANNEL, 1-16')
     ap.add_argument('--chan', type=int, default=1, help="MIDI track A's CHAN, 1-16")
     args = ap.parse_args()
