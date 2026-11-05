@@ -1,6 +1,6 @@
 # MIDI Expression
 
-Module version `0.10.0-experimental`, for the original Digitakt on OS 1.54, Core 2.1.
+Module version `0.11.0-experimental`, for the original Digitakt on OS 1.54, Core 2.1.
 
 ## Overview
 
@@ -31,13 +31,54 @@ Select a track, press **TRIG** for its TRIG page, then **tap TRIG again**. The p
 
 Changing a MIDI track's settings takes effect at once; values nothing is aimed at any more get the track's own value back, and are stock again.
 
-**Saved with the project.** The settings are kept in a file of the mod's own on the +Drive (`/cfw/expression.a` and `.b`, next to Digi Slicer's files), because no byte of a saved sound or pattern is free for them (see docs/RESEARCH-OS154.md in the source repository):
+## Saved with the project
 
-- **SAVE PROJECT AS** (every project save) stores every track's settings under the project's name.
-- **LOAD PROJECT** brings that project's settings back; a project saved without them gets the defaults.
-- **At power-on** the settings come back as they were when the unit was switched off, as the Digitakt brings back its working project. Every change on the page is written a second later.
+The settings are text files of the mod's own on the +Drive, in `/cfw/expression` (no byte of a saved sound or pattern is free for them: see docs/RESEARCH-OS154.md in the source repository):
 
-The file keeps the 32 projects saved most recently; two projects with the same name share their settings. Copying a sound or a track does not copy its EXPRESSION settings: they belong to the track's place (track 1–8, A–H) in the project.
+| File | What |
+| --- | --- |
+| `projects/003.txt` | project slot 003: all 16 tracks' settings, the project's name inside |
+| `audio/01.txt` … `audio/64.txt` | the audio-track presets |
+| `midi/01.txt` … `midi/64.txt` | the MIDI-track presets |
+| `config.txt` | which preset is the default for each kind of track |
+| `current.txt` | the settings as they are now, for power-on |
+| `_temp/…` | the same names: every file is written there first, then in its place |
+
+- **Save a project** (SAVE PROJECT AS, every save): `projects/NNN.txt` gets the settings as they are at that moment.
+- **Load a project:** its file's settings come back. A project saved without the mod gets each track's default preset.
+- **Power-on:** the settings come back as they were when the unit was switched off, as the Digitakt brings back its working project. `current.txt` is written about a second after a change, once nothing has played for 2 seconds, so a write never lands in the middle of a performance.
+- **Projects are known by their slot number**, not their name: renaming a project, or deleting another one, changes nothing. A project put into a slot from outside (with Transfer) takes that slot's old file, if one is left.
+- **Safe against a power cut:** each file is written to `_temp` first. A file that is cut short (it must end with an `END` line) or broken is skipped for its copy in `_temp`, then for the defaults: a bad file is never applied.
+- **Plain text,** one setting a line, with the destination's name as a comment. A value out of range is held to the nearest valid one, an unknown line is skipped, and a missing value is the factory default:
+
+```
+MIDI EXPRESSION PRESET AUDIO 1
+NAME=Lead
+BEND=5
+V.SNS=100   ; %
+MW=26   ; FLTR:Frequency
+M.DEP=+32.00
+VEL=45   ; AMP:Volume
+V.DEP=+24.00
+AT=0   ; None
+A.DEP=+0.00
+END
+```
+
+Copying a sound or a track does not copy its EXPRESSION settings: they belong to the track's place (track 1–8, A–H) in the project. Use a preset to carry them.
+
+## Presets
+
+Hold **knob A pushed for a second** on the EXPRESSION page: the preset menu. It works like the stock menus: UP/DOWN or the LEVEL knob move, YES chooses, NO goes back.
+
+| Item | What it does |
+| --- | --- |
+| LOAD | the 64 presets of this kind of track (audio or MIDI): YES puts one on this track |
+| SAVE | pick a slot, then name it as SAVE PROJECT AS names a project: UP/DOWN the character, LEFT/RIGHT the cursor, FUNC + YES inserts, FUNC + NO deletes, YES saves (asking first over a used slot), NO aborts |
+| RESET | this track back to the default preset (asks first) |
+| DEFAULT | the preset new projects and RESET start from: FACTORY (the mod's own defaults) or one of yours, marked `*` |
+
+A preset is copied into the project, never linked: changing a preset later does not change a project that used it.
 
 ## Before you play
 
@@ -78,18 +119,19 @@ PORT CONFIG > RECEIVE NOTES and, for the mod wheel and breath, RECEIVE CC/NRPN m
 - **Velocity:** an 8-byte site at 0x40077a60, right after the render stores a note's velocity for its voice, and a 6-byte site at the entry of the MIDI tracks' notes_append (0x400e1002) apply V.SNS to what plays (vel.s). The note router and recording are untouched.
 - **The LFO slots:** an 8-byte site at the LFO stage's entry, 0x400ed766 (lfo.s).
 - **A MIDI track's LFO:** an 8-byte site at the entry of the MIDI tracks' LFO function, 0x400ed438 (midilfo.s): the routes go into the LFO's words just before it runs and come out right after.
-- **Saving:** a 6-byte site over each of the two sprintf calls that format the project jobs' "SAVING '%s'" (0x4004da62) and "LOADING '%s'" (0x4004fe28) messages tells the mod the project's name (store.s); the file is read and written in the UI tick with the firmware's own ekFS calls, as Digi Slicer does, only while the filesystem is free.
+- **Saving:** a 6-byte site over each of the two sprintf calls that format the project jobs' "SAVING '%s'" (0x4004da62) and "LOADING '%s'" (0x4004fe28) messages tells the mod the project's name and its slot (store.s); the files are read and written in the UI tick with the firmware's own ekFS calls, as Digi Slicer does, only while the filesystem is free. No memory is allocated: one 5 KB text buffer.
 - **The page:** the core's key, encoder, draw and tick hooks only. Which page is up is read from the UI's view controller (measured, see docs/RESEARCH-OS154.md); nothing there is written.
 - **Audio tracks:** a 6-byte site at 0x40077eea, the first call after the render's LFO stage that takes the parameter words (after Digi Matrix's and Digi Poly's sites), adds the live values to them.
 
 All twelve sites are claimed in `build.json`; no other Modwerk Digitakt module patches them.
 
-**With other mods** (`scripts/compat-pairs.sh`, `results/compat/pairs.txt`): it links with every other Modwerk Digitakt module except Digi Perform (the same TRIG gesture): CC Names, CC Recall, Digichain, Digi EQ, Digi Health, Digi Matrix, Digi Mono, Digi Neighbor, Digi Poly, Digi Slicer, Digi Sophie, Digi String, Digi Utils, Euclidean, FX Track, Input Prefader, MIDI Retrig, Note Accumulator, RAM Machines and Sample Tools. With Digi Slicer about 5 KB of RAM are left, so not every combination of three or more fits. Its CCs go through the task's own CC append, so FX Track sees them (a velocity route's CC goes straight in front of its note and does not). CC Recall's sends pass through it like the track's own. Digi Matrix's routings and its own add up on an audio track.
+**With other mods** (`scripts/compat-pairs.sh`, `results/compat/pairs.txt`): it links with every other Modwerk Digitakt module except Digi Perform (the same TRIG gesture): CC Names, CC Recall, Digichain, Digi EQ, Digi Health, Digi Matrix, Digi Mono, Digi Neighbor, Digi Poly, Digi Slicer, Digi Sophie, Digi String, Digi Utils, Euclidean, FX Track, Input Prefader, MIDI Retrig, Note Accumulator, RAM Machines and Sample Tools. With Digi Slicer about 0.4 KB of RAM is left, so the two fit only on their own. Its CCs go through the task's own CC append, so FX Track sees them (a velocity route's CC goes straight in front of its note and does not). CC Recall's sends pass through it like the track's own. Digi Matrix's routings and its own add up on an audio track.
 
 ## Compatibility and limitations
 
 - Built for OS 1.54 only.
-- Saved per project name in a file of its own, not inside the project: copying a sound or track does not copy its settings, and two projects with the same name share them.
+- Saved per project slot in files of its own, not inside the project: copying a sound or track does not copy its settings (a preset does).
+- Writing a settings file holds the UI for a moment (about 0.1 s a file in the emulator); the mod waits until nothing plays before it writes the power-on file.
 - Digi Perform opens its own page with the same gesture (TRIG again on the TRIG page), so the two are not built together.
 - Sends where OUTPUT TO says (MIDI, USB or both), with the track's own values.
 - Not recorded: the sequencer never sees the live values.
@@ -99,7 +141,7 @@ All twelve sites are claimed in `build.json`; no other Modwerk Digitakt module p
 
 ## Tests
 
-See [TESTING.md](TESTING.md). Host unit tests and the emulator for everything; on a unit, the MIDI-track stress test (0.9.2, 25 of 25) and the audio-track features (0.4–0.7). The MIDI LFO destinations and saving are not yet tested on a unit.
+See [TESTING.md](TESTING.md). Host unit tests and the emulator for everything; on a unit, the MIDI-track stress test (0.9.2, 25 of 25) and the audio-track features (0.4–0.7). Saving, presets and the MIDI LFO destinations are not yet tested on a unit.
 
 ## Credits
 

@@ -73,4 +73,18 @@ shot('expression-midi-list')
 s.run_ms(2500)
 turn('C', -1)
 shot('expression-midi-list-cc')
+# The preset menu: a 1-second push of knob A on MIDI track A's page.
+do('press #40 4000\n')                                          # (the emulator's UI ticks run slower than a unit's)
+s.run_ms(500)
+shot('menu')
+do('tap DOWN\nwait 300\ntap YES\nwait 5000\n')                 # SAVE: the slots
+shot('menu-save')
+do('tap YES\nwait 400\n')                                         # slot 01: the name
+for k in ('DOWN', 'DOWN', 'DOWN', 'RIGHT', 'DOWN', 'RIGHT', 'RIGHT', 'UP'):
+    do('tap %s\nwait 400\n' % k)
+shot('menu-name')
+do('tap YES\nwait 600\n')                                         # saved
+shot('menu-saved')
+do('wait 3000\ntap UP\nwait 300\ntap YES\nwait 6000\n')       # LOAD: the list, with it
+shot('menu-load')
 print('screens in', out)

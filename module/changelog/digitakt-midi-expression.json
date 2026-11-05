@@ -1,5 +1,17 @@
 [
   {
+    "version": "0.11.0-experimental",
+    "date": "2026-11-05",
+    "changes": [
+      "Settings are text files on the +Drive, one per project slot (/cfw/expression/projects/003.txt, the project's name inside), so renaming a project or deleting another keeps them; no limit on the number of projects.",
+      "Every file is written to /cfw/expression/_temp first and then in its place; a file that is cut short or broken is skipped for its copy, then the defaults. Values out of range in a hand-edited file are held to the nearest valid one.",
+      "Presets: a 1-second push of knob A opens LOAD, SAVE, RESET and DEFAULT. 64 audio-track and 64 MIDI-track presets, named as SAVE PROJECT AS names a project; DEFAULT picks the preset new projects and RESET start from (Factory: the mod's own defaults).",
+      "The settings at power-on are written only when nothing has played for 2 seconds, so a write never lands in a performance.",
+      "Smaller: about 10 KB less RAM for the page and the files' code.",
+      "Known issue: saving, presets and the MIDI LFO destinations are not yet tested on a unit."
+    ]
+  },
+  {
     "version": "0.10.0-experimental",
     "date": "2026-11-05",
     "changes": [

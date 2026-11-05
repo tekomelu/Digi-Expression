@@ -127,6 +127,7 @@ static volatile uint8_t initialised;
 static int32_t last_active = -1;
 
 // Counters for tests.
+volatile uint32_t me_activity;
 volatile uint32_t me_taken, me_sent, me_held, me_filtered, me_released, me_wakes, me_passes, me_skipped;
 
 #ifdef ME_HOST_TEST
@@ -460,6 +461,7 @@ static void check_track(void)
 
 static void take(int src, int32_t live, int32_t in_ch, int32_t flag)
 {
+    me_activity++;
     init();
     check_track();
     uint32_t tracks = 0, audio = 0;
@@ -660,6 +662,7 @@ const uint8_t *me_note_out(int32_t len, const uint8_t *bytes)
 {
     if (len < 3 || len > (int32_t)sizeof note_copy)
         return bytes;
+    me_activity++;
     init();
     int changed = 0, routed = 0;
     for (int32_t i = 0; i < len; i++)

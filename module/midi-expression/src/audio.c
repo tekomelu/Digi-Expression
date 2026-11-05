@@ -108,14 +108,16 @@ static void route(volatile int16_t *v, int32_t dest, int32_t value, int32_t amou
         add_within(v + dest, x, 0, PARAM_MAX);
 }
 
+// Runs twice a render block for every track, so the common case is made
+// cheap: a track with nothing live that a setting uses costs a few compares.
 static void render(void *words, int lfo)
 {
     for (int t = 0; t < 8; t++) {
         struct atrack *a = &atracks[t];
         int32_t pb = a->live[PB], at = a->live[AT], mw = a->live[MW], vel = a->live[VELK];
-        if (!pb && !at && !mw && !vel)
-            continue;
         struct me_cfg *cfg = &me_audio_cfg[t];
+        if (!((pb && cfg->range > 0) || (mw && cfg->mw_dest) || (at && cfg->at_dest) || (vel && cfg->vel_dest)))
+            continue;
         volatile int16_t *v = VOICE(words, t);
         if (!lfo && pb) {
             int32_t range = cfg->range;
@@ -171,6 +173,7 @@ void me_voice_velocity(int32_t voice)
 {
     if (voice < 0 || voice > 7)
         return;
+    me_activity++;
     int32_t v = OS_VEL[voice];
     if (v <= 0)
         return;

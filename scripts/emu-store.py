@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
-"""0.10 in digiemu: the EXPRESSION settings kept with the project, on the
-firmware and its real +Drive code. Saves the project as 003, loads it and the
+"""0.11 in digiemu: the EXPRESSION settings kept with the project as text files,
+on the firmware and its real +Drive code. Saves the project as 003, loads it and the
 factory project back through SETTINGS > PROJECT, and plays a power-on (the
 mod's RAM cleared, the file read back from the card).
 
@@ -34,14 +34,12 @@ def do(text):
 s.run_ms(300)
 mem = bytes(uc.mem_read(0x47be0000, 0x20000))
 probe = 0x47be0000 + mem.find(struct.pack('>I', 0x4d455850))
+assert probe > 0x47be0000, 'the probe not found'
 midi_cfg = 0x47be0000 + mem.find(bytes([1, 0, 0, 0, 100, 0, 0, 0, 0, 0, 0, 0]) * 8)
-NREC = 32
-store = 0x47be0000 + mem.find(struct.pack('>II', 0x4d455831, NREC))
-STORE_BYTES = 16 + 212 * (NREC + 1)
 
 
-def pr():
-    return struct.unpack('>5I', bytes(uc.mem_read(probe, 20)))
+def pr():   # marker, booted, written, failed, read, bad, slot + 1
+    return struct.unpack('>7I', bytes(uc.mem_read(probe, 28)))
 
 
 def cfg(m):
@@ -52,18 +50,21 @@ def set_cfg(m, thru=1, mw=0, mwa=0, sens=100):
     uc.mem_write(midi_cfg + 12 * m, struct.pack('>bbbbbxhhh', thru, mw, 0, 0, sens, mwa, 0, 0))
 
 
-assert store > 0x47be0000, 'the store not found'
-print('probe %08x, settings %08x, store %08x' % (probe, midi_cfg, store))
+print('probe %08x, settings %08x' % (probe, midi_cfg))
 check(pr()[1] == 1, 'the store was read at power-on (drive mounted)')
 saves = pr()[2]
 set_cfg(0, mw=7, mwa=20 * 256)
-s.run_ms(1500)
-check(pr()[2] > saves, 'a change: the working record written a second later (%d saves, %d failed)' % (pr()[2], pr()[3]))
+for ms in range(0, 8000, 100):
+    s.run_ms(100)
+    if pr()[2] > saves:
+        break
+print('current.txt written after %d ms' % (ms + 100))
+check(pr()[2] > saves, 'a change: current.txt written once nothing plays (%d saves, %d failed)' % (pr()[2], pr()[3]))
 # SAVE PROJECT AS 003
 do('tap GLOBAL\nwait 500\ntap YES\nwait 500\ntap DOWN\nwait 200\ntap YES\nwait 800\ntap DOWN\nwait 300\ntap DOWN\nwait 300\ntap YES\nwait 800\ntap YES\nwait 6000\n')
 s.run_ms(2000)
-st = bytes(uc.mem_read(store, STORE_BYTES))
-check(st.find(b'NEW PROJECT') > 0, "SAVE PROJECT AS: a record named 'NEW PROJECT' in the store")
+check(pr()[6] == 3, 'SAVE PROJECT AS 003: the mod got slot 003 (%d)' % pr()[6])
+check(pr()[2] > saves, 'and wrote its file (%d written)' % pr()[2])
 saves = pr()[2]
 # change it, then LOAD PROJECT 003
 set_cfg(0, mw=2, mwa=0)
@@ -73,22 +74,24 @@ do('tap YES\nwait 800\n')
 do('tap YES\nwait 300\n')
 do('wait 30000\n')
 c = cfg(0)
-check(c[1] == 7 and c[5] == 20 * 256, 'LOAD PROJECT NEW PROJECT: MW -> VAL3 +20 back as saved %s' % (c,))
+check(c[1] == 7 and c[5] == 20 * 256, 'LOAD PROJECT 003: MW -> VAL3 +20 back as saved %s' % (c,))
+check(pr()[6] == 3, 'the load job gave slot 003 (%d)' % pr()[6])
 # LOAD the factory project (no record): the defaults
 do('tap NO\nwait 300\ntap NO\nwait 300\ntap GLOBAL\nwait 500\ntap YES\nwait 500\ntap UP\nwait 200\ntap UP\nwait 200\ntap YES\nwait 800\ntap UP\nwait 300\ntap UP\nwait 300\n')
 do('tap YES\nwait 800\n')
 do('tap YES\nwait 30000\n')
 c = cfg(0)
-check(c[1] == 0 and c[0] == 1 and c[4] == 100, 'LOAD PROJECT PRESETS (never saved with the mod): the defaults %s' % (c,))
+check(c[1] == 0 and c[0] == 1 and c[4] == 100, 'LOAD PROJECT 001 (never saved with the mod): the defaults %s' % (c,))
+check(pr()[6] == 1, 'the load job gave slot 001 (%d)' % pr()[6])
 # an edit, then a power-on
 set_cfg(5, sens=40)
 s.run_ms(1500)
 for m in range(8):
     set_cfg(m)
-uc.mem_write(store, bytes(STORE_BYTES))
-uc.mem_write(probe + 4, struct.pack('>I', 0))
+uc.mem_write(probe + 4, struct.pack('>I', 0))   # the mod reads its files as at power-on
 s.run_ms(1500)
 c = cfg(5)
 check(pr()[1] == 1 and c[4] == 40, 'power-on: the file read back, as it was at power-off (track F V.SNS %d)' % c[4])
 check(not pr()[3], 'no failed write (%d)' % pr()[3])
+check(not pr()[5], 'no bad file read (%d)' % pr()[5])
 print('%d failures' % len(fails))

@@ -1027,86 +1027,217 @@ int main(void)
     CHECK(KEY(19, 1, 0) == 1 && me_page_open && KEY(19, 0, 0) == 1 && !me_page_open, "TRIG again: back to the first page");
     CHECK(ENC(1, 1) == 0, "closed: knobs are stock's");
 
-    // 40. Kept with the project (store.c): a file of its own on the +Drive.
+    // 40. Kept with the project (store.c): text files on the +Drive.
     {
+#define TICKS(n) for (int i_ = 0; i_ < (n); i_++) me_tick(0)
         reset();
-        memset(&me_store, 0, sizeof me_store); st_loaded = 0; st_dirty = 0; st_wait = 0;
-        h_file_len[0] = h_file_len[1] = -1; h_dir = 0; me_store_saves = 0;
-        h_mounted = 0;
+        h_nfs = 0; h_mounted = 0; booted = 0; dirs_made = 0; cur_slot = -1; current_dirty = 0; job.kind = 0;
+        def_preset[0] = def_preset[1] = -1; pscan[0] = pscan[1] = 0;
         me_tick(0);
-        CHECK(!st_loaded, "drive not mounted: waits");
-        h_mounted = 1; h_owner = 1;
-        me_tick(0);
-        CHECK(!st_loaded, "drive busy: waits");
-        h_owner = 0;
-        me_tick(0);
-        CHECK(st_loaded && h_file_len[0] < 0 && h_file_len[1] < 0, "no file yet: nothing to load, nothing written");
-        // a change: the working record, a second later
+        CHECK(!booted, "drive not mounted: waits");
+        h_mounted = 1; h_owner = 1; me_tick(0);
+        CHECK(!booted, "drive busy: waits");
+        h_owner = 0; me_tick(0);
+        CHECK(booted && me_midi_cfg[0].thru == 1 && me_audio_cfg[0].range == 2, "first power-on: nothing on the card, the factory settings");
+        // a change: current.txt a second later, in _temp first
         me_midi_cfg[0].mw_dest = 7; me_midi_cfg[0].mw_amount = 20 * 256; me_audio_cfg[3].range = 7;
-        for (int i = 0; i < SAVE_WAIT; i++) me_tick(0);
-        CHECK(h_file_len[0] < 0 && h_file_len[1] < 0, "not before a second");
-        me_tick(0);
-        CHECK(me_store_saves == 1 && h_dir && (h_file_len[0] > 0 || h_file_len[1] > 0), "then written, /cfw made");
-        // SAVE PROJECT AS "SONG A"
-        me_project_saving("SONG A");
-        me_tick(0);
-        CHECK(find("SONG A") && find("SONG A")->midi[0].mw_dest == 7 && find("SONG A")->audio[3].range == 7, "saved as SONG A");
-        // edits after the save, then LOAD PROJECT SONG A: back as saved
+        TICKS(SAVE_WAIT);
+        CHECK(!h_ftext("/cfw/expression/current.txt"), "not before a second");
+        TICKS(12 + QUIET);                                // looked at three times a second, a second, and quiet
+        const char *cur = h_ftext("/cfw/expression/current.txt");
+        CHECK(cur && h_ftext("/cfw/expression/_temp/current.txt"), "then written, with its copy");
+        CHECK(cur && strstr(cur, "[A]") && strstr(cur, "MW=7") && strstr(cur, "M.DEP=+20.00") && strstr(cur, "BEND=7") && strstr(cur, "\nEND\n"), "readable text: %s", cur ? cur : "-");
+        CHECK(cur && h_fs[h_find("/cfw/expression/current.txt")].len == PROJ_SIZE, "a fixed size");
+        // SAVE PROJECT AS slot 003 "SONG A"
+        me_project_saving("SONG A", 2);
+        me_midi_cfg[0].mw_dest = 9;                       // a change during the save is not in it
+        TICKS(1);
+        const char *pj = h_ftext("/cfw/expression/projects/003.txt");
+        CHECK(pj && strstr(pj, "NAME=SONG A") && strstr(pj, "SLOT=3") && strstr(pj, "MW=7"), "projects/003.txt, as at the save: %s", pj ? pj : "-");
+        CHECK(h_ftext("/cfw/expression/_temp/projects/003.txt") != 0, "and its copy in _temp");
+        // edits, then LOAD PROJECT slot 003: as saved
         me_midi_cfg[0].mw_dest = 2; me_audio_cfg[3].range = 1;
-        for (int i = 0; i < 40; i++) me_tick(0);
-        me_project_loading("SONG A");
-        me_tick(0);
-        CHECK(me_midi_cfg[0].mw_dest == 7 && me_audio_cfg[3].range == 7, "loaded SONG A: as saved (%d %d)", me_midi_cfg[0].mw_dest, me_audio_cfg[3].range);
-        // a project without a record: the defaults
-        me_project_loading("OTHER");
-        me_tick(0);
-        CHECK(me_midi_cfg[0].mw_dest == 0 && me_audio_cfg[3].range == 2 && me_midi_cfg[0].thru == 1 && me_audio_cfg[0].vel_sens == 100, "unknown project: defaults");
+        TICKS(40);
+        me_project_loading("SONG A", 2);
+        TICKS(1);
+        CHECK(me_midi_cfg[0].mw_dest == 7 && me_audio_cfg[3].range == 7 && me_midi_cfg[0].mw_amount == 20 * 256, "loaded slot 003: as saved (%d %d)", me_midi_cfg[0].mw_dest, me_audio_cfg[3].range);
+        // a renamed project: still slot 003
+        me_project_loading("RENAMED", 2);
+        TICKS(1);
+        CHECK(me_midi_cfg[0].mw_dest == 7, "renamed: found by its slot");
+        // a project without a file: the defaults
+        me_project_loading("OTHER", 9);
+        TICKS(1);
+        CHECK(me_midi_cfg[0].mw_dest == 0 && me_audio_cfg[3].range == 2 && me_midi_cfg[0].thru == 1, "slot 010 without a file: the factory defaults");
+        // power-on: as at power-off
         me_midi_cfg[5].vel_sens = 40;
-        for (int i = 0; i < 40; i++) me_tick(0);
-        // power-off and on: RAM gone, the file read back, the working record applied
-        u32 saves = me_store_saves;
-        memset(&me_store, 0, sizeof me_store); st_loaded = 0; st_dirty = 0;
-        defaults();
-        me_tick(0);
-        CHECK(me_midi_cfg[5].vel_sens == 40 && me_midi_cfg[0].mw_dest == 0, "power-on: as at power-off (%d)", me_midi_cfg[5].vel_sens);
-        CHECK(same_name(me_store.work.name, "OTHER"), "the working project's name kept");
-        me_project_loading("SONG A");
-        me_tick(0);
-        CHECK(me_midi_cfg[0].mw_dest == 7 && me_midi_cfg[5].vel_sens == 100, "and SONG A still as saved");
-        // a torn write: the newer file broken, the older one used
-        for (int i = 0; i < 40; i++) me_tick(0);
-        int newer = (int)(me_store.seq & 1);
-        h_file[newer][20] ^= 0xff;
-        memset(&me_store, 0, sizeof me_store); st_loaded = 0; st_dirty = 0;
-        me_tick(0);
-        CHECK(st_loaded && me_store.magic == ST_MAGIC && find("SONG A"), "a broken newer file: the older one is read");
-        // garbage in a record cannot put a value out of range
-        struct st_rec *r = place("BAD");
-        memset(r, 0x7f, sizeof *r); copy_name(r->name, "BAD"); r->used = 1;
-        me_project_loading("BAD");
-        me_tick(0);
-        CHECK(me_midi_cfg[0].mw_dest < MIDI_DESTS && me_audio_cfg[0].range <= PB_RANGE_MAX && me_midi_cfg[0].thru <= 1
-              && me_audio_cfg[0].mw_amount <= AMOUNT_MAX && me_audio_cfg[0].vel_sens <= 100, "a bad record: values held in range");
-        // a failed write: tried again later, not lost
-        h_write_fail = 1;
-        me_midi_cfg[1].thru = 0;
-        u32 fails = me_store_fails;
-        for (int i = 0; i < 40; i++) me_tick(0);
-        CHECK(me_store_fails == fails + 1 && st_dirty, "a failed write: counted, still to save");
+        TICKS(40);
+        booted = 0; me_midi_cfg[5].vel_sens = 100; me_audio_cfg[0].range = 9;
+        TICKS(1);
+        CHECK(me_midi_cfg[5].vel_sens == 40 && me_audio_cfg[0].range == 2 && cur_slot == 9, "power-on: as at power-off (%d), slot kept %d", me_midi_cfg[5].vel_sens, cur_slot);
+        // a torn current.txt: the copy in _temp is read
+        int ci = h_find("/cfw/expression/current.txt");
+        h_fs[ci].len = 300;                               // cut short: no END
+        booted = 0; me_midi_cfg[5].vel_sens = 100;
+        u32 bad = n_bad;
+        TICKS(1);
+        CHECK(me_midi_cfg[5].vel_sens == 40 && n_bad == bad + 1, "a torn file: the _temp copy (%d)", me_midi_cfg[5].vel_sens);
+        // both broken: the defaults, never garbage
+        h_fs[ci].len = 300; h_fs[h_find("/cfw/expression/_temp/current.txt")].len = 10;
+        booted = 0;
+        TICKS(1);
+        CHECK(me_midi_cfg[5].vel_sens == 100 && me_midi_cfg[0].thru == 1, "both broken: the defaults");
+        // nothing is written while notes play
+        me_midi_cfg[6].vel_sens = 33;
+        { u32 w = n_written;
+          for (int i = 0; i < 300; i++) { me_activity++; me_tick(0); }
+          CHECK(n_written == w, "playing: current.txt waits (%u)", n_written - w);
+          TICKS(QUIET + 2);
+          CHECK(n_written == w + 1, "then written once quiet"); }
+        me_midi_cfg[6].vel_sens = 100;
+        TICKS(12 + SAVE_WAIT + QUIET);
+        // a hand-edited project file: odd spacing, comments, CRLF, out of range, junk lines, missing keys
+        h_put_text("/cfw/expression/projects/004.txt",
+            "MIDI EXPRESSION PROJECT 1\r\nNAME=Hand made\r\n; my notes\r\n[1]\r\nBEND = 99\r\nV.SNS=-5\r\nMW=26 ; filter\r\n"
+            "M.DEP=+12.5\r\nVEL=37\r\nV.DEP=-300\r\nnonsense line\r\n[b]\r\nTHRU=off\r\nAT=17\r\nA.DEP=-64.00\r\nMW=999\r\n[Z]\r\nBEND=3\r\nEND\r\n");
+        me_project_loading("x", 3);
+        TICKS(1);
+        CHECK(me_audio_cfg[0].range == 12 && me_audio_cfg[0].vel_sens == 0 && me_audio_cfg[0].mw_dest == 26
+              && me_audio_cfg[0].mw_amount == 32 * 100 && me_audio_cfg[0].vel_dest == 0 && me_audio_cfg[0].vel_amount == -AMOUNT_MAX,
+              "hand edits: held in range (%d %d %d %d %d %d)", me_audio_cfg[0].range, me_audio_cfg[0].vel_sens, me_audio_cfg[0].mw_dest,
+              me_audio_cfg[0].mw_amount, me_audio_cfg[0].vel_dest, me_audio_cfg[0].vel_amount);
+        CHECK(me_midi_cfg[1].thru == 0 && me_midi_cfg[1].at_dest == 17 && me_midi_cfg[1].at_amount == -AMOUNT_MAX && me_midi_cfg[1].mw_dest == MIDI_DESTS - 1,
+              "MIDI B from [b]: THRU off, AT -> LFO depth -64, MW held (%d)", me_midi_cfg[1].mw_dest);
+        CHECK(me_audio_cfg[2].range == 2 && me_midi_cfg[0].thru == 1, "untouched tracks: factory");
+        // presets: save, list, load, reset, default
+        me_audio_cfg[0].range = 5; me_audio_cfg[0].mw_dest = 27; me_audio_cfg[0].mw_amount = 10 * 256;
+        CHECK(me_preset_save(0, 4, "Lead  ", 0), "save audio preset 05");
+        CHECK(!me_preset_save(0, 5, "x", 0), "one job at a time");
+        TICKS(1);
+        const char *pr = h_ftext("/cfw/expression/audio/05.txt");
+        CHECK(pr && strstr(pr, "NAME=Lead\n") && strstr(pr, "BEND=5") && h_ftext("/cfw/expression/_temp/audio/05.txt"), "audio/05.txt: %s", pr ? pr : "-");
+        me_presets_rescan(0);
+        TICKS(10);
+        CHECK(me_presets_ready(0) && !strcmp(me_preset_name(0, 4), "Lead") && !*me_preset_name(0, 0), "the list: 05 Lead, the rest empty");
+        me_audio_cfg[6].range = 0;
+        CHECK(me_preset_load(0, 4, 6), "load preset 05 on track 7");
+        TICKS(1);
+        CHECK(me_audio_cfg[6].range == 5 && me_audio_cfg[6].mw_dest == 27 && me_audio_cfg[6].mw_amount == 10 * 256, "track 7 is Lead");
+        me_default_set(0, 4);
+        TICKS(1);
+        CHECK(h_ftext("/cfw/expression/config.txt") && strstr(h_ftext("/cfw/expression/config.txt"), "DEFAULT AUDIO=5"), "config: default audio 5");
+        me_audio_cfg[2].range = 11;
+        me_track_reset(0, 2);
+        TICKS(1);
+        CHECK(me_audio_cfg[2].range == 5 && me_audio_cfg[2].mw_dest == 27, "RESET: the default preset, Lead");
+        me_project_loading("NEW", 20);
+        TICKS(1);
+        CHECK(me_audio_cfg[0].range == 5 && me_audio_cfg[7].mw_dest == 27 && me_midi_cfg[0].thru == 1, "a new project: Lead on every audio track, factory MIDI");
+        def_preset[0] = 9; booted = 0;                     // config read back at power-on
+        TICKS(1);
+        CHECK(def_preset[0] == 4, "config read at power-on: %d", def_preset[0]);
+        h_fs[h_find("/cfw/expression/audio/05.txt")].len = 5; h_fs[h_find("/cfw/expression/_temp/audio/05.txt")].len = 5;
+        me_track_reset(0, 1);
+        TICKS(1);
+        CHECK(me_audio_cfg[1].range == 2, "the default preset broken: factory");
+        me_default_set(0, -1);
+        TICKS(1);
+        CHECK(strstr(h_ftext("/cfw/expression/config.txt"), "DEFAULT AUDIO=0"), "default back to Factory");
+        // a write that fails: counted, tried again
+        h_write_fail = 2;
+        me_midi_cfg[1].thru = 1;
+        u32 fails = n_failed;
+        TICKS(SAVE_WAIT + 12 + QUIET);
+        CHECK(n_failed == fails + 1 && current_dirty, "a failed write: counted, still to save");
         h_write_fail = 0;
-        for (int i = 0; i < RETRY + 2; i++) me_tick(0);
-        CHECK(!st_dirty, "saved on the retry");
-        // more projects than records: the one saved longest ago goes
-        for (int i = 0; i < NREC + 2; i++) { char n[17]; snprintf(n, sizeof n, "P%03d", i); me_project_saving(n); me_tick(0);
-            if (i == 5) { me_project_saving("P000"); me_tick(0); } }       // P000 saved again: newest then
-        char last[17]; snprintf(last, sizeof last, "P%03d", NREC + 1);
-        CHECK(find(last) && find("P000") && !find("SONG A") && !find("P001") && find("P003"), "full: the least recently saved go");
-        int usedn = 0; for (int i = 0; i < NREC; i++) usedn += me_store.rec[i].used != 0;
-        CHECK(usedn == NREC, "every record in use: %d", usedn);
-        me_project_saving("P003"); me_tick(0);
-        CHECK(me_store.rec[NREC - 1].used && same_name(me_store.rec[NREC - 1].name, "P003"), "a saved project moves to the newest end");
-        (void)saves;
-        defaults();
+        TICKS(RETRY + 12);
+        CHECK(!current_dirty, "saved on the retry");
+        CHECK(h_open_count == 0 && h_max_open <= 1, "every file closed; never two open (%d %d)", h_open_count, h_max_open);
+        // fuzz: random bytes as files never crash or put a value out of range
+        for (int r = 0; r < 3000; r++) {
+            char junk[600]; int n = 30 + RND(500);
+            const char *heads[] = { "MIDI EXPRESSION PROJECT 1\n", "MIDI EXPRESSION PRESET AUDIO 1\n", "" };
+            int hl = (int)strlen(heads[r % 3]); memcpy(junk, heads[r % 3], (size_t)hl);
+            for (int i = hl; i < n; i++) { int c = RND(10); junk[i] = (char)(c < 3 ? "=\n[]+-.;END"[RND(11)] : c < 6 ? '0' + RND(10) : c < 8 ? "BENDMWVATHRUSNSDEPLIX"[RND(21)] : RND(256)); }
+            if (RND(2)) memcpy(junk + n - 4, "END\n", 4);
+            junk[n] = 0;
+            h_put_text("/cfw/expression/projects/050.txt", junk);
+            h_put_text("/cfw/expression/_temp/projects/050.txt", junk);
+            me_project_loading("f", 49);
+            TICKS(1);
+            for (int t = 0; t < 8; t++) {
+                CHECK(me_audio_cfg[t].range >= 0 && me_audio_cfg[t].range <= 12 && me_dest_valid(0, me_audio_cfg[t].mw_dest) && me_dest_valid(0, me_audio_cfg[t].vel_dest)
+                      && me_dest_valid(0, me_audio_cfg[t].at_dest) && me_audio_cfg[t].vel_sens >= 0 && me_audio_cfg[t].vel_sens <= 100
+                      && me_audio_cfg[t].mw_amount >= -AMOUNT_MAX && me_audio_cfg[t].mw_amount <= AMOUNT_MAX, "fuzz %d: audio %d in range", r, t);
+                CHECK(me_midi_cfg[t].thru >= 0 && me_midi_cfg[t].thru <= 1 && me_midi_cfg[t].mw_dest >= 0 && me_midi_cfg[t].mw_dest < MIDI_DESTS
+                      && me_midi_cfg[t].at_amount >= -AMOUNT_MAX && me_midi_cfg[t].at_amount <= AMOUNT_MAX, "fuzz %d: MIDI %d in range", r, t);
+            }
+        }
+        // the page's menu: a 1 s push of knob A
+        reset(); OPEN();
+        KEY(40, 1, 0); h_push_held = 1;
+        for (int i = 0; i < LONG_PUSH + 1; i++) me_page_tick(0);
+        CHECK(me_menu == M_MAIN, "a 1 s push of A: the menu");
+        h_push_held = 0; KEY(40, 0, 0);
+        KEY(K_DOWN, 1, 0); KEY(K_YES, 1, 0);                 // SAVE
+        CHECK(me_menu == M_SAVE, "SAVE: the slots");
+        TICKS(10);
+        KEY(K_DOWN, 1, 0); KEY(K_YES, 1, 0);                 // slot 02
+        CHECK(me_menu == M_NAME && !strcmp(edit_name, "NEW"), "the name: NEW (%s)", edit_name);
+        KEY(K_UP, 1, 0);                                     // N -> O
+        KEY(K_RIGHT, 1, 0); KEY(K_RIGHT, 1, 0); KEY(K_RIGHT, 1, 0); KEY(K_UP, 1, 0);   // past the end: a new character
+        KEY(K_YES, 1, 0);
+        TICKS(1);
+        CHECK(!strcmp(me_preset_name(1, 1), "OEWA") && h_ftext("/cfw/expression/midi/02.txt"), "MIDI track A: saved as midi/02 OEWA: %s", me_preset_name(1, 1));
+        CHECK(me_menu == M_MAIN, "back to the menu");
+        KEY(K_NO, 1, 0);
+        CHECK(me_menu == M_OFF && me_page_open, "NO: back to the page");
+        // the longest a project file gets: every destination, negative depths: within PROJ_SIZE with room
+        for (int t = 0; t < 8; t++) {
+            me_audio_cfg[t].mw_dest = 44; me_audio_cfg[t].vel_dest = 39; me_audio_cfg[t].at_dest = 43; me_audio_cfg[t].range = 12; me_audio_cfg[t].vel_sens = 100;
+            me_audio_cfg[t].mw_amount = me_audio_cfg[t].vel_amount = me_audio_cfg[t].at_amount = -AMOUNT_MAX;
+            me_midi_cfg[t].mw_dest = 12; me_midi_cfg[t].vel_dest = 11; me_midi_cfg[t].at_dest = 10;
+            me_midi_cfg[t].mw_amount = me_midi_cfg[t].vel_amount = me_midi_cfg[t].at_amount = -AMOUNT_MAX;
+            SEL(t, 7, 127); SEL(t, 6, 127); SEL(t, 5, 127);
+        }
+        take_snapshot();
+        {
+            int n = write_project(buf, "ABCDEFGHIJKL", 127), used = (int)(strstr(buf, "\nEND\n") - buf) + 5;
+            CHECK(n == PROJ_SIZE && used < PROJ_SIZE - 600, "the longest project file: %d of %d bytes", used, PROJ_SIZE);
+        }
+        // LOAD, RESET and DEFAULT through the menu, with the LEVEL knob
+        reset(); OPEN();
+        h_active_track = 0;                                  // audio track 1
+        me_audio_cfg[0].range = 3;
+        me_menu = M_MAIN; menu_cur[M_MAIN] = 0;
+        KEY(K_YES, 1, 0);                                    // LOAD
+        TICKS(10);
+        CHECK(me_menu == M_LOAD && me_presets_ready(0), "LOAD: the audio presets");
+        { int ev2[8] = { 0, 0, 0, 9, RAW_DETENT * 4, 0, 0, 0 }; me_page_enc(0, ev2); }   // LEVEL: four down
+        CHECK(menu_cur[M_LOAD] == 4, "LEVEL moves the cursor: %d", menu_cur[M_LOAD]);
+        KEY(K_YES, 1, 0);
+        TICKS(1);
+        CHECK(!strcmp(me_preset_name(0, 4), "Lead") ? me_audio_cfg[0].range == 5 : 1, "slot 05 loaded on track 1 (%d)", me_audio_cfg[0].range);
+        me_menu = M_MAIN; menu_cur[M_MAIN] = 2;
+        KEY(K_YES, 1, 0);                                    // RESET
+        CHECK(me_menu == M_RESET, "RESET asks first");
+        KEY(K_YES, 1, 0);
+        TICKS(1);
+        CHECK(me_audio_cfg[0].range == 2 && me_menu == M_MAIN, "RESET: the default (Factory) on track 1");
+        menu_cur[M_MAIN] = 3;
+        KEY(K_YES, 1, 0);                                    // DEFAULT
+        TICKS(10);
+        CHECK(me_menu == M_DEFAULT && menu_cur[M_DEFAULT] == 0, "DEFAULT: the cursor on the current one, FACTORY");
+        KEY(K_NO, 1, 0); KEY(K_NO, 1, 0);
+        CHECK(me_menu == M_OFF, "NO, NO: back to the page");
+        // a plain push of A (shorter than a second) does not open it
+        KEY(40, 1, 0); h_push_held = 1;
+        for (int i = 0; i < 10; i++) me_page_tick(0);
+        h_push_held = 0; KEY(40, 0, 0);
+        for (int i = 0; i < 40; i++) me_page_tick(0);
+        CHECK(me_menu == M_OFF, "a short push: no menu");
+        reset();
+#undef TICKS
     }
 
     printf("%d checks, %d failures\n", checks, failures);

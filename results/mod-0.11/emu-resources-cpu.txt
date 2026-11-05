@@ -1,0 +1,4 @@
+idle: 745306 instructions/s in the module area (1.16 % of 64000000/s)
+audio track, every route live, a flood at the wire rate: 1115144 instructions/s (1.74 %)
+MIDI track A, every route live, the same flood: 1143655 instructions/s (1.79 %)
+static RAM: see the image's ramSpare (module area left free)

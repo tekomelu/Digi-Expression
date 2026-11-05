@@ -1,0 +1,4 @@
+idle 10 s: 3330 new, 3330 delete; heap words ['0x1', '0x4299e6b0', '0x4217cc00', '0x4399e6b0', '0x14', '0x100000'] -> ['0x1', '0x4299e6b0', '0x4217cc00', '0x4399e6b0', '0x14', '0x100000']
+40 file writes, 40 reads: 19829 new, 19829 delete (balance 0); heap words ['0x1', '0x4299e6b0', '0x4217cc00', '0x4399e6b0', '0x14', '0x100000']
+PASS no memory kept by the mod's file work (new - delete beyond idle: 0)
+PASS no failed write, no bad file (0, 0)

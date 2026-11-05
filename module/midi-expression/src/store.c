@@ -1,28 +1,44 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-// MIDI Expression: each track's EXPRESSION settings, kept with the project.
+// MIDI Expression: the settings on the +Drive, as text files.
 //
 // No byte of a saved sound or pattern is free for them (docs/RESEARCH-OS154.md,
-// section 13), so they live in a file of their own on the +Drive, as Digi
-// Slicer keeps its slices: /cfw/expression.a and /cfw/expression.b, written in
-// turn (a power cut during a save leaves the other one whole; the loader takes
-// the valid one with the higher sequence number), each rewritten in place
-// with one write through the firmware's own ekFS calls.
+// section 13), so they are files of the mod's own, written with the firmware's
+// ekFS calls (as Digi Slicer keeps its slices), in /cfw/expression:
 //
-// The file holds one record per project name, and the working record:
-//   - SAVE PROJECT AS (and every project save): the project's record becomes
-//     the settings as they are. The firmware formats "SAVING '%.16s'" with the
-//     project's name; a 6-byte jsr site over that sprintf call (store.s)
-//     hands the name here first.
-//   - LOAD PROJECT: the same for "LOADING '%.16s'": the project's record is
-//     loaded (a project saved without one gets the defaults).
-//   - Any change on the page: the working record, a second later. At power-on
-//     the working record comes back: the settings as they were when the unit
-//     was switched off, as the Digitakt brings back its working project.
-// Two projects with the same name share a record.
+//   projects/003.txt   project slot 003's settings, all 16 tracks (its name inside)
+//   audio/01.txt       audio-track preset 01 .. 64 (one track's settings)
+//   midi/01.txt        MIDI-track preset 01 .. 64
+//   current.txt        the settings as they are now, for power-on
+//   config.txt         which preset is the default for each kind of track
+//   _temp/...          the same names: each file is written there first, then
+//                      in its place, so a power cut during a save always
+//                      leaves one whole copy; the loader takes the first that
+//                      reads whole (it must end with an END line).
 //
-// All of it runs in the UI task (ev_tick, 30 Hz). The ekFS calls take the
-// filesystem's mutex themselves; this waits while it is held (a project or
-// sample load holds it) and while the drive is not mounted.
+// Plain text, one setting a line, editable by hand; anything out of range is
+// held to the nearest valid value, unknown lines are skipped, a missing value
+// is the factory default. A file that does not start with its header or has
+// no END line is not used (the copy in _temp is tried, then the defaults).
+//
+// When (store.s hooks the project jobs' messages, with their slot number):
+//   SAVE PROJECT AS / save   projects/NNN.txt <- the settings now
+//   LOAD PROJECT             the settings <- projects/NNN.txt, or, for a
+//                            project without one, each track's default preset
+//   a change on the page     current.txt, a second later
+//   power-on                 the settings <- current.txt
+// Projects are known by their slot, so renaming a project or deleting another
+// one changes nothing. A project put into a slot from outside (Transfer)
+// takes the slot's old file, if there is one.
+//
+// Everything runs in the UI task (ev_tick, 30 Hz), one job a tick, only while
+// the filesystem's mutex is free and the drive is mounted. No memory is
+// allocated: one static text buffer, files opened and closed in the same call.
+
+// Small rather than fast: the page and the files are not on a hot path, and
+// RAM is shared with the other mods (it saves about 10 KB beside Digi Slicer).
+#ifndef ME_HOST_TEST
+#pragma GCC optimize ("Os", "no-tree-loop-distribute-patterns")   // and no memset, memmove or strlen calls: a mod has no C library
+#endif
 
 #include "expr.h"
 
@@ -47,334 +63,885 @@ typedef struct { u32 inode, pos, writable, open; } ekfile;
 #define NOT_FOUND  0x19
 #endif
 
-#define NREC      32                          // projects; the least recently saved goes
-#define NAME_LEN  16
-#define ST_MAGIC  0x4d455831u                // "MEX1"
-#define SAVE_WAIT 30                          // ticks after the last change (1 s)
-#define RETRY     300                         // after a failed save (10 s)
+#define SAVE_WAIT  30                         // ticks after the last change (1 s)
+#define QUIET      60                         // ticks without a note or live input (2 s)
+#define RETRY      300                        // after a failed write (10 s)
+#define PROJ_SIZE  5120                       // a project file, always this size (about 4.3 KB at most used)
+#define PRESET_SIZE 1024                      // a preset or config file
+#define NAME_MAX   ME_NAME_LEN
 
-struct st_rec {
-    char name[NAME_LEN];                      // the project's, as the firmware shows it
-    u32 used;
-    struct me_cfg audio[8], midi[8];
-};
+// ---- state --------------------------------------------------------------------
+static char buf[PROJ_SIZE];                   // the one text buffer
+static struct me_cfg snap_a[8], snap_m[8];    // settings taken for a job
+static char snap_name[NAME_MAX + 1];
+static int8_t def_preset[2] = { -1, -1 };     // default preset per kind (audio, MIDI): -1 Factory
+static char pnames[2][ME_PRESETS][NAME_MAX + 1];   // the presets' names, "" for an empty slot
+static uint8_t pscan[2];                      // 0 not read, 1..64 next to read + 1, 65 read
+static int8_t cur_slot = -1;                  // the project's slot, as last saved or loaded
+static char cur_name[NAME_MAX + 1];
+static s32 dirs_made;
 
-struct st_file {
-    u32 magic, nrec, seq, sum;
-    struct st_rec work;                       // as things are now (name: the project's)
-    struct st_rec rec[NREC];                  // as each project was saved
-    uint8_t pad[16];                          // a USB listing shows size - 16
-};
+enum { J_NONE, J_BOOT, J_SAVE_PROJECT, J_LOAD_PROJECT, J_SAVE_PRESET, J_LOAD_PRESET, J_RESET, J_CONFIG };
+static struct { uint8_t kind; int8_t mid, slot, track; } job;   // the one waiting (UI: one at a time)
+static uint8_t save_project_req, load_project_req, current_dirty;
+static int8_t req_slot_save, req_slot_load;
+static s32 wait_ticks;
+static u32 last_sum;
 
-struct st_file me_store;
-static const char *const st_path[2] = { "/cfw/expression.b", "/cfw/expression.a" };
-// For tests (found by its marker): [1] the file was read (or there was none),
-// [2] saves, [3] failed saves, [4] reads. A test clears [1] to play a power-on.
-volatile u32 me_store_probe[5] = { 0x4d455850, 0, 0, 0, 0 };   // "MEXP"
-#define st_loaded      me_store_probe[1]
-#define me_store_saves me_store_probe[2]
-#define me_store_fails me_store_probe[3]
-#define me_store_loads me_store_probe[4]
-static s32 st_dirty, st_wait;
-static char st_saving[NAME_LEN + 1], st_loading[NAME_LEN + 1];
-static volatile uint8_t st_save_req, st_load_req;
-static u32 st_last;                           // the settings' checksum last tick
+// For tests (found by its marker): [1] booted (current.txt read, or none),
+// [2] files written, [3] failed writes, [4] files read, [5] bad files seen,
+// [6] the project slot last saved or loaded + 1. A test clears [1] for a power-on.
+volatile u32 me_store_probe[7] = { 0x4d455850, 0, 0, 0, 0, 0, 0 };   // "MEXP"
+#define booted       me_store_probe[1]
+#define n_written    me_store_probe[2]
+#define n_failed     me_store_probe[3]
+#define n_read       me_store_probe[4]
+#define n_bad        me_store_probe[5]
 
+// ---- small string helpers (no C library in a mod) ------------------------------
+static int slen(const char *s) { int n = 0; while (s[n]) n++; return n; }
 
-static u32 sum_words(const void *p, u32 bytes, u32 s)
-{
-    const uint8_t *b = (const uint8_t *)p;
-    for (u32 i = 0; i < bytes; i++)
-        s = ((s << 5) | (s >> 27)) ^ b[i];
-    return s;
-}
-
-static u32 file_sum(void)
-{
-    return sum_words(&me_store.work, sizeof me_store.work + sizeof me_store.rec, 0x5eed4d45u);
-}
-
-static u32 cfg_sum(void)
-{
-    return sum_words((const void *)me_midi_cfg, sizeof me_midi_cfg,
-                     sum_words((const void *)me_audio_cfg, sizeof me_audio_cfg, 1));
-}
-
-static void copy_name(char *dst, const char *src)
+static void scopy(char *d, const char *s, int max)
 {
     int i = 0;
-    for (; src && src[i] && i < NAME_LEN; i++)
-        dst[i] = src[i];
-    for (; i < NAME_LEN; i++)
-        dst[i] = 0;
+    for (; s && s[i] && i < max; i++)
+        d[i] = s[i];
+    d[i] = 0;
 }
 
-static int same_name(const char *a, const char *b)
+// A name as the firmware's own: printable ASCII, at most NAME_MAX, trailing spaces gone.
+static void clean_name(char *d, const char *s)
 {
-    for (int i = 0; i < NAME_LEN; i++) {
-        if (a[i] != b[i])
-            return 0;
-        if (!a[i])
-            return 1;
+    int n = 0;
+    for (int i = 0; s && s[i] && n < NAME_MAX; i++)
+        d[n++] = s[i] >= 32 && s[i] < 127 ? s[i] : ' ';
+    while (n > 0 && d[n - 1] == ' ')
+        n--;
+    d[n] = 0;
+}
+
+struct out { char *p; int n, max; };
+
+static void put(struct out *o, const char *s)
+{
+    while (*s && o->n < o->max - 1)
+        o->p[o->n++] = *s++;
+}
+
+static void put_int(struct out *o, s32 v, int sign)
+{
+    char t[12];
+    int n = 0;
+    u32 u = v < 0 ? (u32)-v : (u32)v;
+    do t[n++] = (char)('0' + u % 10); while ((u /= 10) && n < 11);
+    if (v < 0) put(o, "-");
+    else if (sign) put(o, "+");
+    while (n) { char c[2] = { t[--n], 0 }; put(o, c); }
+}
+
+static void put_2(struct out *o, int v)        // two digits
+{
+    char c[3] = { (char)('0' + v / 10 % 10), (char)('0' + v % 10), 0 };
+    put(o, c);
+}
+
+// A depth in 1/256 as +dd.dd (two decimals, rounded).
+static void put_depth(struct out *o, s32 v)
+{
+    s32 h = (v < 0 ? -v : v) * 100;
+    h = (h + 128) / 256;                       // hundredths
+    if (v < 0) put(o, "-"); else put(o, "+");
+    put_int(o, h / 100, 0);
+    put(o, ".");
+    put_2(o, (int)(h % 100));
+}
+
+static void path_of(char *p, int temp, const char *dir, int number, int digits)
+{
+    struct out o = { p, 0, 48 };
+    put(&o, temp ? "/cfw/expression/_temp/" : "/cfw/expression/");
+    put(&o, dir);
+    if (digits) {
+        char d[4] = { (char)('0' + number / 100 % 10), (char)('0' + number / 10 % 10), (char)('0' + number % 10), 0 };
+        put(&o, d + (3 - digits));
+        put(&o, ".txt");
     }
-    return 1;
+    p[o.n] = 0;
 }
 
-static void copy_cfg(struct me_cfg *dst, const struct me_cfg *src)
+// ---- the text format ---------------------------------------------------------------
+static const char *const keys_audio[8] = { "BEND", "V.SNS", "MW", "M.DEP", "VEL", "V.DEP", "AT", "A.DEP" };
+static const char *const keys_midi[8] = { "THRU", "V.SNS", "MW", "M.DEP", "VEL", "V.DEP", "AT", "A.DEP" };
+
+static s32 field(const struct me_cfg *c, int k)
 {
-    for (int t = 0; t < 8; t++) {
-        dst[t].range = src[t].range;
-        dst[t].mw_dest = src[t].mw_dest;
-        dst[t].at_dest = src[t].at_dest;
-        dst[t].vel_dest = src[t].vel_dest;
-        dst[t].vel_sens = src[t].vel_sens;
-        dst[t].mw_amount = src[t].mw_amount;
-        dst[t].at_amount = src[t].at_amount;
-        dst[t].vel_amount = src[t].vel_amount;
+    switch (k) {
+    case 0: return c->range;
+    case 1: return c->vel_sens;
+    case 2: return c->mw_dest;
+    case 3: return c->mw_amount;
+    case 4: return c->vel_dest;
+    case 5: return c->vel_amount;
+    case 6: return c->at_dest;
+    default: return c->at_amount;
     }
 }
 
-// A record read from the card could hold anything: only values the page can set.
-static void apply(const struct st_rec *r)
+static void set_field(struct me_cfg *c, int k, s32 v)
 {
-    for (int t = 0; t < 8; t++) {
-        const struct me_cfg *a = &r->audio[t], *m = &r->midi[t];
-        struct me_cfg *da = &me_audio_cfg[t], *dm = &me_midi_cfg[t];
-#define IN(v, lo, hi, d) ((v) >= (lo) && (v) <= (hi) ? (v) : (d))
-        da->range = (int8_t)IN(a->range, 0, PB_RANGE_MAX, 2);
-        da->mw_dest = (int8_t)IN(a->mw_dest, 0, 45, 0);
-        da->at_dest = (int8_t)IN(a->at_dest, 0, 45, 0);
-        da->vel_dest = (int8_t)IN(a->vel_dest, 0, 45, 0);
-        da->vel_sens = (int8_t)IN(a->vel_sens, 0, VEL_SENS_MAX, VEL_SENS_MAX);
-        da->mw_amount = (int16_t)IN(a->mw_amount, -AMOUNT_MAX, AMOUNT_MAX, 0);
-        da->at_amount = (int16_t)IN(a->at_amount, -AMOUNT_MAX, AMOUNT_MAX, 0);
-        da->vel_amount = (int16_t)IN(a->vel_amount, -AMOUNT_MAX, AMOUNT_MAX, 0);
-        dm->thru = (int8_t)IN(m->thru, 0, 1, 1);
-        dm->mw_dest = (int8_t)IN(m->mw_dest, 0, MIDI_DESTS - 1, 0);
-        dm->at_dest = (int8_t)IN(m->at_dest, 0, MIDI_DESTS - 1, 0);
-        dm->vel_dest = (int8_t)IN(m->vel_dest, 0, MIDI_DESTS - 1, 0);
-        dm->vel_sens = (int8_t)IN(m->vel_sens, 0, VEL_SENS_MAX, VEL_SENS_MAX);
-        dm->mw_amount = (int16_t)IN(m->mw_amount, -AMOUNT_MAX, AMOUNT_MAX, 0);
-        dm->at_amount = (int16_t)IN(m->at_amount, -AMOUNT_MAX, AMOUNT_MAX, 0);
-        dm->vel_amount = (int16_t)IN(m->vel_amount, -AMOUNT_MAX, AMOUNT_MAX, 0);
+    switch (k) {
+    case 0: c->range = (int8_t)v; break;
+    case 1: c->vel_sens = (int8_t)v; break;
+    case 2: c->mw_dest = (int8_t)v; break;
+    case 3: c->mw_amount = (int16_t)v; break;
+    case 4: c->vel_dest = (int8_t)v; break;
+    case 5: c->vel_amount = (int16_t)v; break;
+    case 6: c->at_dest = (int8_t)v; break;
+    default: c->at_amount = (int16_t)v; break;
+    }
+}
+
+void me_factory(struct me_cfg *c, int mid)
+{
+    c->range = (int8_t)(mid ? 1 : 2);          // audio BEND 2; MIDI THRU ON
+    c->vel_sens = VEL_SENS_MAX;
+    c->mw_dest = c->at_dest = c->vel_dest = 0;
+    c->mw_amount = c->at_amount = c->vel_amount = 0;
+}
+
+// Every value held to what the page can set.
+static void hold_cfg(struct me_cfg *c, int mid)
+{
+#define IN(v, lo, hi) ((v) < (lo) ? (lo) : (v) > (hi) ? (hi) : (v))
+    c->range = (int8_t)(mid ? IN(c->range, 0, 1) : IN(c->range, 0, PB_RANGE_MAX));
+    c->vel_sens = (int8_t)IN(c->vel_sens, 0, VEL_SENS_MAX);
+    int dmax = mid ? MIDI_DESTS - 1 : 45;
+    c->mw_dest = (int8_t)IN(c->mw_dest, 0, dmax);
+    c->at_dest = (int8_t)IN(c->at_dest, 0, dmax);
+    c->vel_dest = (int8_t)IN(c->vel_dest, 0, dmax);
+    if (!mid) {                               // audio: only the slots the list offers
+        if (!me_dest_valid(0, c->mw_dest)) c->mw_dest = 0;
+        if (!me_dest_valid(0, c->at_dest)) c->at_dest = 0;
+        if (!me_dest_valid(0, c->vel_dest)) c->vel_dest = 0;
+    }
+    c->mw_amount = (int16_t)IN(c->mw_amount, -AMOUNT_MAX, AMOUNT_MAX);
+    c->at_amount = (int16_t)IN(c->at_amount, -AMOUNT_MAX, AMOUNT_MAX);
+    c->vel_amount = (int16_t)IN(c->vel_amount, -AMOUNT_MAX, AMOUNT_MAX);
 #undef IN
+}
+
+static void put_track(struct out *o, const struct me_cfg *c, int mid, int track)
+{
+    const char *const *keys = mid ? keys_midi : keys_audio;
+    char line[40];
+    if (track >= 0) {
+        char h[4] = { '[', (char)(mid ? 'A' + track : '1' + track), ']', 0 };
+        put(o, h);
+        put(o, mid ? "   ; MIDI track\n" : "   ; audio track\n");
     }
-    for (int m = 0; m < 8; m++)
-        me_midi_changed(m);
-}
-
-static void defaults(void)
-{
-    for (int t = 0; t < 8; t++) {
-        me_audio_cfg[t].range = 2;
-        me_midi_cfg[t].thru = 1;
-        me_audio_cfg[t].vel_sens = me_midi_cfg[t].vel_sens = VEL_SENS_MAX;
-        me_audio_cfg[t].mw_dest = me_audio_cfg[t].at_dest = me_audio_cfg[t].vel_dest = 0;
-        me_midi_cfg[t].mw_dest = me_midi_cfg[t].at_dest = me_midi_cfg[t].vel_dest = 0;
-        me_audio_cfg[t].mw_amount = me_audio_cfg[t].at_amount = me_audio_cfg[t].vel_amount = 0;
-        me_midi_cfg[t].mw_amount = me_midi_cfg[t].at_amount = me_midi_cfg[t].vel_amount = 0;
+    for (int k = 0; k < 8; k++) {
+        s32 v = field(c, k);
+        put(o, keys[k]);
+        put(o, "=");
+        if (k == 0 && mid) {
+            put(o, v ? "ON" : "OFF");
+        } else if (k == 0) {
+            if (v) put_int(o, v, 0); else put(o, "OFF");
+        } else if (k == 1) {
+            put_int(o, v, 0);
+            put(o, "   ; %");
+        } else if (k & 1) {
+            put_depth(o, v);
+        } else {
+            put_int(o, v, 0);
+            me_dest_name(line, sizeof line, mid, track < 0 ? 0 : track, (int)v);
+            put(o, "   ; ");
+            put(o, line);
+        }
+        put(o, "\n");
     }
-    for (int m = 0; m < 8; m++)
-        me_midi_changed(m);
 }
 
-static void snapshot(struct st_rec *r, const char *name)
+// Pad to the file's fixed size, so a rewrite in place never leaves old bytes.
+static int finish(struct out *o, int size)
 {
-    copy_name(r->name, name);
-    copy_cfg(r->audio, me_audio_cfg);
-    copy_cfg(r->midi, me_midi_cfg);
-    r->used = 1;
+    put(o, "END\n");
+    while (o->n < size - 1) {
+        int line = 0;
+        while (o->n < size - 1 && line++ < 63)
+            o->p[o->n++] = ' ';
+        if (o->n < size - 1)
+            o->p[o->n++] = '\n';
+    }
+    o->p[o->n++] = '\n';
+    return o->n;
 }
 
-static struct st_rec *find(const char *name)
+static int write_project(char *b, const char *name, int slot)
 {
-    for (int i = 0; i < NREC; i++)
-        if (me_store.rec[i].used && same_name(me_store.rec[i].name, name))
-            return &me_store.rec[i];
+    struct out o = { b, 0, PROJ_SIZE };
+    put(&o, "MIDI EXPRESSION PROJECT 1\n; Settings of the MIDI Expression mod. Edit freely:\n");
+    put(&o, "; a value out of range is held to the nearest, a missing one is the default.\n");
+    put(&o, "NAME="); put(&o, name); put(&o, "\n");
+    put(&o, "SLOT="); put_int(&o, slot + 1, 0); put(&o, "\n");
+    for (int t = 0; t < 8; t++)
+        put_track(&o, &snap_a[t], 0, t);
+    for (int t = 0; t < 8; t++)
+        put_track(&o, &snap_m[t], 1, t);
+    return finish(&o, PROJ_SIZE);
+}
+
+static int write_preset(char *b, const char *name, const struct me_cfg *c, int mid)
+{
+    struct out o = { b, 0, PRESET_SIZE };
+    put(&o, mid ? "MIDI EXPRESSION PRESET MIDI 1\n" : "MIDI EXPRESSION PRESET AUDIO 1\n");
+    put(&o, "NAME="); put(&o, name); put(&o, "\n");
+    put_track(&o, c, mid, -1);
+    return finish(&o, PRESET_SIZE);
+}
+
+static int write_config(char *b)
+{
+    struct out o = { b, 0, PRESET_SIZE };
+    put(&o, "MIDI EXPRESSION CONFIG 1\n; the preset new projects and RESET use: 0 = Factory\n");
+    put(&o, "DEFAULT AUDIO="); put_int(&o, def_preset[0] + 1, 0); put(&o, "\n");
+    put(&o, "DEFAULT MIDI="); put_int(&o, def_preset[1] + 1, 0); put(&o, "\n");
+    return finish(&o, PRESET_SIZE);
+}
+
+// ---- reading -------------------------------------------------------------------------
+// Lines of b (n bytes): starts with header, has an END line. 0 if not.
+static int valid(const char *b, int n, const char *header)
+{
+    int h = slen(header), i;
+    if (n < h)
+        return 0;
+    for (i = 0; i < h; i++)
+        if (b[i] != header[i])
+            return 0;
+    for (i = 0; i + 3 <= n; i++)
+        if ((i == 0 || b[i - 1] == '\n') && b[i] == 'E' && b[i + 1] == 'N' && b[i + 2] == 'D'
+            && (i + 3 == n || b[i + 3] == '\n' || b[i + 3] == '\r' || b[i + 3] == ' '))
+            return 1;
     return 0;
 }
 
-static void rec_move(struct st_rec *dst, const struct st_rec *src)
+static int same_key(const char *line, int len, const char *key)
 {
-    volatile u32 *d = (volatile u32 *)dst;   // word by word: no memcpy in a mod
-    const volatile u32 *sw = (const volatile u32 *)src;
-    for (u32 k = 0; k < sizeof(struct st_rec) / 4; k++)
-        d[k] = sw[k];
+    int i = 0;
+    for (; key[i]; i++)
+        if (i >= len || line[i] != key[i])
+            return 0;
+    while (i < len && line[i] == ' ')
+        i++;
+    return i < len && line[i] == '=';
 }
 
-// The record a save goes to: the used ones stay in the order they were last
-// saved, so the project's own record moves to the end, and a full store
-// forgets the project saved longest ago.
-static struct st_rec *place(const char *name)
+static const char *value_of(const char *line, int len)
 {
-    int i, n = 0;
-    struct st_rec *r = find(name);
-    int from = r ? (int)(r - me_store.rec) : 0;
-    if (!r) {
-        for (i = 0; i < NREC; i++)
-            n += me_store.rec[i].used != 0;
-        if (n < NREC) {                       // pack the used ones to the front first
-            int w = 0;
-            for (i = 0; i < NREC; i++)
-                if (me_store.rec[i].used) {
-                    if (w != i)
-                        rec_move(&me_store.rec[w], &me_store.rec[i]);
-                    w++;
-                }
-            for (i = w; i < NREC; i++)
-                me_store.rec[i].used = 0;
-            return &me_store.rec[w];
+    for (int i = 0; i < len; i++)
+        if (line[i] == '=') {
+            i++;
+            while (i < len && line[i] == ' ')
+                i++;
+            return line + i;
         }
-        from = 0;                             // full: the oldest goes
-    }
-    for (i = from; i + 1 < NREC && me_store.rec[i + 1].used; i++)
-        rec_move(&me_store.rec[i], &me_store.rec[i + 1]);
-    return &me_store.rec[i];
+    return line + len;
 }
 
-// ---- the card ---------------------------------------------------------------
+// A number: [+-]digits[.digits]; scale 256 for a depth (hundredths kept), 1 otherwise.
+static int number(const char *s, const char *end, s32 *v, int depth)
+{
+    int neg = 0, any = 0;
+    s32 w = 0, frac = 0, fd = 0;
+    if (s < end && (*s == '+' || *s == '-'))
+        neg = *s++ == '-';
+    if (s + 1 < end && (s[0] == 'O' || s[0] == 'o')) {    // ON / OFF
+        *v = (s[1] == 'N' || s[1] == 'n');
+        return 1;
+    }
+    while (s < end && *s >= '0' && *s <= '9' && w < 100000)
+        w = w * 10 + (*s++ - '0'), any = 1;
+    if (s < end && (*s == '.' || *s == ',')) {
+        s++;
+        while (s < end && *s >= '0' && *s <= '9') {
+            if (fd < 2) frac = frac * 10 + (*s - '0'), fd++;
+            s++, any = 1;
+        }
+    }
+    if (!any)
+        return 0;
+    if (fd == 1)
+        frac *= 10;
+    if (depth)
+        w = (w * 100 + frac) * 256 / 100;
+    *v = neg ? -w : w;
+    return 1;
+}
+
+// Read the settings of one track's lines (key=value) into c; mid picks the keys.
+static void read_line(const char *line, int len, struct me_cfg *c, int mid)
+{
+    const char *const *keys = mid ? keys_midi : keys_audio;
+    for (int k = 0; k < 8; k++) {
+        if (!same_key(line, len, keys[k]))
+            continue;
+        const char *v = value_of(line, len), *end = line + len;
+        for (const char *p = v; p < end; p++)
+            if (*p == ';' || *p == '#') { end = p; break; }
+        s32 x;
+        if (number(v, end, &x, k >= 3 && (k & 1))) {
+            s32 lo = k >= 3 && (k & 1) ? -32768 : -128, hi = -lo - 1;   // the field's width; hold() does the rest
+            set_field(c, k, x < lo ? lo : x > hi ? hi : x);
+        }
+        return;
+    }
+}
+
+// Walk the lines of b: sections [1]..[8] (audio), [A]..[H] (MIDI), or one
+// preset's lines (section -1, into *one); NAME= into name.
+static void parse(const char *b, int n, struct me_cfg *aud, struct me_cfg *mid_cfg,
+                  struct me_cfg *one, int one_mid, char *name)
+{
+    int i = 0, section = -1, smid = 0;
+    while (i < n) {
+        int s = i;
+        while (i < n && b[i] != '\n')
+            i++;
+        int len = i - s;
+        i++;
+        while (len > 0 && (b[s + len - 1] == '\r' || b[s + len - 1] == ' '))
+            len--;
+        const char *line = b + s;
+        if (len >= 3 && line[0] == 'E' && line[1] == 'N' && line[2] == 'D')
+            break;
+        if (!len || line[0] == ';' || line[0] == '#')
+            continue;
+        if (line[0] == '[' && len >= 3) {
+            char c = line[1];
+            section = -1;
+            if (c >= '1' && c <= '8') section = c - '1', smid = 0;
+            else if (c >= 'A' && c <= 'H') section = c - 'A', smid = 1;
+            else if (c >= 'a' && c <= 'h') section = c - 'a', smid = 1;
+            continue;
+        }
+        if (name && same_key(line, len, "NAME")) {
+            const char *v = value_of(line, len);
+            char t[NAME_MAX + 1];
+            int m = (int)(line + len - v);
+            if (m > NAME_MAX) m = NAME_MAX;
+            for (int j = 0; j < m; j++) t[j] = v[j];
+            t[m] = 0;
+            clean_name(name, t);
+            continue;
+        }
+        if (one)
+            read_line(line, len, one, one_mid);
+        else if (section >= 0)
+            read_line(line, len, smid ? &mid_cfg[section] : &aud[section], smid);
+    }
+}
+
+// ---- the card --------------------------------------------------------------------------
 static s32 ek_ready(void)
 {
     return EK_MOUNTED != 0 && EK_OWNER == 0;
 }
 
-static s32 img_read(const char *path)
+static int read_file(const char *path, int size)
 {
     ekfile f;
-    s32 got;
     if (EK_OPEN(path, "r", &f) != 0)
-        return 0;
-    got = EK_READ(&me_store, sizeof me_store, &f);
+        return -1;
+    s32 got = EK_READ(buf, size, &f);
     EK_CLOSE(&f);
-    return got >= (s32)(sizeof me_store - sizeof me_store.pad) && me_store.magic == ST_MAGIC
-           && me_store.nrec == NREC && me_store.sum == file_sum();
+    n_read++;
+    return got < 0 ? -1 : got > size ? size : got;
 }
 
-static void clear_store(void)
+// The file or its copy in _temp, whichever reads whole. 0 if neither.
+static int read_either(const char *dir, int number, int digits, const char *header, int size)
 {
-    me_store.work.used = 0;
-    for (int i = 0; i < NREC; i++)
-        me_store.rec[i].used = 0;
-    me_store.seq = 0;
+    char p[48];
+    for (int temp = 0; temp < 2; temp++) {
+        path_of(p, temp, dir, number, digits);
+        int n = read_file(p, size);
+        if (n > 0 && valid(buf, n, header))
+            return n;
+        if (n > 0)
+            n_bad++;
+    }
+    return 0;
 }
 
-// 0: the drive is busy, try again; 1: read (or there was nothing to read).
-static s32 store_load(void)
+static s32 make_dir(const char *p)
 {
-    s32 ok0, ok1, pick;
-    u32 seq0, seq1;
-    if (!ek_ready())
+    u32 ino;
+    EK_LOCK(EK_MUTEX);
+    s32 r = EK_LOOKUP(p, &ino, 0, 0, 0);
+    EK_UNLOCK(EK_MUTEX);
+    if (r == NOT_FOUND)
+        return EK_MKDIR(p);
+    return 0;
+}
+
+static s32 make_dirs(void)
+{
+    static const char *const d[] = {
+        "/cfw", "/cfw/expression", "/cfw/expression/projects", "/cfw/expression/audio",
+        "/cfw/expression/midi", "/cfw/expression/_temp", "/cfw/expression/_temp/projects",
+        "/cfw/expression/_temp/audio", "/cfw/expression/_temp/midi",
+    };
+    if (dirs_made)
         return 0;
-    ok0 = img_read(st_path[0]);
-    seq0 = me_store.seq;
-    ok1 = img_read(st_path[1]);
-    seq1 = me_store.seq;
-    if (ok0 && ok1)
-        pick = seq1 > seq0 ? 1 : 0;
-    else
-        pick = ok1 ? 1 : ok0 ? 0 : -1;
-    if (pick == 0 && !img_read(st_path[0]))
-        pick = -1;
-    if (pick < 0)
-        clear_store();
-    me_store.magic = ST_MAGIC;
-    me_store.nrec = NREC;
+    for (unsigned i = 0; i < sizeof d / sizeof d[0]; i++)
+        if (make_dir(d[i]) != 0)
+            return -1;
+    dirs_made = 1;
+    return 0;
+}
+
+static s32 write_one(const char *path, int n)
+{
+    ekfile f;
+    if (EK_OPEN(path, "w", &f) != 0)
+        return -1;
+    s32 w = EK_WRITE(buf, n, &f);
+    EK_CLOSE(&f);
+    return w == n ? 0 : -1;
+}
+
+// buf (n bytes) to _temp first, then in its place. 0 or -1.
+static s32 write_safe(const char *dir, int number, int digits, int n)
+{
+    char p[48];
+    if (make_dirs() != 0)
+        return -1;
+    path_of(p, 1, dir, number, digits);
+    if (write_one(p, n) != 0)
+        return -1;
+    path_of(p, 0, dir, number, digits);
+    if (write_one(p, n) != 0)
+        return -1;
+    n_written++;
+    return 0;
+}
+
+// ---- applying -------------------------------------------------------------------------------
+static void cfg_copy(struct me_cfg *d, const volatile struct me_cfg *c)
+{
+    d->range = c->range;                       // field by field: no memcpy in a mod
+    d->mw_dest = c->mw_dest;
+    d->at_dest = c->at_dest;
+    d->vel_dest = c->vel_dest;
+    d->vel_sens = c->vel_sens;
+    d->mw_amount = c->mw_amount;
+    d->at_amount = c->at_amount;
+    d->vel_amount = c->vel_amount;
+}
+
+static void take_snapshot(void)
+{
+    for (int t = 0; t < 8; t++) {
+        cfg_copy(&snap_a[t], &me_audio_cfg[t]);
+        cfg_copy(&snap_m[t], &me_midi_cfg[t]);
+    }
+}
+
+static void apply_snapshot(void)
+{
+    for (int t = 0; t < 8; t++) {
+        hold_cfg(&snap_a[t], 0);
+        hold_cfg(&snap_m[t], 1);
+        cfg_copy(&me_audio_cfg[t], &snap_a[t]);
+        cfg_copy(&me_midi_cfg[t], &snap_m[t]);
+    }
+    for (int m = 0; m < 8; m++)
+        me_midi_changed(m);
+}
+
+static u32 cfg_sum(void)
+{
+    u32 s = 1;
+    const uint8_t *p = (const uint8_t *)me_audio_cfg;
+    for (unsigned i = 0; i < sizeof me_audio_cfg; i++) s = ((s << 5) | (s >> 27)) ^ p[i];
+    p = (const uint8_t *)me_midi_cfg;
+    for (unsigned i = 0; i < sizeof me_midi_cfg; i++) s = ((s << 5) | (s >> 27)) ^ p[i];
+    return s;
+}
+
+// One kind's default preset into c (Factory if none, or if its file is gone).
+static void default_of(struct me_cfg *c, int mid)
+{
+    me_factory(c, mid);
+    if (def_preset[mid] < 0)
+        return;
+    int n = read_either(mid ? "midi/" : "audio/", def_preset[mid] + 1, 2,
+                        mid ? "MIDI EXPRESSION PRESET MIDI" : "MIDI EXPRESSION PRESET AUDIO", PRESET_SIZE);
+    if (n)
+        parse(buf, n, 0, 0, c, mid, 0);
+}
+
+static void defaults_snapshot(void)
+{
+    struct me_cfg a, m;
+    default_of(&a, 0);
+    default_of(&m, 1);
+    for (int t = 0; t < 8; t++) {
+        cfg_copy(&snap_a[t], &a);
+        cfg_copy(&snap_m[t], &m);
+    }
+}
+
+static int read_project_file(const char *dir, int number, int digits)
+{
+    int n = read_either(dir, number, digits, "MIDI EXPRESSION PROJECT", PROJ_SIZE);
+    if (!n)
+        return 0;
+    for (int t = 0; t < 8; t++) {              // a missing value is the factory default
+        me_factory(&snap_a[t], 0);
+        me_factory(&snap_m[t], 1);
+    }
+    char name[NAME_MAX + 1];
+    name[0] = 0;
+    parse(buf, n, snap_a, snap_m, 0, 0, name);
+    scopy(cur_name, name, NAME_MAX);
     return 1;
 }
 
-// 0 busy, 1 saved, -1 failed.
-static s32 store_save(void)
+static void read_config(void)
 {
-    ekfile f;
-    u32 ino, seq = me_store.seq + 1;
-    s32 r, w;
-    if (!ek_ready())
+    char p[48];
+    int n = 0;
+    for (int temp = 0; temp < 2 && !n; temp++) {
+        path_of(p, temp, "config.txt", 0, 0);
+        n = read_file(p, PRESET_SIZE);
+        if (n > 0 && !valid(buf, n, "MIDI EXPRESSION CONFIG"))
+            n_bad++, n = 0;
+        if (n < 0)
+            n = 0;
+    }
+    for (int i = 0; i < n; ) {
+        int s = i;
+        while (i < n && buf[i] != '\n') i++;
+        int len = i - s;
+        i++;
+        s32 v;
+        for (int mid = 0; mid < 2; mid++)
+            if (same_key(buf + s, len, mid ? "DEFAULT MIDI" : "DEFAULT AUDIO")
+                && number(value_of(buf + s, len), buf + s + len, &v, 0))
+                def_preset[mid] = (int8_t)(v >= 1 && v <= ME_PRESETS ? v - 1 : -1);
+    }
+}
+
+static s32 write_named(const char *name, int temp, int n)
+{
+    char p[48];
+    path_of(p, temp, name, 0, 0);
+    return write_one(p, n);
+}
+
+static s32 save_config(void)
+{
+    if (make_dirs() != 0)
+        return -1;
+    int n = write_config(buf);
+    if (write_named("config.txt", 1, n) != 0 || write_named("config.txt", 0, n) != 0)
+        return -1;
+    n_written++;
+    return 0;
+}
+
+static s32 save_current(void)
+{
+    if (make_dirs() != 0)
+        return -1;
+    take_snapshot();
+    int n = write_project(buf, cur_name, cur_slot < 0 ? 0 : cur_slot);
+    if (write_named("current.txt", 1, n) != 0 || write_named("current.txt", 0, n) != 0)
+        return -1;
+    n_written++;
+    return 0;
+}
+
+static int read_current(void)
+{
+    char p[48];
+    for (int temp = 0; temp < 2; temp++) {
+        path_of(p, temp, "current.txt", 0, 0);
+        int n = read_file(p, PROJ_SIZE);
+        if (n > 0 && valid(buf, n, "MIDI EXPRESSION PROJECT")) {
+            for (int t = 0; t < 8; t++) {
+                me_factory(&snap_a[t], 0);
+                me_factory(&snap_m[t], 1);
+            }
+            char name[NAME_MAX + 1];
+    name[0] = 0;
+            parse(buf, n, snap_a, snap_m, 0, 0, name);
+            scopy(cur_name, name, NAME_MAX);
+            for (int i = 0; i + 5 < n; i++)    // SLOT=
+                if ((i == 0 || buf[i - 1] == '\n') && same_key(buf + i, 6, "SLOT")) {
+                    s32 v;
+                    const char *e = buf + i;
+                    while (e < buf + n && *e != '\n') e++;
+                    if (number(value_of(buf + i, (int)(e - buf - i)), e, &v, 0) && v >= 1 && v <= 128)
+                        cur_slot = (int8_t)(v - 1);
+                    break;
+                }
+            return 1;
+        }
+        if (n > 0)
+            n_bad++;
+    }
+    return 0;
+}
+
+// ---- the firmware's project save and load (store.s) ----------------------------------------
+void me_project_saving(const char *name, s32 slot)
+{
+    clean_name(snap_name, name);
+    req_slot_save = (int8_t)(slot >= 0 && slot < 128 ? slot : -1);
+    save_project_req = 1;
+    take_snapshot();                           // as the project is saved, not as it is later
+}
+
+void me_project_loading(const char *name, s32 slot)
+{
+    (void)name;
+    req_slot_load = (int8_t)(slot >= 0 && slot < 128 ? slot : -1);
+    load_project_req = 1;
+}
+
+// ---- presets, for the page's menu ---------------------------------------------------------
+const char *me_preset_name(int mid, int slot)
+{
+    return slot >= 0 && slot < ME_PRESETS ? pnames[mid & 1][slot] : "";
+}
+
+int me_presets_ready(int mid)
+{
+    return pscan[mid & 1] > ME_PRESETS;
+}
+
+void me_presets_rescan(int mid)
+{
+    pscan[mid & 1] = 1;
+}
+
+int me_default_preset(int mid)
+{
+    return def_preset[mid & 1];
+}
+
+int me_store_busy(void)
+{
+    return job.kind != J_NONE || save_project_req || load_project_req;
+}
+
+static int queue(int kind, int mid, int slot, int track)
+{
+    if (job.kind != J_NONE)
         return 0;
-    EK_LOCK(EK_MUTEX);
-    r = EK_LOOKUP("/cfw", &ino, 0, 0, 0);
-    EK_UNLOCK(EK_MUTEX);
-    if (r == NOT_FOUND && EK_MKDIR("/cfw") != 0)
-        return -1;
-    me_store.magic = ST_MAGIC;
-    me_store.nrec = NREC;
-    me_store.seq = seq;
-    me_store.sum = file_sum();
-    if (EK_OPEN(st_path[seq & 1], "w", &f) != 0)
-        return -1;
-    w = EK_WRITE(&me_store, sizeof me_store, &f);
-    EK_CLOSE(&f);
-    return w == (s32)sizeof me_store ? 1 : -1;
+    job.mid = (int8_t)mid;
+    job.slot = (int8_t)slot;
+    job.track = (int8_t)track;
+    job.kind = (uint8_t)kind;
+    return 1;
 }
 
-// ---- the firmware's project save and load (store.s) --------------------------
-void me_project_saving(const char *name)
+int me_preset_save(int mid, int slot, const char *name, int track)
 {
-    copy_name(st_saving, name);
-    st_saving[NAME_LEN] = 0;
-    st_save_req = 1;
+    if (slot < 0 || slot >= ME_PRESETS || track < 0 || track > 7 || job.kind != J_NONE)
+        return 0;
+    clean_name(snap_name, name);
+    cfg_copy(&snap_a[0], mid ? &me_midi_cfg[track] : &me_audio_cfg[track]);
+    return queue(J_SAVE_PRESET, mid, slot, track);
 }
 
-void me_project_loading(const char *name)
+int me_preset_load(int mid, int slot, int track)
 {
-    copy_name(st_loading, name);
-    st_loading[NAME_LEN] = 0;
-    st_load_req = 1;
+    return slot >= 0 && slot < ME_PRESETS && track >= 0 && track <= 7 && queue(J_LOAD_PRESET, mid, slot, track);
 }
 
-// ---- ev_tick ------------------------------------------------------------------
+int me_track_reset(int mid, int track)
+{
+    return track >= 0 && track <= 7 && queue(J_RESET, mid, 0, track);
+}
+
+int me_default_set(int mid, int slot)
+{
+    if (slot < -1 || slot >= ME_PRESETS)
+        return 0;
+    def_preset[mid & 1] = (int8_t)slot;
+    return queue(J_CONFIG, mid, slot, 0);
+}
+
+static void track_set(int mid, int track, const struct me_cfg *c)
+{
+    struct me_cfg v;
+    cfg_copy(&v, c);
+    hold_cfg(&v, mid);
+    if (mid) {
+        cfg_copy(&me_midi_cfg[track], &v);
+        me_midi_changed(track);
+    } else {
+        cfg_copy(&me_audio_cfg[track], &v);
+    }
+}
+
+// One job; 0 if the drive was busy (try the next tick).
+static s32 run_job(void)
+{
+    char p[48];
+    s32 r = 0;
+    switch (job.kind) {
+    case J_SAVE_PRESET: {
+        int n = write_preset(buf, snap_name, &snap_a[0], job.mid);
+        r = write_safe(job.mid ? "midi/" : "audio/", job.slot + 1, 2, n);
+        if (!r)
+            scopy(pnames[job.mid][job.slot], snap_name[0] ? snap_name : "-", NAME_MAX);
+        break;
+    }
+    case J_LOAD_PRESET: {
+        struct me_cfg c;
+        me_factory(&c, job.mid);
+        int n = read_either(job.mid ? "midi/" : "audio/", job.slot + 1, 2,
+                            job.mid ? "MIDI EXPRESSION PRESET MIDI" : "MIDI EXPRESSION PRESET AUDIO", PRESET_SIZE);
+        if (n) {
+            parse(buf, n, 0, 0, &c, job.mid, 0);
+            track_set(job.mid, job.track, &c);
+        }
+        break;
+    }
+    case J_RESET: {
+        struct me_cfg c;
+        default_of(&c, job.mid);
+        track_set(job.mid, job.track, &c);
+        break;
+    }
+    case J_CONFIG:
+        r = save_config();
+        break;
+    }
+    (void)p;
+    return r;
+}
+
+static void scan_some(int mid)
+{
+    for (int i = 0; i < 8 && pscan[mid] && pscan[mid] <= ME_PRESETS; i++) {
+        int slot = pscan[mid] - 1;
+        char name[NAME_MAX + 1];
+    name[0] = 0;
+        int n = read_either(mid ? "midi/" : "audio/", slot + 1, 2,
+                            mid ? "MIDI EXPRESSION PRESET MIDI" : "MIDI EXPRESSION PRESET AUDIO", 256);
+        if (n)                                 // the name is in the first lines
+            parse(buf, n, 0, 0, 0, 0, name), scopy(pnames[mid][slot], name[0] ? name : "-", NAME_MAX);
+        else {
+            // A preset longer than 256 bytes has its END further on: read it whole.
+            n = read_either(mid ? "midi/" : "audio/", slot + 1, 2,
+                            mid ? "MIDI EXPRESSION PRESET MIDI" : "MIDI EXPRESSION PRESET AUDIO", PRESET_SIZE);
+            if (n)
+                parse(buf, n, 0, 0, 0, 0, name), scopy(pnames[mid][slot], name[0] ? name : "-", NAME_MAX);
+            else
+                pnames[mid][slot][0] = 0;
+        }
+        pscan[mid]++;
+    }
+}
+
+// ---- ev_tick -----------------------------------------------------------------------------------
 void me_store_tick(void)
 {
-    if (!st_loaded) {
-        if (!store_load())
-            return;                           // the drive is not ready yet
-        st_loaded = 1;
-        me_store_loads++;
-        if (me_store.work.used)               // power-on: as it was at power-off
-            apply(&me_store.work);
-        st_last = cfg_sum();
-    }
-    if (st_save_req) {                        // the project is being saved: so are these
-        st_save_req = 0;
-        snapshot(place(st_saving), st_saving);
-        snapshot(&me_store.work, st_saving);
-        st_dirty = 1;
-        st_wait = 0;
-    }
-    if (st_load_req) {                        // a project is being loaded: its settings
-        st_load_req = 0;
-        struct st_rec *r = find(st_loading);
-        if (r)
-            apply(r);
-        else
-            defaults();
-        snapshot(&me_store.work, st_loading);
-        st_last = cfg_sum();
-        st_dirty = 1;
-        st_wait = 0;
-    }
-    u32 now = cfg_sum();
-    if (now != st_last) {                     // a change on the page: the working record
-        st_last = now;
-        snapshot(&me_store.work, me_store.work.name);
-        st_dirty = 1;
-        st_wait = SAVE_WAIT;
-    }
-    if (!st_dirty)
+    if (!ek_ready())
         return;
-    if (st_wait > 0) {
-        st_wait--;
+    if (!booted) {                             // power-on: the settings as they were
+        read_config();
+        if (!read_current())
+            defaults_snapshot();               // the first power-on: the default presets
+        apply_snapshot();
+        booted = 1;
+        last_sum = cfg_sum();
         return;
     }
-    switch (store_save()) {
-    case 1:
-        st_dirty = 0;
-        me_store_saves++;
-        break;
-    case -1:
-        me_store_fails++;
-        st_wait = RETRY;
-        break;
-    default:                                  // busy: the next tick
-        break;
+    if (save_project_req) {                    // the snapshot was taken as the save began
+        save_project_req = 0;
+        if (req_slot_save >= 0) {
+            int n = write_project(buf, snap_name, req_slot_save);
+            if (write_safe("projects/", req_slot_save + 1, 3, n) != 0) {
+                n_failed++;
+            } else {
+                cur_slot = req_slot_save;
+                scopy(cur_name, snap_name, NAME_MAX);
+                me_store_probe[6] = (u32)cur_slot + 1;
+                current_dirty = 1;
+                wait_ticks = 0;
+            }
+        }
+        return;
+    }
+    if (load_project_req) {
+        load_project_req = 0;
+        if (req_slot_load >= 0) {
+            if (!read_project_file("projects/", req_slot_load + 1, 3))
+                defaults_snapshot();           // a project without settings: the defaults
+            apply_snapshot();
+            cur_slot = req_slot_load;
+            me_store_probe[6] = (u32)cur_slot + 1;
+            last_sum = cfg_sum();
+            current_dirty = 1;
+            wait_ticks = 0;
+        }
+        return;
+    }
+    if (job.kind != J_NONE) {
+        if (run_job() != 0) {
+            n_failed++;
+        }
+        job.kind = J_NONE;
+        last_sum = cfg_sum();
+        current_dirty = 1;
+        wait_ticks = SAVE_WAIT;
+        return;
+    }
+    for (int mid = 0; mid < 2; mid++)
+        if (pscan[mid] && pscan[mid] <= ME_PRESETS) {
+            scan_some(mid);
+            return;
+        }
+    static uint8_t every;
+    if (++every >= 10) {                       // looked at three times a second
+        every = 0;
+        u32 now = cfg_sum();
+        if (now != last_sum) {                 // a change on the page
+            last_sum = now;
+            current_dirty = 1;
+            wait_ticks = SAVE_WAIT;
+        }
+    }
+    // current.txt waits until nothing plays: a write holds the UI task (and
+    // with it the MIDI tracks' task) for a moment (about 0.1 s a file in
+    // digiemu), which must not land in the middle of a performance.
+    static u32 seen_activity;
+    static s32 quiet;
+    if (me_activity != seen_activity) {
+        seen_activity = me_activity;
+        quiet = 0;
+    } else if (quiet < QUIET) {
+        quiet++;
+    }
+    if (!current_dirty)
+        return;
+    if (wait_ticks > 0) {
+        wait_ticks--;
+        return;
+    }
+    if (quiet < QUIET)
+        return;
+    if (save_current() == 0) {
+        current_dirty = 0;
+    } else {
+        n_failed++;
+        wait_ticks = RETRY;
     }
 }

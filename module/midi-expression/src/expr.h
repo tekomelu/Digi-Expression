@@ -36,6 +36,22 @@ enum { O_PB, O_AT, O_MW, O_BC, O_VAL1, OUTPUTS = O_VAL1 + 8 };
 #define MIDI_LFO_FIRST (OUTPUTS + 1)
 #define MIDI_DESTS     (MIDI_LFO_FIRST + 5)
 
+extern volatile uint32_t me_activity;        // counts notes and live input: store.c waits for quiet
+#define ME_PRESETS  64                          // preset slots for each kind of track
+#define ME_NAME_LEN 12                          // a preset's or project's name, as shown
+void me_dest_name(char *line, int size, int mid, int track, int value);
+int me_dest_valid(int mid, int value);
+void me_factory(struct me_cfg *c, int mid);
+const char *me_preset_name(int mid, int slot);
+int me_presets_ready(int mid);
+void me_presets_rescan(int mid);
+int me_default_preset(int mid);
+int me_default_set(int mid, int slot);
+int me_preset_save(int mid, int slot, const char *name, int track);
+int me_preset_load(int mid, int slot, int track);
+int me_track_reset(int mid, int track);
+int me_store_busy(void);
+
 #define AUDIO_KINDS (KINDS + 1)                 // audio sources: PB, AT, MW and the velocity
 #define VELK KINDS
 

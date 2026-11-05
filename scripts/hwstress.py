@@ -411,7 +411,7 @@ MULT and WAVE as they are. (The EXPRESSION page stays as it is.)''')
     # ---- report ------------------------------------------------------------------
     def save(self):
         os.makedirs(self.out_dir, exist_ok=True)
-        rep = {'when': time.strftime('%Y-%m-%d %H:%M:%S'), 'version': '0.10.0-experimental',
+        rep = {'when': time.strftime('%Y-%m-%d %H:%M:%S'), 'version': '0.11.0-experimental',
                'ports': {'in': self.io.in_name, 'out': self.io.out_name},
                'config': {k: v + 1 for k, v in self.cfg.items()}, 'own': OWN, 'sel': SEL,
                'results': self.results, **self.extra}

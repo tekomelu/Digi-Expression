@@ -44,7 +44,14 @@
 // the vtable 0x40184308 and keeps its key, 19 (TRIG), at +0x88. All of it
 // only read, never written.
 //
-// Held in RAM: every setting goes back to its default at power-on.
+// The settings are kept on the +Drive by store.c, with the project; a
+// 1-second push of knob A opens the preset menu (below).
+
+// Small rather than fast: the page and the files are not on a hot path, and
+// RAM is shared with the other mods (it saves about 10 KB beside Digi Slicer).
+#ifndef ME_HOST_TEST
+#pragma GCC optimize ("Os", "no-tree-loop-distribute-patterns")   // and no memset, memmove or strlen calls: a mod has no C library
+#endif
 
 #include "expr.h"
 
@@ -180,6 +187,8 @@ static uint8_t snap_rest[CELLS];        // UI ticks a knob rests after a FUNC ju
 
 static void close_page(void)
 {
+    extern int me_menu;
+    me_menu = 0;
     if (me_page_open)
         recompose = 1;
     me_page_open = 0;
@@ -322,6 +331,22 @@ static void dest_line(char *line, int size, int mid, int m, int s)
         }
     }
     line[n] = 0;
+}
+
+// For the files (store.c): a destination's list line, and whether a value is one the list offers.
+void me_dest_name(char *line, int size, int mid, int track, int value)
+{
+    dest_line(line, size, mid, track, value);
+}
+
+int me_dest_valid(int mid, int value)
+{
+    if (mid)
+        return value >= 0 && value < MIDI_DEST_COUNT;
+    for (int i = 0; i < DEST_COUNT; i++)
+        if (dest_order[i] == value)
+            return 1;
+    return 0;
 }
 
 // ---- the cells ------------------------------------------------------------------
@@ -692,12 +717,292 @@ static void draw_list(void *bmp, int t, int k)
     box(bmp, 124, top - len, 127, top);
 }
 
+// ---- the preset menu (a 1-second push of knob A) --------------------------------------
+// As the stock menus: UP/DOWN or the LEVEL knob move, YES chooses, NO goes
+// back. LOAD, SAVE and DEFAULT list the 64 preset slots of this kind of track
+// (audio or MIDI); SAVE then names it as SAVE PROJECT AS does (UP/DOWN the
+// character, LEFT/RIGHT the cursor, FUNC + YES inserts, FUNC + NO deletes,
+// YES saves, NO aborts); RESET puts the track back to the default preset;
+// DEFAULT picks the preset new projects and RESET start from (Factory: the
+// mod's own defaults). The files are store.c's.
+enum { M_OFF, M_MAIN, M_LOAD, M_SAVE, M_NAME, M_DEFAULT, M_RESET, M_OVERWRITE };
+#define LONG_PUSH  30                   // ticks: a second
+#define MSG_TICKS  30
+static const char *const main_items[4] = { "LOAD", "SAVE", "RESET", "DEFAULT" };
+static const char name_chars[] = " ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-_.&+!#";
+int me_menu;                            // read by the tests (0: no menu)
+static int menu_cur[8], menu_top, push_a, msg_t, edit_pos, edit_slot;
+static const char *msg;
+static char edit_name[ME_NAME_LEN + 1];
+
+static int menu_count(int m)
+{
+    return m == M_MAIN ? 4 : m == M_DEFAULT ? ME_PRESETS + 1 : ME_PRESETS;
+}
+
+static void menu_open(int m)
+{
+    me_menu = m;
+    menu_top = 0;
+    if (m == M_LOAD || m == M_SAVE || m == M_DEFAULT)
+        me_presets_rescan(track() >= 8);
+    if (m == M_DEFAULT)
+        menu_cur[m] = me_default_preset(track() >= 8) + 1;
+    recompose = 1;
+}
+
+static void say(const char *m)
+{
+    msg = m;
+    msg_t = MSG_TICKS;
+}
+
+static void two_digits(char *b, int v)
+{
+    b[0] = (char)('0' + v / 10 % 10);
+    b[1] = (char)('0' + v % 10);
+}
+
+// The line for row i of a list menu.
+static void menu_line(char *line, int m, int i, int mid)
+{
+    int n = 0;
+    const char *nm;
+    if (m == M_MAIN) {
+        for (nm = main_items[i]; *nm; nm++)
+            line[n++] = *nm;
+        line[n] = 0;
+        return;
+    }
+    if (m == M_DEFAULT) {
+        if (i == 0) {
+            for (nm = "00 FACTORY"; *nm; nm++) line[n++] = *nm;
+        } else {
+            two_digits(line, i);
+            n = 2;
+            line[n++] = ' ';
+            nm = me_preset_name(mid, i - 1);
+            if (!*nm) nm = "----";
+            while (*nm && n < 20) line[n++] = *nm++;
+        }
+        if (i - 1 == me_default_preset(mid))
+            line[n++] = ' ', line[n++] = '*';
+        line[n] = 0;
+        return;
+    }
+    two_digits(line, i + 1);
+    n = 2;
+    line[n++] = ' ';
+    nm = me_preset_name(mid, i);
+    if (!*nm) nm = "----";
+    while (*nm && n < 20) line[n++] = *nm++;
+    line[n] = 0;
+}
+
+static void draw_menu(void *bmp, int t)
+{
+    int mid = t >= 8, m = me_menu;
+    FILLRECT(bmp, 16, 0, 127, 53, 0);
+    if (m == M_NAME) {                  // the naming screen: "05:LEAD" and the cursor
+        char line[24];
+        two_digits(line, edit_slot + 1);
+        line[2] = ':';
+        int n = 3;
+        for (int i = 0; edit_name[i]; i++) line[n++] = edit_name[i];
+        line[n] = 0;
+        TEXT(bmp, TITLE_FONT, 22, 34, -1, "%s", line);
+        int x = 22 + 5 * (3 + edit_pos);   // 5 px a character in the list font
+        FILLRECT(bmp, x - 1, 32, x + 4, 32, -1);
+        TEXT(bmp, LABEL_FONT, 22, 16, -1, "%s", "U/D:CHAR  L/R:CURSOR");
+        TEXT(bmp, LABEL_FONT, 22, 8, -1, "%s", "FUNC+YES/NO:INS/DEL");
+        TEXT(bmp, LABEL_FONT, 22, 0, -1, "%s", "YES:SAVE  NO:ABORT");
+        return;
+    }
+    if (m == M_RESET || m == M_OVERWRITE) {
+        box(bmp, 24, 14, 120, 40);
+        TEXT(bmp, LABEL_FONT, 30, 30, -1, "%s", m == M_RESET ? "RESET THIS TRACK?" : "OVERWRITE PRESET?");
+        TEXT(bmp, LABEL_FONT, 30, 19, -1, "%s", "YES / NO");
+        return;
+    }
+    if (m != M_MAIN && !me_presets_ready(mid)) {
+        TEXT(bmp, LABEL_FONT, 30, 26, -1, "%s", "READING PRESETS...");
+        return;
+    }
+    int count = menu_count(m), cur = menu_cur[m];
+    if (cur < menu_top) menu_top = cur;
+    if (cur > menu_top + 6) menu_top = cur - 6;
+    for (int r = 0; r < 7 && menu_top + r < count; r++) {
+        int y = 45 - 7 * r;
+        char line[28];
+        menu_line(line, m, menu_top + r, mid);
+        TEXT(bmp, LABEL_FONT, 22, y, -1, "%s", line);
+        if (menu_top + r == cur)
+            FILLRECT(bmp, 21, y - 1, 122, y + 5, -1);
+    }
+    if (count > 7) {
+        for (int y = 0; y < 52; y += 2)
+            FILLRECT(bmp, 125 + (y >> 1 & 1), y, 125 + (y >> 1 & 1), y, 1);
+        int len = 52 * 7 / count, top = 52 - (52 - len) * menu_top / (count - 7);
+        FILLRECT(bmp, 124, top - len, 127, top, 0);
+        box(bmp, 124, top - len, 127, top);
+    }
+}
+
+static int char_index(char c)
+{
+    for (int i = 0; name_chars[i]; i++)
+        if (name_chars[i] == c)
+            return i;
+    return 0;
+}
+
+static void name_change(int d)
+{
+    int n = (int)sizeof name_chars - 1;
+    int len = 0;
+    while (edit_name[len]) len++;
+    if (edit_pos >= len) {              // past the end: a new character
+        if (len >= ME_NAME_LEN) return;
+        edit_name[len] = ' ';
+        edit_name[len + 1] = 0;
+    }
+    int i = (char_index(edit_name[edit_pos]) + d % n + n) % n;
+    edit_name[edit_pos] = name_chars[i];
+}
+
+static void name_trim(void)
+{
+    int len = 0;
+    while (edit_name[len]) len++;
+    while (len > 0 && edit_name[len - 1] == ' ')
+        edit_name[--len] = 0;
+}
+
+static void menu_move(int d)
+{
+    int m = me_menu;
+    if (m == M_NAME) {
+        name_change(d);
+        return;
+    }
+    if (m == M_RESET || m == M_OVERWRITE)
+        return;
+    menu_cur[m] += d;
+    if (menu_cur[m] < 0) menu_cur[m] = 0;
+    if (menu_cur[m] >= menu_count(m)) menu_cur[m] = menu_count(m) - 1;
+}
+
+static void do_save(int mid, int t)
+{
+    name_trim();
+    if (me_preset_save(mid, edit_slot, edit_name[0] ? edit_name : "-", t))
+        say("SAVED");
+    me_menu = M_MAIN;
+}
+
+static void menu_yes(int t)
+{
+    int mid = t >= 8, tr = mid ? t - 8 : t, m = me_menu, cur = menu_cur[m];
+    if (me_store_busy())
+        return;
+    switch (m) {
+    case M_MAIN:
+        menu_open(cur == 0 ? M_LOAD : cur == 1 ? M_SAVE : cur == 2 ? M_RESET : M_DEFAULT);
+        break;
+    case M_LOAD:
+        if (!me_presets_ready(mid)) break;
+        if (!*me_preset_name(mid, cur)) { say("EMPTY"); break; }
+        if (me_preset_load(mid, cur, tr)) say("LOADED");
+        me_menu = M_MAIN;
+        break;
+    case M_SAVE: {
+        if (!me_presets_ready(mid)) break;
+        const char *nm = me_preset_name(mid, cur);
+        int i = 0;
+        edit_slot = cur;
+        if (!*nm || (nm[0] == '-' && !nm[1])) nm = "NEW";
+        for (; nm[i] && i < ME_NAME_LEN; i++) edit_name[i] = nm[i];
+        edit_name[i] = 0;
+        edit_pos = 0;
+        me_menu = M_NAME;
+        break;
+    }
+    case M_NAME:
+        if (KEYHELD(K_FUNC)) {          // FUNC + YES: insert a space at the cursor
+            int len = 0;
+            while (edit_name[len]) len++;
+            if (len < ME_NAME_LEN && edit_pos <= len) {
+                for (int i = len; i >= edit_pos; i--) edit_name[i + 1] = edit_name[i];
+                edit_name[edit_pos] = ' ';
+            }
+            break;
+        }
+        if (*me_preset_name(mid, edit_slot)) me_menu = M_OVERWRITE;
+        else do_save(mid, tr);
+        break;
+    case M_OVERWRITE:
+        do_save(mid, tr);
+        break;
+    case M_RESET:
+        if (me_track_reset(mid, tr)) say("RESET");
+        me_menu = M_MAIN;
+        break;
+    case M_DEFAULT:
+        if (!me_presets_ready(mid)) break;
+        if (cur > 0 && !*me_preset_name(mid, cur - 1)) { say("EMPTY"); break; }
+        if (me_default_set(mid, cur - 1)) say(cur ? "DEFAULT SET" : "DEFAULT: FACTORY");
+        me_menu = M_MAIN;
+        break;
+    }
+    recompose = 1;
+}
+
+static void menu_no(void)
+{
+    int m = me_menu;
+    if (m == M_NAME && KEYHELD(K_FUNC)) {   // FUNC + NO: delete at the cursor
+        for (int i = edit_pos; edit_name[i]; i++) edit_name[i] = edit_name[i + 1];
+        return;
+    }
+    me_menu = m == M_MAIN ? M_OFF : m == M_NAME ? M_SAVE : m == M_OVERWRITE ? M_NAME : M_MAIN;
+    recompose = 1;
+}
+
+static int menu_key(void *ev, int t)
+{
+    int id = KEYID(ev);
+    if (!KEYPRESS(ev))
+        return 1;
+    switch (id) {
+    case K_UP:    menu_move(me_menu == M_NAME ? 1 : -1); break;
+    case K_DOWN:  menu_move(me_menu == M_NAME ? -1 : 1); break;
+    case K_LEFT:  if (me_menu == M_NAME && edit_pos > 0) edit_pos--; break;
+    case K_RIGHT:
+        if (me_menu == M_NAME) {
+            int len = 0;
+            while (edit_name[len]) len++;
+            if (edit_pos < len && edit_pos < ME_NAME_LEN - 1) edit_pos++;
+        }
+        break;
+    case K_YES:   menu_yes(t); break;
+    case K_NO:    menu_no(); break;
+    case K_TRIG:  me_menu = M_OFF; close_page(); break;
+    default:
+        if (id >= 24 && id <= 39) return 0;     // the trig keys play, as stock
+        if (id == 1 || id == 9 || id == 10 || id == 11) return 0;   // FUNC, REC, PLAY, STOP
+        break;
+    }
+    return 1;
+}
+
 // Over the header's title ("Trig Parameters"): ours, in the same font.
 static void draw_title(void *bmp)
 {
     FILLRECT(bmp, 18, 54, 126, 63, 0);
     FILLRECT(bmp, 17, 55, 127, 62, 0);
-    TEXT(bmp, TITLE_FONT, 19, 56, -1, "%s", "Expression");
+    TEXT(bmp, TITLE_FONT, 19, 56, -1, "%s",
+         me_menu == M_OFF ? "Expression" : me_menu == M_LOAD ? "Load preset" : me_menu == M_SAVE || me_menu == M_NAME
+         || me_menu == M_OVERWRITE ? "Save preset" : me_menu == M_DEFAULT ? "Default preset" : "Presets");
     FILLRECT(bmp, 18, 54, 126, 63, -1);
     FILLRECT(bmp, 17, 55, 17, 62, -1);
     FILLRECT(bmp, 127, 55, 127, 62, -1);
@@ -716,10 +1021,19 @@ void me_page_draw(void *bmp, void *ctrl)
     int t = track();
     FILLRECT(bmp, 16, 0, 127, 53, 0);   // the stock track box and LEV meter stay
     draw_title(bmp);
-    for (int k = 0; k < CELLS; k++)
-        draw_cell(bmp, t, k);
-    if (list_cell >= 0 && cell_of(t, list_cell)->kind == C_DEST)
-        draw_list(bmp, t, list_cell);
+    if (me_menu) {
+        draw_menu(bmp, t);
+    } else {
+        for (int k = 0; k < CELLS; k++)
+            draw_cell(bmp, t, k);
+        if (list_cell >= 0 && cell_of(t, list_cell)->kind == C_DEST)
+            draw_list(bmp, t, list_cell);
+    }
+    if (msg_t && msg) {                 // a short message, as the stock "SAVE OK"
+        FILLRECT(bmp, 40, 18, 112, 34, 0);
+        box(bmp, 40, 18, 112, 34);
+        centred(bmp, LABEL_FONT, 76, 23, msg);
+    }
 }
 
 // ---- ev_tick (from me_tick) -----------------------------------------------------
@@ -741,6 +1055,18 @@ void me_page_tick(void *ctrl)
     }
     if (list_t && !--list_t)
         list_cell = -1;
+    if (msg_t && !--msg_t)
+        recompose = 1;
+    if (push_a) {                       // knob A held down: a second opens the preset menu
+        if (!me_page_open || !KEYHELD(K_PUSH_A))
+            push_a = 0;
+        else if (++push_a > LONG_PUSH) {
+            push_a = 0;
+            list_cell = -1;
+            menu_cur[M_MAIN] = 0;
+            menu_open(M_MAIN);
+        }
+    }
     if ((me_page_open || recompose) && ctrl) {
         *((volatile char *)ctrl + 0x20) = 1;           // keep the frames coming
         recompose = 0;
@@ -776,6 +1102,10 @@ int me_page_key(void *brain, void *ev)
         }
         return 0;                       // the stock page always sees these keys
     }
+    if (me_menu)
+        return menu_key(ev, track());
+    if (id == K_PUSH_A && KEYPRESS(ev))
+        push_a = 1;
     if (KEYPRESS(ev) && (!(id >= K_PUSH_A && id < K_PUSH_A + CELLS) || id - K_PUSH_A == list_cell))
         list_cell = -1;                 // any key, or a push of its own knob, closes the list
     switch (id) {
@@ -818,6 +1148,18 @@ int me_page_enc(void *brain, void *ev)
         return 0;
     int id = *(int *)((char *)ev + 12);
     int n = *(int *)((char *)ev + 16);
+    if (me_menu) {                      // the LEVEL knob moves, as in the stock menus
+        static int menu_acc;
+        if (id == 9 && n) {
+            menu_acc += n;
+            int steps = menu_acc / RAW_DETENT;
+            menu_acc -= steps * RAW_DETENT;
+            if (steps) menu_move(me_menu == M_NAME ? steps : steps);
+        }
+        return 1;
+    }
+    if (id == 1)
+        push_a = 0;                     // a turn of knob A: a push for the multiplier, not the menu
     if (id < 1 || id > CELLS)
         return 0;                       // LEVEL: the track level, as stock
     if (!n)

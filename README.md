@@ -1,6 +1,6 @@
 # MIDI Expression for the Digitakt
 
-**Play the original Digitakt (mk1, OS 1.54) and the synths it sequences with pitch bend, aftertouch, the mod wheel, breath and velocity from your keyboard.** A [Modwerk](https://modwerk.app/) module, version 0.10.0-experimental.
+**Play the original Digitakt (mk1, OS 1.54) and the synths it sequences with pitch bend, aftertouch, the mod wheel, breath and velocity from your keyboard.** A [Modwerk](https://modwerk.app/) module, version 0.11.0-experimental.
 
 ![The EXPRESSION page of a MIDI track](docs/img/expression-midi.png)
 
@@ -10,7 +10,7 @@ Stock, the Digitakt passes an external keyboard's notes through to its tracks bu
 - **Audio tracks 1–8** bend their pitch, and the wheel, aftertouch and velocity move any SRC, FLTR, AMP or LFO amount of the sound.
 - **Every track has its own routings** on a new page, the TRIG page's second page: three sources (mod wheel, velocity, aftertouch), each to a destination of your choice with its own depth, plus velocity sensitivity.
 - **Velocity sensitivity** per track, for live notes and the sequencer alike; the sequencer still records the velocity as played.
-- **Saved with the project**, and back at power-on.
+- **Saved with the project**, back at power-on, and **presets** for your favourite routings, as plain text files you can read and edit.
 
 Modwerk is an independent project, not affiliated with or endorsed by Elektron. This repository contains no Elektron firmware: everyone builds from their own official OS download.
 
@@ -50,6 +50,16 @@ Turning a destination knob opens a list like the LFO page's DEST; push the same 
 5. For an audio track: select it, open its EXPRESSION page, set BEND and route the wheel to FLTR Frequency.
 6. Save the project as usual: the EXPRESSION settings are saved with it.
 
+### Presets
+
+Hold **knob A pushed for a second**: the preset menu, with LOAD, SAVE, RESET and DEFAULT. Move with UP/DOWN or the LEVEL knob, choose with YES, go back with NO, as in the stock menus.
+
+| The menu | SAVE: a slot… | …and a name |
+| --- | --- | --- |
+| ![The preset menu](docs/img/menu.png) | ![The preset slots](docs/img/menu-save.png) | ![Naming a preset](docs/img/menu-name.png) |
+
+There are 64 presets for audio tracks and 64 for MIDI tracks. LOAD puts one on the current track; RESET puts the track back to the default; DEFAULT picks which preset new projects and RESET start from, FACTORY being the mod's own defaults. A preset is copied, never linked: changing it later does not change a project that used it.
+
 ![A MIDI track's LFO as a destination](docs/img/expression-midi-list.png)
 
 ## How it works
@@ -61,21 +71,23 @@ MIDI Expression is an elemod for Modwerk's Core 2.1: small, checksummed patches 
 - **Audio tracks.** Two hooks in the audio render add the live values to the sound's parameter words after the firmware has built them, one before the LFO stage (for the LFO amounts) and one after it. Nothing is written into the sound, so it stops the moment the input does.
 - **Velocity.** A hook just after the render stores a note's velocity applies V.SNS to what plays; another at the MIDI tracks' note output does the same for MIDI notes. The sequencer records the velocity as played.
 - **The page** is drawn with the firmware's own knob graphics, fonts and acceleration through the core's draw, key, encoder and tick events.
-- **Saving.** No byte of a saved sound or pattern is free (other mods use the few there are), so the settings live in a small file of the mod's own on the +Drive, written with the firmware's own file calls in two alternating copies so that a power cut never loses both. Hooks on the project save and load messages tell it which project it is.
+- **Saving.** No byte of a saved sound or pattern is free (other mods use the few there are), so the settings are text files of the mod's own on the +Drive, in `/cfw/expression`: one per project slot (`projects/003.txt`, the project's name inside), one per preset (`audio/01.txt`, `midi/01.txt`), a `config.txt` and a `current.txt` for power-on. Hooks on the firmware's project save and load messages tell the mod the project's slot, so renaming a project or deleting another one changes nothing. Every file is written to `_temp` first and then in its place, and must end with an `END` line: a file cut short by a power cut, or broken, is skipped for its copy, then for the defaults. Hand-edited values out of range are held to the nearest valid one.
 
 The research behind every address is in [docs/RESEARCH-OS154.md](docs/RESEARCH-OS154.md); the module's own documentation is [module/midi-expression/README.md](module/midi-expression/README.md).
 
 ## Compatibility
 
 - Original Digitakt (mk1), OS 1.54 only.
-- Links with every other Modwerk Digitakt module except **Digi Perform**, which opens its own page with the same TRIG gesture ([results/compat/pairs.txt](results/compat/pairs.txt)). With Digi Slicer, about 5 KB of RAM stay free.
+- Links with every other Modwerk Digitakt module except **Digi Perform**, which opens its own page with the same TRIG gesture ([results/compat/pairs.txt](results/compat/pairs.txt), checked with 0.10). With Digi Slicer, 0.4 KB of RAM stays free: the two fit, but leave no room for a third.
 - FX Track sees the mod's CCs; CC Recall's sends and Digi Matrix's routings add up with it.
 - Avoid a MIDI loop: a synth that echoes MIDI OUT back into MIDI IN on the same channel feeds the mod's output back to it.
-- Settings belong to the project's name and the track's place: copying a sound does not copy them, and two projects with the same name share them (32 projects are kept).
+- Settings belong to the project's slot and the track's place: copying a sound does not copy them (a preset carries them). The original Digitakt does not appear as a USB drive; whether Elektron Transfer can fetch the text files is not checked yet.
 
 ## Status and tests
 
-Experimental. Tested with about 2.4 million host unit checks, on the firmware in the [digiemu](https://github.com/irpina/digiemu) emulator (MIDI-track sums and merging, saving and loading through the firmware's own menus), and on one unit: the audio-track features and a hardware stress test of the MIDI tracks, 25 of 25. Saving and the MIDI LFO destinations are not yet tested on a unit. Details: [module/midi-expression/TESTING.md](module/midi-expression/TESTING.md).
+Experimental. Tested with about 2.4 million host unit checks (including thousands of random broken files), on the firmware in the [digiemu](https://github.com/irpina/digiemu) emulator (MIDI-track sums and merging, saving and loading through the firmware's own menus, the preset menu, memory and CPU use), and on one unit: the audio-track features and a hardware stress test of the MIDI tracks, 25 of 25. Saving, presets and the MIDI LFO destinations are not yet tested on a unit. Details: [module/midi-expression/TESTING.md](module/midi-expression/TESTING.md).
+
+**Resources** (emulator): no memory is allocated, and hundreds of file writes and reads leave the firmware's heap exactly as it was. CPU in the module area: about 1.2 % of the emulated CPU idle and 1.8 % with every route of every track live under a flood of MIDI at the wire rate (the emulator counts 64 million instructions a second; the unit's CPU is faster). RAM: in an image of its own, 92 KB of the module area stay free.
 
 ## Build it
 
