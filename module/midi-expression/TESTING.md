@@ -22,6 +22,7 @@ All commands from the source repository's root, with the build environment of it
 | The preset menu on the firmware: a 1-second push of A, SAVE into slot 01 with a name, LOAD's list shows it | `scripts/emu-screens.py` | the screens in `docs/img/menu*.png` |
 | Links with each other Modwerk Digitakt module | `scripts/compat-pairs.sh MODULE ...` | 0.10: every one but Digi Perform; 0.12 with Digi Slicer: links, 1,372 bytes of RAM left |
 | BEND, the LEVEL knob in the preset lists and FUNC typing on the firmware | digiemu, by hand | FUNC + A: 2, 3, 4, 5, 6 semitones; BEND 2.50 drawn as 2.5; LEVEL one row a detent |
+| On a unit: the full qualification (MIDI sums over DIN and USB, auto channel, sequencer, flood, saving and power cycles, audio tracks by ear, the page and presets by eye) | `scripts/hwqual.py` ([docs/HARDWARE-TESTS.md](../../docs/HARDWARE-TESTS.md)) | to be run on 0.12.0 |
 | On a unit: expression, notes and floods into MIDI IN, everything from MIDI OUT recorded and checked | `scripts/hwping.py PORT`, then `scripts/hwstress.py --in PORT --out PORT` | 0.9.2: 25 of 25 (`results/hardware/stress-20261105-135203`) |
 
 Emulator scripts take the image's settings from `toolchain/emu-NAME.env` (`scripts/emu-image.sh NAME` builds and sets one up): `set -a; . toolchain/emu-NAME.env; set +a; digiemu/.venv/bin/python scripts/SCRIPT.py`. Screens for the documentation: `scripts/emu-screens.py`.
