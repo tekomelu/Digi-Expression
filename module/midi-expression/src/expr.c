@@ -113,6 +113,7 @@ struct chan {
     uint8_t taken[OUTPUTS];     // the last message for it was this mod's
     uint8_t heard[OUTPUTS][3];  // the last message this mod sent for it ...
     uint8_t known[OUTPUTS];     // ... and that it is still what the synth has
+    uint8_t seen[OUTPUTS];      // own[] came from the track's send(), not its parameter
 };
 
 static struct chan chans[16];
@@ -157,7 +158,7 @@ static void init(void)
         for (int o = 0; o < OUTPUTS; o++) {
             c->own[o] = 0;
             c->stamp[o] = 0;
-            c->pending[o] = c->taken[o] = c->known[o] = 0;
+            c->pending[o] = c->taken[o] = c->known[o] = c->seen[o] = 0;
         }
         c->own[O_PB] = 8192;            // stock's centre until the track sends
         for (int s = 0; s < SOURCES; s++)
@@ -246,6 +247,22 @@ static int group_live(const struct chan *c, int o)
     return 0;
 }
 
+// The track's own value. Until its task has sent it (stock sends a value when
+// it changes, and all of them only at a pattern change), it is the track's
+// parameter in use: send()'s id is the parameter's index (21 PB, 22 AT, 23 MW,
+// 24 BC, 25..32 the FLTR page's CC VAL 1-8; 0x400e16da passes the word). The
+// words are 8.8 (the MIDI value in the high byte), PB's is 14-bit (0x2000 at
+// its centre, measured in digiemu).
+static int32_t own_of(const struct chan *c, int o)
+{
+    if (c->seen[o] || c->owner < 0 || c->owner > 7)
+        return c->own[o];
+    const volatile int8_t *w = &PARAMS[106 * c->owner + 2 * (ID_FIRST + o)];
+    if (o == O_PB)
+        return clamp(((uint8_t)w[0] << 8) | (uint8_t)w[1], 0, 16383);
+    return clamp(w[0], 0, 127);
+}
+
 static int32_t round256(int32_t v)
 {
     return v >= 0 ? (v + 128) >> 8 : -((-v + 128) >> 8);
@@ -258,7 +275,7 @@ static uint8_t compose(const struct chan *c, int ch, int o, uint8_t *out)
     int32_t th, rt;
     if (o == O_PB) {
         live_parts(c, o, &th, &rt);
-        int32_t v = clamp(c->own[O_PB] + th + rt * 16383 / 32512, 0, 16383);
+        int32_t v = clamp(own_of(c, O_PB) + th + rt * 16383 / 32512, 0, 16383);
         out[0] = (uint8_t)(0xE0 | ch);
         out[1] = (uint8_t)(v & 0x7F);
         out[2] = (uint8_t)(v >> 7);
@@ -267,17 +284,17 @@ static uint8_t compose(const struct chan *c, int ch, int o, uint8_t *out)
     if (o == O_AT) {
         live_parts(c, o, &th, &rt);
         out[0] = (uint8_t)(0xD0 | ch);
-        out[1] = (uint8_t)clamp(c->own[O_AT] + th + round256(rt), 0, 127);
+        out[1] = (uint8_t)clamp(own_of(c, O_AT) + th + round256(rt), 0, 127);
         return 2;
     }
-    int32_t cc = cc_of(c, o), own = c->own[o], sum_th = 0, sum_rt = 0;
+    int32_t cc = cc_of(c, o), own = own_of(c, o), sum_th = 0, sum_rt = 0;
     uint16_t latest = c->stamp[o];
     for (int p = O_MW; p < OUTPUTS; p++) {
         if (cc_of(c, p) != cc)
             continue;
         if ((int16_t)(c->stamp[p] - latest) > 0) {   // the one that changed last
             latest = c->stamp[p];
-            own = c->own[p];
+            own = own_of(c, p);
         }
         live_parts(c, p, &th, &rt);
         sum_th += th;
@@ -520,6 +537,7 @@ int32_t me_filter(int32_t track, int32_t channel, int32_t id, int32_t value, int
     if (c->owner < 0 && track >= 0 && track < 8)
         c->owner = (int8_t)track;       // whose SEL numbers apply
     c->own[o] = (int16_t)(o == O_PB ? clamp(value, 0, 16383) : clamp((int16_t)value >> 8, 0, 127));
+    c->seen[o] = 1;
     c->stamp[o] = ++clock_stamp;
     int32_t cc = cc_of(c, o);
     if (!group_live(c, o)) {

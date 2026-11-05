@@ -1,5 +1,12 @@
 [
   {
+    "version": "0.9.2-experimental",
+    "date": "2026-11-05",
+    "changes": [
+      "Until a MIDI track has sent a value itself, live input adds to the track's parameter as set (SRC AT, MW, BC; FLTR CC VAL 1-8), not to 0: stock sends a value only when it changes, so after power-on the mod did not know it. Pitch bend too (its parameter is 14-bit, 8192 at the centre)."
+    ]
+  },
+  {
     "version": "0.9.1-experimental",
     "date": "2026-11-05",
     "changes": [

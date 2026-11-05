@@ -94,6 +94,7 @@ static void reset(void)
     h_notes[0] = h_ccs[0] = 0; h_task_auto = 1; h_queued = 0; h_in_queue_max = 0; h_task_busy = 0;
     clock_stamp = 0;
     memset((void *)h_params, 0, sizeof h_params);
+    for (int m = 0; m < 8; m++) h_params[106 * m + 2 * 21] = 0x20;   // PB's parameter at its centre, 0x2000
     for (int t = 0; t < 16; t++) h_track_channel[t] = t;   // tracks 1-8 ch 1-8, A-H ch 9-16
     for (int m = 0; m < 8; m++) chan_of[m] = -1;
     chan_of[0] = 0;                                        // MIDI track A: CHAN on, channel 1
@@ -312,6 +313,21 @@ int main(void)
     before = nsent;
     mw_in(13, 0, AUTO);                                   // live: 60 + 0, as stock's last, but the mod must not assume
     CHECK(nsent == before + 1 && last_cc(1) == 60, "the mod's 60 goes though stock's was 60 too (unknown): %d", nsent - before);
+
+    // 9c. Before the track has sent a value, its own is the track's parameter in use (FLTR VAL1 = 10, MW = 10).
+    reset();
+    h_params[2 * 23] = 10; h_params[2 * 25] = 10; SEL(0, 0, 1); h_params[2 * 22] = 5;
+    mw_in(13, 50, AUTO);
+    CHECK(last_cc(1) == 60, "MW param 10 + wheel 50 = 60 before any send: %d", last_cc(1));
+    at_in(13, 20, AUTO);
+    CHECK(nsent && sent[nsent - 1][0] == 0xD0 && sent[nsent - 1][1] == 25, "AT param 5 + 20 = 25: %02x %d", sent[nsent - 1][0], sent[nsent - 1][1]);
+    track_mw(0, 30);
+    CHECK(last_cc(1) == 80, "then the track's send counts: 30 + 50: %d", last_cc(1));
+    pb_in(13, 9000, AUTO);
+    CHECK(pb_of(nsent - 1) == 9000, "PB: the parameter's centre 0x2000 + 808: %d", pb_of(nsent - 1));
+    h_params[2 * 21] = 0x30; h_params[2 * 21 + 1] = 0x00;            // PB knob up: 12288
+    pb_in(13, 8192 + 100, AUTO);
+    CHECK(pb_of(nsent - 1) == 12288 + 100, "PB parameter 12288 + 100: %d", pb_of(nsent - 1));
 
     // 10. Routing: CHAN off, audio track selected, unmatched channel.
     reset();

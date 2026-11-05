@@ -51,6 +51,9 @@ def route(src, amount):
     return tdiv(src * amount, 64)
 
 
+SETTLE = 0.05                   # the Digitakt answers in about 4..40 ms (its MIDI task and the interface)
+
+
 def clamp(v, lo, hi):
     return lo if v < lo else hi if v > hi else v
 
@@ -105,6 +108,17 @@ class Stress:
         m = v[-1]
         return m[1] | (m[2] << 7) if kind == 0xE0 else m[1]
 
+    def heard(self, mark, kind, cc=None):
+        """The value the synth last heard of a kind (or CC number) before mark."""
+        g = self.got(0)[:max(0, len(self.got(0)) - len(self.got(mark)))]
+        if cc is not None:
+            return self.last_cc(g, cc)
+        return self.last(g, kind)
+
+    def same_or(self, have, want, mark, kind, cc=None):
+        """0.9.1 leaves out a value that did not change, as stock does."""
+        return have == want or (have is None and self.heard(mark, kind, cc) == want)
+
     def valid(self, phase, msgs):
         bad = [hexs(m) for _, m in msgs if any(b > 127 for b in m[1:]) or m[0] < 0x80]
         self.check(phase, 'every message valid (%d)' % len(msgs), not bad, ', '.join(bad[:5]))
@@ -143,8 +157,11 @@ routes, V.SNS 100 %). Nothing else sending to this MIDI input.''')
             if x[0] & 0xF0 == 0xB0:
                 cc[x[1]] = x[2]
         self.note('  CCs the track sent: %s' % cc)
-        self.check('own', 'MW and VAL1 on CC 1 = %d' % OWN['MW'], cc.get(1) == OWN['MW'], 'got %s' % cc.get(1))
-        self.check('own', 'VAL2 on CC 74 = 0', cc.get(74) == OWN['VAL2'], 'got %s' % cc.get(74))
+        # Stock sends a value only when it changed (all of them at a pattern change):
+        # nothing here is fine; 0.9.1 takes the track's own from its parameters.
+        for n, want, what in ((1, OWN['MW'], 'MW and VAL1 on CC 1'), (74, OWN['VAL2'], 'VAL2 on CC 74')):
+            self.check('own', '%s = %d, if sent' % (what, want), True if n not in cc else cc[n] == want,
+                       'got %s' % cc.get(n) if n in cc else 'not sent (unchanged)')
         notes = [x for _, x in g if x[0] & 0xF0 == 0x90 and x[2]]
         self.check('own', 'sequencer note at velocity %d (V.SNS 100 %%)' % SEQ_VEL,
                    bool(notes) and notes[0][2] == SEQ_VEL, 'notes %s' % [hexs(x) for x in notes[:3]])
@@ -162,7 +179,7 @@ routes, V.SNS 100 %). Nothing else sending to this MIDI input.''')
             v = rng.randrange(16384) if k == 0 else rng.randrange(128)
             mk = self.io.mark()
             msg = (self.pb(v), self.at(v), self.cc(1, v), self.cc(2, v))[k]
-            self.send(msg, gap=0.012)
+            self.send(msg, gap=SETTLE)
             g = self.got(mk)
             if k == 0:
                 want, have = clamp(OWN['PB'] + v - 8192, 0, 16383), self.last(g, 0xE0)
@@ -173,12 +190,13 @@ routes, V.SNS 100 %). Nothing else sending to this MIDI input.''')
             else:
                 want, have = clamp(OWN['BC'] + v, 0, 127), self.last_cc(g, 2)
             wheel_moves += k == 2
-            if have != want:
+            kind, ccn = ((0xE0, None), (0xD0, None), (0xB0, 1), (0xB0, 2))[k]
+            if not self.same_or(have, want, mk, kind, ccn):
                 errs.append('%s %d -> %s, want %d' % (('PB', 'AT', 'MW', 'BC')[k], v, have, want))
         g = self.got(m)
         self.check('thru', '200 random PB/AT/MW/BC: each out as own + input', not errs, '; '.join(errs[:6]))
         n1 = sum(1 for _, x in g if x[0] & 0xF0 == 0xB0 and x[1] == 1)
-        self.check('thru', 'one CC 1 per wheel move (MW and VAL1 merged)', n1 == wheel_moves, '%d CC 1 for %d moves' % (n1, wheel_moves))
+        self.check('thru', 'at most one CC 1 per wheel move (MW and VAL1 merged)', 0 < n1 <= wheel_moves, '%d CC 1 for %d moves' % (n1, wheel_moves))
         self.valid('thru', g)
         # the wheel held: nothing below it on CC 1 (a stray stock VAL1 or MW value would be 10)
         self.send(self.cc(1, 90))
@@ -217,24 +235,24 @@ On MIDI track A's EXPRESSION page:
         errs = []
         for w in list(range(0, 128, 7)) + [127, 0]:
             mk = self.io.mark()
-            self.send(self.cc(1, w), gap=0.015)
+            self.send(self.cc(1, w), gap=SETTLE)
             g = self.got(mk)
             want74 = clamp(OWN['VAL2'] + round256(route(w, 32 * 256)), 0, 127)
             want1 = clamp(OWN['MW'] + w, 0, 127)
-            if self.last_cc(g, 74) != want74:
+            if not self.same_or(self.last_cc(g, 74), want74, mk, 0xB0, 74):
                 errs.append('wheel %d: CC 74 %s, want %d' % (w, self.last_cc(g, 74), want74))
-            if self.last_cc(g, 1) != want1:
+            if not self.same_or(self.last_cc(g, 1), want1, mk, 0xB0, 1):
                 errs.append('wheel %d: CC 1 %s, want %d' % (w, self.last_cc(g, 1), want1))
         self.check('routes', 'wheel: CC 1 own + wheel (THRU), CC 74 + wheel x 32/64', not errs, '; '.join(errs[:6]))
         errs = []
         for p in list(range(0, 128, 9)) + [127, 0]:
             mk = self.io.mark()
-            self.send(self.at(p), gap=0.015)
+            self.send(self.at(p), gap=SETTLE)
             g = self.got(mk)
             want_pb = clamp(OWN['PB'] + tdiv(route(p, -64 * 256) * 16383, 32512), 0, 16383)
-            if self.last(g, 0xE0) != want_pb:
+            if not self.same_or(self.last(g, 0xE0), want_pb, mk, 0xE0):
                 errs.append('pressure %d: PB %s, want %d' % (p, self.last(g, 0xE0), want_pb))
-            if self.last(g, 0xD0) != p:
+            if not self.same_or(self.last(g, 0xD0), p, mk, 0xD0):
                 errs.append('pressure %d: AT %s' % (p, self.last(g, 0xD0)))
         self.check('routes', 'pressure: AT passes, PB pulled down by it (-64 = the whole way)', not errs, '; '.join(errs[:6]))
         errs = []
@@ -283,10 +301,11 @@ On MIDI track A's EXPRESSION page:
         bad = 0
         for i, (_, x) in enumerate(g):
             if x[0] & 0xF0 == 0x90 and x[2]:
-                before = [y for _, y in g[max(0, i - 4):i] if y[0] & 0xF0 == 0xB0 and y[1] == 2]
-                if not before or before[-1][2] != SEQ_VEL:
+                before = [y for _, y in g[:i] if y[0] & 0xF0 == 0xB0 and y[1] == 2]
+                last2 = before[-1][2] if before else self.heard(m, 0xB0, 2)
+                if last2 != SEQ_VEL:
                     bad += 1
-        self.check('seq', 'each sequencer note has CC 2 = %d just before it (VEL route)' % SEQ_VEL, bool(notes) and not bad, '%d without' % bad)
+        self.check('seq', 'each sequencer note plays with CC 2 = %d (VEL route; sent once, unchanged after)' % SEQ_VEL, bool(notes) and not bad, '%d without' % bad)
         self.valid('seq', g)
 
     def lfo(self):
@@ -392,7 +411,7 @@ MULT and WAVE as they are. (The EXPRESSION page stays as it is.)''')
     # ---- report ------------------------------------------------------------------
     def save(self):
         os.makedirs(self.out_dir, exist_ok=True)
-        rep = {'when': time.strftime('%Y-%m-%d %H:%M:%S'), 'version': '0.9.1-experimental',
+        rep = {'when': time.strftime('%Y-%m-%d %H:%M:%S'), 'version': '0.9.2-experimental',
                'ports': {'in': self.io.in_name, 'out': self.io.out_name},
                'config': {k: v + 1 for k, v in self.cfg.items()}, 'own': OWN, 'sel': SEL,
                'results': self.results, **self.extra}
