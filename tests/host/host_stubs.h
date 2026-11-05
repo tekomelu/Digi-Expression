@@ -25,3 +25,6 @@ void h_stock_cc(const uint8_t *msg, int32_t len, int32_t flag);
 #define CHANNEL        h_channel
 #define DIN_SEND       h_din_send
 #define STOCK_CC       h_stock_cc
+
+extern volatile int8_t h_params[8 * 106];
+#define PARAMS         h_params

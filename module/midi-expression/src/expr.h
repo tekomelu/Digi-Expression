@@ -6,60 +6,53 @@
 
 #include <stdint.h>
 
-enum { PB, AT, MW, KINDS };
-// What a MIDI track sends: the three above, summed with the track's own
-// values, or the wheel and the pressure as a plain CC of their own.
-enum { XMW = KINDS, XAT, OUTS };
-
-// Master switches for pitch bend, aftertouch and the mod wheel: on. (They were
-// SETTINGS rows up to 0.5; each track's own switches replaced them. Unticking
-// one releases everything it reached, which the tests still use.)
-extern volatile uint8_t me_pb_on, me_at_on, me_mw_on;
+enum { PB, AT, MW, KINDS };                     // live sources an audio track takes
 
 // Per track, on the TRIG page's second page (page.c). Defaults at power-on;
-// held in RAM only, not saved with the project.
+// held in RAM only, not saved with the project. Audio and MIDI tracks share
+// the layout: knob A is BEND on an audio track, THRU on a MIDI track.
 #define PB_RANGE_MAX 12                         // an octave each way at most
-#define AMOUNT_MAX   (64 * 256)                // depths in 1/256: -64.00..+64.00
-#define CC_MAX       119                        // CC 120-127 are channel mode messages
+#define AMOUNT_MAX   (64 * 256)                 // depths in 1/256: -64.00..+64.00
+#define VEL_SENS_MAX 100
 
-struct me_audio_cfg {
-    volatile int8_t range;                      // semitones, 0 = not bent
-    volatile int8_t mw_dest, at_dest, vel_dest; // a sound slot (1..45), 0 = none
-    volatile int8_t vel_sens;                   // 0..100 %: how much velocity counts
+struct me_cfg {
+    union {
+        volatile int8_t range;                  // audio: semitones of bend, 0 = none
+        volatile int8_t thru;                   // MIDI: PB, AT, MW and BC pass to the synth
+    };
+    volatile int8_t mw_dest, at_dest, vel_dest; // audio: a sound slot 1..45; MIDI: 1..12 (below); 0 none
+    volatile int8_t vel_sens;                   // 0..100 %: how much velocity counts in what plays
     volatile int16_t mw_amount, at_amount, vel_amount;  // -64.00..+64.00, in 1/256
 };
 
-struct me_midi_cfg {
-    volatile uint8_t pb_on, at_on, mw_on;       // this track passes them
-    volatile uint8_t mw_cc;                     // 1: the track's MW (CC 1); else this CC
-    volatile uint8_t at_cc;                     // 0: channel aftertouch; else this CC
-    volatile int8_t vel_sens;                   // 0..100 %
-};
+extern struct me_cfg me_audio_cfg[8];
+extern struct me_cfg me_midi_cfg[8];
 
-#define VEL_SENS_MAX 100
-#define VELK KINDS                              // audio tracks: velocity as a fourth source
-#define AKINDS (KINDS + 1)
+// A MIDI track's destinations, as its LFO page lists them: what its send()
+// ids 21..32 are. dest = output + 1.
+enum { O_PB, O_AT, O_MW, O_BC, O_VAL1, OUTPUTS = O_VAL1 + 8 };
 
-extern struct me_audio_cfg me_audio_cfg[8];
-extern struct me_midi_cfg me_midi_cfg[8];
+#define AUDIO_KINDS (KINDS + 1)                 // audio sources: PB, AT, MW and the velocity
+#define VELK KINDS
 
 // audio.c
 // live: PB as an offset from centre (-8192..8191), AT and MW 0..127.
 void me_audio_take(int kind, int32_t live, uint32_t audio_tracks, int from_auto);
 void me_audio_release_auto(void);
-void me_audio_release_kind(int kind);
 void me_audio_velocity(int t, int32_t velocity, int from_auto);
 void me_render(void *words);                    // after the LFO stage: every slot but the LFOs'
 void me_render_lfo(void *words);                // the LFO stage's entry: the LFO slots (1..16)
-
 // vel.s / audio.c: a note the render plays on a voice (its velocity is in the
 // voice's word); a velocity 1..127 through V.SNS 0..100 %.
 void me_voice_velocity(int32_t voice);
 int32_t me_velocity_scaled(int32_t velocity, int32_t sens);
-// vel.s / expr.c: notes the MIDI tracks send: V.SNS on their velocity.
-const uint8_t *me_note_out(int32_t len, const uint8_t *bytes);
 
-// expr.c: a MIDI track's settings changed on the page: give its channel back.
-void me_midi_release_track(int m);
+// expr.c
+// vel.s: notes the MIDI tracks send: V.SNS on their velocity, VEL as a source.
+const uint8_t *me_note_out(int32_t len, const uint8_t *bytes);
+// page.c: a MIDI track's settings changed: what it sends follows at once.
+void me_midi_changed(int m);
+// The CC number a MIDI track's CC VAL slot k (0..7) sends on (its SEL), or -1.
+int32_t me_midi_sel(int m, int k);
 
 #endif

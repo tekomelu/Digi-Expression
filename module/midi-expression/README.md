@@ -1,6 +1,6 @@
 # MIDI Expression
 
-Module version `0.7.0-experimental`, for the original Digitakt on OS 1.54, Core 2.1.
+Module version `0.8.0-experimental`, for the original Digitakt on OS 1.54, Core 2.1.
 
 ## Overview
 
@@ -12,26 +12,32 @@ Select a track, press **TRIG** for its TRIG page, then **tap TRIG again**. The p
 
 | Knob | Audio track | Default | MIDI track | Default |
 | --- | --- | --- | --- | --- |
-| A | BEND: OFF, 1–12 semitones of TUNE | 2 | PB: ON/OFF | ON |
-| B | V.SNS: velocity sensitivity, 0–100 % | 100 % | AT: ON/OFF | ON |
-| C | MW: the parameter the wheel moves | none | MW: ON/OFF | ON |
-| D | M.DEP: −64.00 to +64.00, as fine as LFO DEP | 0 | V.SNS | 100 % |
-| E | VEL: the parameter the played velocity moves | none | – | |
-| F | V.DEP: −64.00 to +64.00, as fine as LFO DEP | 0 | – | |
-| G | AT: the parameter aftertouch moves | none | MW>: CC 1 (added to the track's own MW) or CC 2–119 alone | CC 1 |
-| H | A.DEP: −64.00 to +64.00, as fine as LFO DEP | 0 | AT>: channel aftertouch, or CC 1–119 alone | AT |
+| A | BEND: OFF, 1–12 semitones of TUNE | 2 | THRU: the input's PB, AT, MW and BC added to the track's own | ON |
+| B | V.SNS: velocity sensitivity, 0–100 % | 100 % | V.SNS | 100 % |
+| C | MW: the parameter the wheel moves | none | MW: the value the wheel moves | none |
+| D | M.DEP: −64.00 to +64.00, as fine as LFO DEP | 0 | M.DEP | 0 |
+| E | VEL: the parameter the played velocity moves | none | VEL | none |
+| F | V.DEP | 0 | V.DEP | 0 |
+| G | AT: the parameter aftertouch moves | none | AT | none |
+| H | A.DEP | 0 | A.DEP | 0 |
 
-**Destinations:** SRC Tune, Bit Reduction, Start, Length, Level; FLTR Frequency, Resonance, Env Depth, Attack, Decay, Sustain, Release and its second page; AMP Attack, Hold, Decay, Overdrive, Delay, Reverb, Pan, Volume; LFO1 and LFO2 Speed, Multiplier, Fade, Phase, Depth. Each adds to the track's own value, its parameter locks, its LFOs and Digi Matrix's routings, within the parameter's range, in the stock LFO's scale (±64 at full covers the whole range). The LFO ones are added before the LFO stage, everything else after it, which is where the engine reads them (measured).
+**Audio destinations:** SRC Tune, Bit Reduction, Start, Length, Level; FLTR Frequency, Resonance, Env Depth, Attack, Decay, Sustain, Release and its second page; AMP Attack, Hold, Decay, Overdrive, Delay, Reverb, Pan, Volume; LFO1 and LFO2 Speed, Multiplier, Fade, Phase, Depth. Each adds to the track's own value, its parameter locks, its LFOs and Digi Matrix's routings, within the parameter's range, in the stock LFO's scale (±64 at full covers the whole range). The LFO ones are added before the LFO stage, everything else after it, which is where the engine reads them (measured).
 
 **Velocity.** V.SNS scales the velocity of what the track plays, live from MIDI IN or from the sequencer: 100 % as played, 50 % plays 0–127 as 64–127, 0 % plays every note at full velocity. The sequencer records the velocity as played, so recorded notes keep their full range and V.SNS can be changed afterwards. As a source, VEL is the velocity of the last note the track played (live or from the sequencer, before V.SNS), held until its next note, so velocity routes play back from the sequencer as they were played live. On a MIDI track, V.SNS scales the velocity of the notes it sends to its synth.
 
-A CC chosen with MW> or AT> goes back to 0 when you leave the track. Changing a MIDI track's PB/AT/MW/MW>/AT> gives its synth the track's own values back.
+**MIDI destinations** are the MIDI LFO page's: SRC Pitch Bend, Aftertouch, Mod Wheel, BC, and CC VAL 1–8 (FLTR page), each on the CC number its SEL picks (AMP page); the list and the box show that number ("CC:CC1 Value #74"). Every one of these twelve values goes out as **the track's own value** (its knob, parameter locks and LFO) **plus everything live aimed at it** (THRU, and any route), capped to the MIDI range, as one message. Routes and THRU add up: the wheel routed to PB bends on top of the bend wheel; the wheel routed to MW with THRU on counts twice (M.DEP −64.00 cancels it).
+
+**Two values on one CC number are merged.** The mod wheel is CC 1 and BC is CC 2; a CC VAL slot whose SEL is 1 or 2, or two slots with the same SEL, send on the same number, which on a stock Digitakt makes the synth jump between two values. While anything live is aimed at any of them, they go out as one CC: the track's own value is whichever of them changed last (what the synth heard last, as on a stock Digitakt), plus everything live aimed at any of them. With an LFO on one of them, that one keeps being "the last".
+
+Changing a MIDI track's settings takes effect at once; values nothing is aimed at any more get the track's own value back, and are stock again.
 
 The settings are held in RAM: they return to the defaults at every power-on and are not saved with the project.
 
 ## Before you play
 
-PORT CONFIG > RECEIVE NOTES and, for the mod wheel, RECEIVE CC/NRPN must be ticked. Nothing else to switch on: the mod works from power-on.
+PORT CONFIG > RECEIVE NOTES and, for the mod wheel and breath, RECEIVE CC/NRPN must be ticked. Nothing else to switch on: the mod works from power-on.
+
+**Avoid a MIDI loop.** If the synth or a MIDI interface echoes the Digitakt's MIDI OUT back into its MIDI IN on the same channel, the mod's own output comes back as input and is added again, running up to the maximum (and notes double, as on a stock Digitakt). Keep the synth's MIDI thru/echo off, or on another channel.
 
 ### Quick tutorial: bend a synth through a MIDI track
 
@@ -44,21 +50,23 @@ PORT CONFIG > RECEIVE NOTES and, for the mod wheel, RECEIVE CC/NRPN must be tick
 
 | In at MIDI IN | Taken when | Out of MIDI OUT | Stock handling |
 | --- | --- | --- | --- |
-| Pitch bend (Ex), any channel | the track's PB ON | Ex on each routed MIDI track's CHAN: track's PB + (input − 8192), within 0–16383 | none (stock drops it) |
-| Channel aftertouch (Dx) | the track's AT ON | Dx on each routed track's CHAN: track's AT + input, within 0–127 | none (stock drops it) |
-| CC 1 (Bx 01) | the track's MW ON, RECEIVE CC/NRPN ticked | Bx 01 on each routed track's CHAN: track's MW + input, within 0–127 | unchanged: the stock handler runs first, always |
+| Pitch bend (Ex), any channel | THRU ON | Ex on each routed MIDI track's CHAN: track's PB + (input − 8192), within 0–16383 | none (stock drops it) |
+| Channel aftertouch (Dx) | THRU ON, or AT routed | Dx on each routed track's CHAN: track's AT + input, within 0–127 | none (stock drops it) |
+| CC 1 (Bx 01) | THRU ON or MW routed, RECEIVE CC/NRPN ticked | Bx 01 on each routed track's CHAN: track's MW + input, within 0–127 | unchanged: the stock handler runs first, always |
+| CC 2 (Bx 02) | THRU ON, RECEIVE CC/NRPN ticked | Bx 02: track's BC + input | unchanged: stock first |
+| Note on | the track's VEL routed, or V.SNS below 100 % | the route's value just before the note; the note with V.SNS applied | the note as stock; recorded as played |
 | Every other message | never | as stock | unchanged |
 
 **Routing** is the stock note router's: a message on the AUTO CHANNEL goes to the active track only; otherwise to every track whose TRACK CHANNEL matches. Of those, only MIDI tracks A–H with CHAN on send anything. A message on the AUTO CHANNEL with an audio track selected is dropped, as stock.
 
-**The track's own values.** A MIDI track sends its PB, AT and MW (knob, parameter locks, LFO, and the forced send at its first trig after a pattern change) as stock. While no live input has reached a channel, those go out untouched. Once it has, the mod sends the sum on that channel instead of the track's value, so the two never fight.
+**The track's own values.** A MIDI track sends its twelve values (knob, parameter locks, LFO, and the forced send at its first trig after a pattern change) as stock. While nothing live is aimed at a value, it goes out untouched. Once something is, the mod sends the sum instead of the track's value, so the two never fight.
 
-**Leaving a track.** When the active track changes, every channel that AUTO CHANNEL input reached gets the track's own PB, AT and MW back, and the mod stops adding to them. A track reached through its own TRACK CHANNEL keeps the live value, as stock routing keeps its notes. Unticking a row does the same for that message.
+**Leaving a track.** When the active track changes, what came in on the AUTO CHANNEL stops counting and the synth gets the track's own values back. A track reached through its own TRACK CHANNEL keeps the live value, as stock routing keeps its notes. A note's velocity stays (the sequencer's notes keep setting it).
 
 ## How it hooks in
 
 - **Input:** the MIDI task hands each incoming message to one of sixteen handlers from a table, by type. Stock's pitch bend and channel aftertouch entries are an empty function. The mod points them at its own handlers and the control-change entry at a wrapper that calls the stock handler first. Three 4-byte pointer sites.
-- **The track's own values:** an 8-byte site at the entry of the MIDI tracks' `send(track, channel, id, value, force)` lets the mod see and, while live input is active, take over the track's PB (id 21), AT (22) and MW (23) sends. Every other parameter passes untouched.
+- **The track's own values:** an 8-byte site at the entry of the MIDI tracks' `send(track, channel, id, value, force)` lets the mod see and, while live input is active, take over the track's twelve LFO-page values (ids 21–32: PB, AT, MW, BC, CC VAL 1–8). Every other parameter passes untouched. The SEL numbers are read from the MIDI tracks' parameters in use (0x421c9188, as CC Recall documents).
 - **Priority:** each output channel keeps one pending flag per message type, and the value is worked out when it goes out. It goes through the stock DIN driver only while its transmit ring holds at most 24 bytes (about 8 ms of line time), so it never queues in front of a burst of sequencer notes. What waits goes with the next message or within one UI tick (33 ms).
 
 - **Velocity:** an 8-byte site at 0x40077a60, right after the render stores a note's velocity for its voice, and a 6-byte site at the entry of the MIDI tracks' notes_append (0x400e1002) apply V.SNS to what plays (vel.s). The note router and recording are untouched.

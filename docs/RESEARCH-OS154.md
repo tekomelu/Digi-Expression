@@ -110,3 +110,9 @@ Stock heap addresses are the same from boot to boot in the emulator but are not 
 - Audio: the render's message loop (0x400777a2..) takes every note message, sequencer or live; the note-on branch stores the message's velocity (msg+20, 8.8) to the voice's word 0x80001f18 + 2 × voice at 0x40077a5c (or a computed one at 0x40077a4c, clamped to 0..32512); both continue at 0x40077a60 (`move.l %d2,%d0; addi.l #287,%d0`, 8 bytes, SHA-256 fb36fd2b…1d6b). Those are the only writes of that table. Digi Neighbor reads it as the trig's velocity.
 - MIDI tracks: notes go out of the MIDI tracks' task through notes_append(len, bytes) 0x400e1002 into the buffer at 0x421b6620 (length byte, then the bytes), flushed with midi_out at 0x400e1dd0; CCs go through append 0x400e0dac into 0x421b6a21, flushed at 0x400e1dea. notes_append's first instruction is `mvz.b 0x421b6620,%d1` (6 bytes, SHA-256 e6b06970…d33e); its callers: 0x400e14e0, 0x400e1984, 0x400e19a6, 0x400e1b96, 0x400e1c38, 0x400e1cc6.
 - Recording: the live note (0x400d5604) records what the note router hands it.
+
+## 11. A MIDI track's twelve values and their CC numbers (0.8)
+
+- send()'s id table (built on its stack): id 21 kind 4 pitch bend, 22 kind 3 aftertouch, 23 kind 2 CC 1, 24 kind 2 CC 2, 25–32 kind 1 with parameter 33–40: the CC number is the signed high byte of that parameter's word in the MIDI tracks' parameters in use, `0x421c9188 + 106 × track + 2 × parameter` (track 0–7, the same index CC Recall passes). Stock's default SEL is 0 (shown "BANK SEL").
+- The MIDI LFO page's DEST list is exactly these twelve: META:None, SRC:Pitch Bend, SRC:Aftertouch, SRC:Mod Wheel, SRC:BC, CC:CC1 Value … CC:CC8 Value.
+- digiemu runs its CPU in bounded slices (`m._fast_stepper_obj.left`); to call a firmware function from a script, lift that bound around `emu_start` (`scripts/emu-midi-whacky.py`).

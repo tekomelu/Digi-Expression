@@ -39,7 +39,7 @@
 #define TUNE_MAX          (88 * 256)
 
 struct atrack {
-    volatile int16_t live[AKINDS];  // PB offset, AT, MW, the last note's velocity
+    volatile int16_t live[AUDIO_KINDS];  // PB offset, AT, MW, the last note's velocity
     volatile uint8_t via_auto;
 };
 
@@ -74,12 +74,6 @@ void me_audio_release_auto(void)
             atracks[t].live[k] = 0;
         atracks[t].via_auto = 0;
     }
-}
-
-void me_audio_release_kind(int kind)
-{
-    for (int t = 0; t < 8; t++)
-        atracks[t].live[kind] = 0;
 }
 
 static void add_within(volatile int16_t *w, int32_t x, int32_t lo, int32_t hi)
@@ -121,7 +115,7 @@ static void render(void *words, int lfo)
         int32_t pb = a->live[PB], at = a->live[AT], mw = a->live[MW], vel = a->live[VELK];
         if (!pb && !at && !mw && !vel)
             continue;
-        struct me_audio_cfg *cfg = &me_audio_cfg[t];
+        struct me_cfg *cfg = &me_audio_cfg[t];
         volatile int16_t *v = VOICE(words, t);
         if (!lfo && pb) {
             int32_t range = cfg->range;

@@ -1,56 +1,59 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-// MIDI Expression for the Digitakt mk1, OS 1.54: pitch bend, channel
-// aftertouch and the mod wheel arriving at MIDI IN are added to what a MIDI
-// track sends its synth, on the route the notes take. For live playing only:
-// nothing is recorded into the sequencer.
+// MIDI Expression for the Digitakt mk1, OS 1.54, MIDI tracks: pitch bend,
+// channel aftertouch, the mod wheel, breath (CC 2) and the velocity of the
+// notes arriving at MIDI IN play the synth a MIDI track sends to, on the route
+// the notes take. Live playing only: nothing is recorded into the sequencer.
 //
 // Input. Stock, the MIDI task hands each incoming message to one of sixteen
 // handlers, chosen by its type, from a table at 0x401b8dd4: message, length
 // and a flag (0x10 on the auto channel, 8 otherwise; 4 and 2 from USB). The
 // entries for channel aftertouch (0xD) and pitch bend (0xE) are an empty
-// function, and the control-change handler (0xB) does not forward CC 1. This
-// mod points the D and E entries at its own handlers and wraps the B entry
-// (the stock handler runs first, always).
+// function, and the control-change handler (0xB) does not forward CC 1 or 2.
+// This mod points the D and E entries at its own handlers and wraps the B
+// entry (the stock handler runs first, always). Routing is the stock note
+// router's: on the auto channel, the active track only; otherwise every track
+// whose TRACK CHANNEL matches. Of those, MIDI tracks A-H with CHAN on take it.
 //
-// Routing is the stock note router's (0x400d5c1c): on the auto channel, the
-// active track only; otherwise every track whose TRACK CHANNEL matches. Of
-// those, MIDI tracks A-H with CHAN on take the message, on their CHAN.
+// What a MIDI track sends. Twelve values, the ones its LFO page can reach, go
+// through send(track, channel, id, value, force) at 0x400e0ddc: id 21 pitch
+// bend (14-bit), 22 aftertouch, 23 the mod wheel (CC 1), 24 breath (CC 2) and
+// 25..32 the CC VAL slots 1-8 on the CC numbers their SEL picks (8.8, the
+// MIDI value in the top byte). An 8-byte site at its entry (send.s) calls
+// me_filter first, which keeps each value as "the track's own" (its knob,
+// parameter locks and LFO) per output channel.
 //
-// Combining. A MIDI track sends its own PB, AT and MW (its knob, parameter
-// locks and LFO) through send(track, channel, id, value, force) at
-// 0x400e0ddc: id 21 pitch bend (a 14-bit value), 22 channel aftertouch and
-// 23 CC 1 (8.8 fixed point, the MIDI value in the top byte). A 8-byte site at
-// its entry (send.s) calls me_filter first, which remembers the track's
-// value per channel. What goes out on a channel is then:
-//   pitch bend  = track + (live - 8192), within 0..16383
-//   aftertouch  = track + live,          within 0..127
-//   mod wheel   = track + live,          within 0..127
-// With no live input on a channel (or the row unticked), the track's sends go
-// out exactly as stock. Once live input has touched a channel, the track's
-// own PB/AT/MW sends there are taken over and the combined value is sent by
-// this mod instead, so the two never race.
+// Combining. On the track's EXPRESSION page:
+//   THRU ON   the input's PB, AT, MW and BC are added to the track's own
+//             PB, AT, MW and BC;
+//   MW, AT and VEL each move a destination by a depth (-64.00..+64.00 in
+//             the stock LFO's scale: +64 at full value is the whole range).
+// Everything aimed at one value is summed with the track's own, capped to the
+// MIDI range, and sent as one message. While anything live is aimed at a
+// value, the track's own sends of it are taken over (stock must not send
+// them too); with nothing live, they go out exactly as stock.
 //
-// Leaving. When the active track changes, a channel that auto-channel input
-// touched gets the track's own values back and is released, as if this mod
-// had never been there. Unticking a row does the same for that message type.
+// Merging. Two values a track sends on the same CC number would fight (stock
+// too): the mod wheel (CC 1) and a CC VAL slot whose SEL is 1, breath and a
+// SEL of 2, or two slots with one SEL. While anything live is aimed at any of
+// them, they go out as one CC: the track's own value is the one that changed
+// last (what the synth would have heard last, stock), plus everything live
+// aimed at any of them.
 //
-// Per track (the TRIG page's second page, page.c): a MIDI track can leave
-// out PB, AT or MW, and send the wheel or the pressure as a CC of its own
-// (MW AS / AT AS) instead. Such a CC is the live value alone: the track has
-// no value of its own for it, and leaving the track sends it 0.
+// Leaving. When the active track changes, what came in on the auto channel
+// stops; the synth gets the track's own values back. A note's velocity stays
+// (the sequencer's notes keep setting it). Changing a setting on the page
+// takes effect at once.
 //
-// Sending. Each channel has one pending flag per type; the value is computed
-// when it goes out. It goes through the stock DIN driver (din_send, which
-// masks interrupts while it copies into its 4 KB transmit ring) only while
-// that ring holds at most PRIORITY_BYTES, so expression never queues in front
-// of a burst of sequencer notes; what waits goes with the next message or the
-// UI's 30 Hz tick. DIN only; USB is not sent to.
+// Sending. Each output keeps a pending flag; the value is computed when it
+// goes out. It goes through the stock DIN driver (din_send, which masks
+// interrupts while it copies into its 4 KB transmit ring) only while that
+// ring holds at most PRIORITY_BYTES, so expression never queues in front of a
+// burst of sequencer notes; what waits goes with the next message or the UI's
+// 30 Hz tick. A velocity route goes at once, just before its note. DIN only.
 
 #include <stdint.h>
 
 #ifdef ME_HOST_TEST
-// Host unit tests (tests/host/): the test file defines these, and includes
-// this file, so the logic runs without the firmware.
 #include "host_stubs.h"
 #else
 // ---- OS 1.54 ----------------------------------------------------------------
@@ -59,6 +62,9 @@
 #define TRACK_CHANNEL  ((volatile int32_t *)0x4197c700)   // 16 longs, as the router reads
 #define RECEIVE_CC     (*(volatile int32_t *)0x4197c77c)  // PORT CONFIG > RECEIVE CC/NRPN
 #define OUTPUT_TO      (*(volatile uint32_t *)0x421c9560) // bit 0 MIDI, bit 1 USB
+// The MIDI tracks' parameters in use, 106 bytes a track (CC Recall's PARAMS):
+// parameter p's word at + 2p, 8.8. The SEL of CC VAL slot k is parameter 33 + k.
+#define PARAMS         ((volatile int8_t *)0x421c9188)
 
 // The DIN transmit ring's state, read as din_send reads it.
 #define TX_PENDING     (*(volatile int32_t *)0x4060f7e8)
@@ -77,29 +83,30 @@ typedef void (*handler_fn)(const uint8_t *msg, int32_t len, int32_t flag);
 #define STOCK_CC       ((handler_fn)0x400d4cb8)
 #endif
 
-#define ID_PB          21
-#define ID_AT          22
-#define ID_MW          23
-
-#define TAKE_OVER      ((int32_t)0x80000000)      // me_filter: stock must not send
-
-// ---- master switches (expr.h): on --------------------------------------------
-volatile uint8_t me_pb_on = 1, me_at_on = 1, me_mw_on = 1;
-
-// ---- state per output channel -----------------------------------------------
 #include "expr.h"
-#define PRIORITY_BYTES 24       // about 8 ms of DIN line time
+
+#define ID_FIRST       21                         // send() ids 21..32: outputs 0..11
+#define TAKE_OVER      ((int32_t)0x80000000)      // me_filter: stock must not send
+#define PRIORITY_BYTES 24                         // about 8 ms of DIN line time
+#define SEL_PARAM      33
+
+// Live sources.
+enum { S_PB, S_AT, S_MW, S_BC, S_VEL, SOURCES };
+#define BIT(s) (1u << (s))
 
 struct chan {
-    int16_t track[KINDS];       // the track's own value: PB 0..16383, AT/MW 0..127
-    int16_t live[OUTS];         // live input: PB offset -8192..8191, the rest 0..127
-    uint8_t active[OUTS];       // live input has touched this channel
-    uint8_t pending[OUTS];      // a value is due to go out
-    uint8_t num[OUTS];          // XMW, XAT: the CC number it goes out on
-    uint8_t via_auto;           // touched from the auto channel: released on track change
+    int8_t owner;               // the MIDI track whose settings apply, -1 none yet
+    int16_t own[OUTPUTS];       // the track's own values: PB 0..16383, the rest 0..127
+    uint16_t stamp[OUTPUTS];    // when each was last set (merging: the latest counts)
+    int16_t in[SOURCES];        // live: PB offset -8192..8191, the rest 0..127
+    uint8_t touched;            // sources live on this channel
+    uint8_t via_auto;           // of those, the ones from the auto channel
+    uint8_t pending[OUTPUTS];   // a value is due to go out
+    uint8_t taken[OUTPUTS];     // the last message for it was this mod's
 };
 
 static struct chan chans[16];
+static uint16_t clock_stamp;
 static volatile uint8_t flushing;
 static volatile uint8_t waiting;
 static volatile uint8_t initialised;
@@ -135,18 +142,141 @@ static void init(void)
     if (initialised)
         return;
     for (int ch = 0; ch < 16; ch++) {
-        chans[ch].track[PB] = 8192;     // stock's centre until the track sends
-        chans[ch].track[AT] = 0;
-        chans[ch].track[MW] = 0;
-        for (int k = 0; k < OUTS; k++)
-            chans[ch].live[k] = 0;
+        struct chan *c = &chans[ch];
+        c->owner = -1;
+        for (int o = 0; o < OUTPUTS; o++) {
+            c->own[o] = 0;
+            c->stamp[o] = 0;
+            c->pending[o] = c->taken[o] = 0;
+        }
+        c->own[O_PB] = 8192;            // stock's centre until the track sends
+        for (int s = 0; s < SOURCES; s++)
+            c->in[s] = 0;
+        c->touched = c->via_auto = 0;
     }
     initialised = 1;
 }
 
-static uint8_t enabled(int kind)
+int32_t me_midi_sel(int m, int k)
 {
-    return kind == PB ? me_pb_on : kind == AT ? me_at_on : me_mw_on;
+    if (m < 0 || m > 7 || k < 0 || k > 7)
+        return -1;
+    int32_t sel = PARAMS[106 * m + 2 * (SEL_PARAM + k)];
+    return sel >= 0 && sel <= 127 ? sel : -1;
+}
+
+// The CC number an output goes out on, or -1 for pitch bend and aftertouch;
+// a slot without a CC number gets a number of its own that matches nothing.
+static int32_t cc_of(const struct chan *c, int o)
+{
+    if (o == O_PB || o == O_AT)
+        return -1;
+    if (o == O_MW)
+        return 1;
+    if (o == O_BC)
+        return 2;
+    int32_t sel = me_midi_sel(c->owner, o - O_VAL1);
+    return sel >= 0 ? sel : 1000 + o;
+}
+
+static const struct me_cfg *cfg_of(const struct chan *c)
+{
+    static const struct me_cfg none;    // no owner yet: nothing passes, nothing routed
+    return c->owner >= 0 && c->owner < 8 ? &me_midi_cfg[c->owner] : &none;
+}
+
+// What the input's own source passes straight to (THRU).
+static int thru_source(int o)
+{
+    return o == O_PB ? S_PB : o == O_AT ? S_AT : o == O_MW ? S_MW : o == O_BC ? S_BC : -1;
+}
+
+// The live part aimed at one output, in 1/256 of the output's MIDI unit for
+// routes (rt), and as whole units for THRU (th); 0 and not live when nothing is.
+static int live_parts(const struct chan *c, int o, int32_t *th, int32_t *rt)
+{
+    const struct me_cfg *cfg = cfg_of(c);
+    int live = 0;
+    *th = *rt = 0;
+    int s = thru_source(o);
+    if (cfg->thru && s >= 0 && (c->touched & BIT(s))) {
+        *th = c->in[s];
+        live = 1;
+    }
+    const struct { int8_t dest; int16_t amount; int src; } r[3] = {
+        { cfg->mw_dest, cfg->mw_amount, S_MW },
+        { cfg->at_dest, cfg->at_amount, S_AT },
+        { cfg->vel_dest, cfg->vel_amount, S_VEL },
+    };
+    for (int i = 0; i < 3; i++) {
+        if (r[i].dest != o + 1 || !(c->touched & BIT(r[i].src)))
+            continue;
+        int32_t amount = clamp(r[i].amount, -AMOUNT_MAX, AMOUNT_MAX);
+        *rt += c->in[r[i].src] * amount / 64;   // 127 x 64.00 = the whole 0..127 (x 256)
+        live = 1;
+    }
+    return live;
+}
+
+static int live_on(const struct chan *c, int o)
+{
+    int32_t th, rt;
+    return live_parts(c, o, &th, &rt);
+}
+
+// Anything live aimed at this output, or at another on its CC number.
+static int group_live(const struct chan *c, int o)
+{
+    int32_t cc = cc_of(c, o);
+    if (cc < 0)
+        return live_on(c, o);
+    for (int p = O_MW; p < OUTPUTS; p++)
+        if (cc_of(c, p) == cc && live_on(c, p))
+            return 1;
+    return 0;
+}
+
+static int32_t round256(int32_t v)
+{
+    return v >= 0 ? (v + 128) >> 8 : -((-v + 128) >> 8);
+}
+
+// The message for one output (and every output on its CC number). Called
+// with interrupts masked.
+static uint8_t compose(const struct chan *c, int ch, int o, uint8_t *out)
+{
+    int32_t th, rt;
+    if (o == O_PB) {
+        live_parts(c, o, &th, &rt);
+        int32_t v = clamp(c->own[O_PB] + th + rt * 16383 / 32512, 0, 16383);
+        out[0] = (uint8_t)(0xE0 | ch);
+        out[1] = (uint8_t)(v & 0x7F);
+        out[2] = (uint8_t)(v >> 7);
+        return 3;
+    }
+    if (o == O_AT) {
+        live_parts(c, o, &th, &rt);
+        out[0] = (uint8_t)(0xD0 | ch);
+        out[1] = (uint8_t)clamp(c->own[O_AT] + th + round256(rt), 0, 127);
+        return 2;
+    }
+    int32_t cc = cc_of(c, o), own = c->own[o], sum_th = 0, sum_rt = 0;
+    uint16_t latest = c->stamp[o];
+    for (int p = O_MW; p < OUTPUTS; p++) {
+        if (cc_of(c, p) != cc)
+            continue;
+        if ((int16_t)(c->stamp[p] - latest) > 0) {   // the one that changed last
+            latest = c->stamp[p];
+            own = c->own[p];
+        }
+        live_parts(c, p, &th, &rt);
+        sum_th += th;
+        sum_rt += rt;
+    }
+    out[0] = (uint8_t)(0xB0 | ch);
+    out[1] = (uint8_t)(cc < 128 ? cc : 0);
+    out[2] = (uint8_t)clamp(own + sum_th + round256(sum_rt), 0, 127);
+    return 3;
 }
 
 // Bytes waiting in the DIN transmit ring, as din_send computes them.
@@ -156,36 +286,7 @@ static uint32_t tx_queued(void)
     return used + (uint32_t)TX_PENDING;
 }
 
-// The message for one channel and type, from the track's value and, while
-// active, the live one. Called with interrupts masked.
-static uint8_t compose(int ch, int kind, uint8_t *out)
-{
-    struct chan *c = &chans[ch];
-    int32_t live = c->active[kind] ? c->live[kind] : 0;
-    if (kind == PB) {
-        int32_t v = clamp(c->track[PB] + live, 0, 16383);
-        out[0] = (uint8_t)(0xE0 | ch);
-        out[1] = (uint8_t)(v & 0x7F);
-        out[2] = (uint8_t)(v >> 7);
-        return 3;
-    }
-    if (kind == AT) {
-        out[0] = (uint8_t)(0xD0 | ch);
-        out[1] = (uint8_t)clamp(c->track[AT] + live, 0, 127);
-        return 2;
-    }
-    out[0] = (uint8_t)(0xB0 | ch);
-    if (kind == MW) {
-        out[1] = 1;
-        out[2] = (uint8_t)clamp(c->track[MW] + live, 0, 127);
-    } else {                            // XMW, XAT: the live value alone, 0 when released
-        out[1] = c->num[kind];
-        out[2] = (uint8_t)clamp(live, 0, 127);
-    }
-    return 3;
-}
-
-static void flush(void)
+static void flush_now(int urgent)
 {
     uint16_t sr = irq_off();
     if (flushing) {                     // another task is sending: it will see ours
@@ -198,27 +299,35 @@ static void flush(void)
     irq_restore(sr);
 
     for (int ch = 0; ch < 16; ch++) {
-        for (int kind = 0; kind < OUTS; kind++) {
+        struct chan *c = &chans[ch];
+        for (int o = 0; o < OUTPUTS; o++) {
             uint8_t out[3];
             uint8_t len;
             sr = irq_off();
-            if (!chans[ch].pending[kind]) {
+            if (!c->pending[o]) {
                 irq_restore(sr);
                 continue;
             }
             if (!(OUTPUT_TO & 1)) {     // OUTPUT TO without MIDI: nothing to send
-                chans[ch].pending[kind] = 0;
+                c->pending[o] = 0;
                 irq_restore(sr);
                 continue;
             }
-            if (tx_queued() > PRIORITY_BYTES) {
+            if (!urgent && tx_queued() > PRIORITY_BYTES) {
                 waiting = 1;            // the sequencer's bytes go first
                 me_held++;
                 irq_restore(sr);
                 goto done;
             }
-            len = compose(ch, kind, out);
-            chans[ch].pending[kind] = 0;
+            len = compose(c, ch, o, out);
+            int live = group_live(c, o);
+            int32_t cc = cc_of(c, o);
+            for (int p = 0; p < OUTPUTS; p++) {
+                if (p == o || (cc >= 0 && cc_of(c, p) == cc)) {
+                    c->pending[p] = 0;  // one message for the CC number
+                    c->taken[p] = (uint8_t)live;
+                }
+            }
             irq_restore(sr);
             DIN_SEND(len, out);
             me_sent++;
@@ -230,17 +339,31 @@ done:
     irq_restore(sr);
 }
 
-// Give a channel back to its track: send the track's own value and stop
-// adding to it. Called with interrupts masked.
-static void release(int ch, int kind)
+static void flush(void)
 {
-    struct chan *c = &chans[ch];
-    if (!c->active[kind])
-        return;
-    c->active[kind] = 0;
-    c->live[kind] = 0;
-    c->pending[kind] = 1;
-    me_released++;
+    flush_now(0);
+}
+
+// After a change on a channel: every output that is live now, or was this
+// mod's last time (it gets the track's own value back), goes out again.
+// mask: only outputs a source in it reaches (0: all). Interrupts masked.
+static void refresh(struct chan *c, uint32_t sources)
+{
+    const struct me_cfg *cfg = cfg_of(c);
+    for (int o = 0; o < OUTPUTS; o++) {
+        int reach = !sources;
+        int s = thru_source(o);
+        if (s >= 0 && (sources & BIT(s)) && cfg->thru)
+            reach = 1;
+        if ((sources & BIT(S_MW)) && cfg->mw_dest == o + 1)
+            reach = 1;
+        if ((sources & BIT(S_AT)) && cfg->at_dest == o + 1)
+            reach = 1;
+        if ((sources & BIT(S_VEL)) && cfg->vel_dest == o + 1)
+            reach = 1;
+        if (reach && (c->taken[o] || group_live(c, o)))
+            c->pending[o] = 1;
+    }
 }
 
 static void release_auto(void)
@@ -248,35 +371,32 @@ static void release_auto(void)
     me_audio_release_auto();
     uint16_t sr = irq_off();
     for (int ch = 0; ch < 16; ch++) {
-        if (!chans[ch].via_auto)
+        struct chan *c = &chans[ch];
+        uint8_t gone = c->via_auto;
+        if (!gone)
             continue;
-        for (int kind = 0; kind < OUTS; kind++)
-            release(ch, kind);
-        chans[ch].via_auto = 0;
+        c->touched &= (uint8_t)~gone;
+        for (int s = 0; s < SOURCES; s++)
+            if (gone & BIT(s))
+                c->in[s] = 0;
+        c->via_auto = 0;
+        refresh(c, 0);
+        me_released++;
     }
-    irq_restore(sr);
-}
-
-// A MIDI track's settings changed on the page: its channel gets the track's
-// own values back (and 0 on a CC the wheel or pressure went out on), and
-// follows again from the next move with the new settings.
-void me_midi_release_track(int m)
-{
-    if (m < 0 || m > 7 || !initialised)
-        return;
-    int32_t ch = CHANNEL(m);
-    if (ch < 0 || ch > 15)
-        return;
-    uint16_t sr = irq_off();
-    for (int kind = 0; kind < OUTS; kind++)
-        release(ch, kind);
     irq_restore(sr);
     flush();
 }
 
-static int track_passes(const struct me_midi_cfg *cfg, int kind)
+void me_midi_changed(int m)
 {
-    return kind == PB ? cfg->pb_on : kind == AT ? cfg->at_on : cfg->mw_on;
+    if (m < 0 || m > 7 || !initialised)
+        return;
+    uint16_t sr = irq_off();
+    for (int ch = 0; ch < 16; ch++)
+        if (chans[ch].owner == m)
+            refresh(&chans[ch], 0);
+    irq_restore(sr);
+    flush();
 }
 
 static void check_track(void)
@@ -289,7 +409,7 @@ static void check_track(void)
     }
 }
 
-static void take(int kind, int32_t live, int32_t in_ch, int32_t flag)
+static void take(int src, int32_t live, int32_t in_ch, int32_t flag)
 {
     init();
     check_track();
@@ -310,37 +430,30 @@ static void take(int kind, int32_t live, int32_t in_ch, int32_t flag)
                     audio |= 1u << t;
             }
     }
-    if (audio)
-        me_audio_take(kind, live, audio, from_auto);
+    if (audio && src != S_BC)
+        me_audio_take(src == S_PB ? PB : src == S_AT ? AT : MW, live, audio, from_auto);
     if (!tracks)
         return;
     me_taken++;
     for (int m = 0; m < 8; m++) {
         if (!(tracks & (1u << m)))
             continue;
-        const struct me_midi_cfg *cfg = &me_midi_cfg[m];
-        if (!track_passes(cfg, kind))
-            continue;
         int32_t ch = CHANNEL(m);
         if (ch < 0 || ch > 15)
             continue;
-        int out = kind;
-        uint8_t num = 0;
-        if (kind == MW && cfg->mw_cc != 1 && cfg->mw_cc <= CC_MAX) {
-            out = XMW;
-            num = cfg->mw_cc;
-        } else if (kind == AT && cfg->at_cc && cfg->at_cc <= CC_MAX) {
-            out = XAT;
-            num = cfg->at_cc;
-        }
         struct chan *c = &chans[ch];
         uint16_t sr = irq_off();
-        c->live[out] = (int16_t)live;
-        c->num[out] = num;
-        c->active[out] = 1;
-        c->pending[out] = 1;
+        if (c->owner != m) {            // another track on this channel now: its settings
+            c->owner = (int8_t)m;
+            refresh(c, 0);
+        }
+        c->in[src] = (int16_t)live;
+        c->touched |= BIT(src);
         if (from_auto)
-            c->via_auto = 1;
+            c->via_auto |= BIT(src);
+        else
+            c->via_auto &= (uint8_t)~BIT(src);
+        refresh(c, BIT(src));
         irq_restore(sr);
     }
     flush();
@@ -349,57 +462,46 @@ static void take(int kind, int32_t live, int32_t in_ch, int32_t flag)
 // ---- the dispatcher's table entries ----------------------------------------
 void me_pitch_bend(const uint8_t *msg, int32_t len, int32_t flag)
 {
-    if (me_pb_on && len == 3)
-        take(PB, (int32_t)(msg[1] | (msg[2] << 7)) - 8192, msg[0] & 15, flag);
+    if (len == 3)
+        take(S_PB, (int32_t)(msg[1] | (msg[2] << 7)) - 8192, msg[0] & 15, flag);
 }
 
 void me_aftertouch(const uint8_t *msg, int32_t len, int32_t flag)
 {
-    if (me_at_on && len == 2)
-        take(AT, msg[1], msg[0] & 15, flag);
+    if (len == 2)
+        take(S_AT, msg[1], msg[0] & 15, flag);
 }
 
 void me_control_change(const uint8_t *msg, int32_t len, int32_t flag)
 {
     STOCK_CC(msg, len, flag);           // stock handling first, always
-    if (me_mw_on && RECEIVE_CC && len == 3 && msg[1] == 1)
-        take(MW, msg[2], msg[0] & 15, flag);
+    if (RECEIVE_CC && len == 3 && (msg[1] == 1 || msg[1] == 2))
+        take(msg[1] == 1 ? S_MW : S_BC, msg[2], msg[0] & 15, flag);
 }
 
-// ---- send(): the MIDI tracks' own PB, AT and MW -----------------------------
+// ---- send(): what the MIDI tracks send themselves ---------------------------
 // Called from send.s at the entry of the stock send(track, channel, id,
 // value, force), in the MIDI tracks' task. Returns the value for stock to
 // send, or TAKE_OVER when this mod sends the combined value itself.
 int32_t me_filter(int32_t track, int32_t channel, int32_t id, int32_t value, int32_t force)
 {
-    (void)track;
     (void)force;
-    int kind;
-    int32_t v;
-    if (id == ID_PB) {
-        kind = PB;
-        v = clamp((int16_t)value, 0, 16383);
-    } else if (id == ID_AT) {
-        kind = AT;
-        v = clamp((int16_t)value >> 8, 0, 127);
-    } else if (id == ID_MW) {
-        kind = MW;
-        v = clamp((int16_t)value >> 8, 0, 127);
-    } else {
-        return value;
-    }
-    if (channel < 0 || channel > 15)
+    int o = id - ID_FIRST;
+    if (o < 0 || o >= OUTPUTS || channel < 0 || channel > 15)
         return value;
     init();
     me_filtered++;
     struct chan *c = &chans[channel];
     uint16_t sr = irq_off();
-    c->track[kind] = (int16_t)v;
-    if (!c->active[kind]) {
+    if (c->owner < 0 && track >= 0 && track < 8)
+        c->owner = (int8_t)track;       // whose SEL numbers apply
+    c->own[o] = (int16_t)(o == O_PB ? clamp(value, 0, 16383) : clamp((int16_t)value >> 8, 0, 127));
+    c->stamp[o] = ++clock_stamp;
+    if (!group_live(c, o)) {
         irq_restore(sr);
-        return value;                   // no live input here: stock, untouched
+        return value;                   // nothing live here: stock, untouched
     }
-    c->pending[kind] = 1;
+    c->pending[o] = 1;
     irq_restore(sr);
     flush();
     return TAKE_OVER;
@@ -407,21 +509,23 @@ int32_t me_filter(int32_t track, int32_t channel, int32_t id, int32_t value, int
 
 void me_page_tick(void *ctrl);
 
-// ---- the MIDI tracks' notes: V.SNS ------------------------------------------
+// ---- the MIDI tracks' notes: V.SNS and VEL ---------------------------------
 // The MIDI tracks' task collects the notes it sends, from the sequencer and
 // from MIDI IN alike, with notes_append(len, bytes) at 0x400e1002 into the
 // buffer at 0x421b6620, sent each pass. A 6-byte jmp site at its entry
-// (vel.s) hands the bytes here first: a note on with a velocity goes on with
-// the velocity through V.SNS of the MIDI track that sends on its channel
-// (the first, if several share one). Recording is untouched: the sequencer
-// keeps the velocity as played, and V.SNS can be changed afterwards.
+// (vel.s) hands the bytes here first. For a note on, the MIDI track sending
+// on its channel (the first, if several share one) takes its velocity as
+// played as the VEL source (the route goes out at once, before the note),
+// and the note goes on with its velocity through V.SNS. Recording is
+// untouched: the sequencer keeps the velocity as played.
 static uint8_t note_copy[16];
 
 const uint8_t *me_note_out(int32_t len, const uint8_t *bytes)
 {
     if (len < 3 || len > (int32_t)sizeof note_copy)
         return bytes;
-    int changed = 0;
+    init();
+    int changed = 0, routed = 0;
     for (int32_t i = 0; i < len; i++)
         note_copy[i] = bytes[i];
     for (int32_t i = 0; i + 2 < len; ) {
@@ -432,9 +536,22 @@ const uint8_t *me_note_out(int32_t len, const uint8_t *bytes)
         }
         int n = (st & 0xE0) == 0xC0 ? 2 : 3;
         if ((st & 0xF0) == 0x90 && note_copy[i + 2]) {
+            int ch = st & 15;
             for (int m = 0; m < 8; m++) {
-                if (CHANNEL(m) != (st & 15))
+                if (CHANNEL(m) != ch)
                     continue;
+                struct chan *c = &chans[ch];
+                uint16_t sr = irq_off();
+                if (c->owner != m) {
+                    c->owner = (int8_t)m;
+                    refresh(c, 0);
+                }
+                c->in[S_VEL] = note_copy[i + 2];
+                c->touched |= BIT(S_VEL);
+                refresh(c, BIT(S_VEL));
+                irq_restore(sr);
+                if (me_midi_cfg[m].vel_dest)
+                    routed = 1;
                 int32_t sens = me_midi_cfg[m].vel_sens;
                 if (sens < VEL_SENS_MAX) {
                     note_copy[i + 2] = (uint8_t)me_velocity_scaled(note_copy[i + 2], sens);
@@ -445,32 +562,20 @@ const uint8_t *me_note_out(int32_t len, const uint8_t *bytes)
         }
         i += n;
     }
+    if (routed)
+        flush_now(1);                   // the velocity's route before its note
     return changed ? note_copy : bytes;
 }
 
-// ---- ev_tick: track changes, unticked rows, values that waited --------------
+// ---- ev_tick: track changes, values that waited ------------------------------
 void me_tick(void *ctrl)
 {
     me_page_tick(ctrl);
-    init();                             // a note's velocity alone can need a release
+    init();
     check_track();
-    uint16_t sr = irq_off();
-    for (int kind = 0; kind < KINDS; kind++) {
-        if (enabled(kind))
-            continue;
-        for (int ch = 0; ch < 16; ch++) {
-            release(ch, kind);
-            if (kind == MW)
-                release(ch, XMW);
-            else if (kind == AT)
-                release(ch, XAT);
-        }
-        me_audio_release_kind(kind);
-    }
-    irq_restore(sr);
     for (int ch = 0; ch < 16 && !waiting; ch++)
-        for (int kind = 0; kind < OUTS; kind++)
-            if (chans[ch].pending[kind])
+        for (int o = 0; o < OUTPUTS; o++)
+            if (chans[ch].pending[o])
                 waiting = 1;
     if (waiting)
         flush();

@@ -192,7 +192,7 @@ On the Digitakt (with the MIDI Expression build):
       CHAN is on, and note its channel.
   On each track's EXPRESSION page (TRIG, then tap TRIG) leave the defaults
       (they come back at every power-on): BEND 2, MW, VEL and AT none (---),
-      depths 0, V.SNS 100 %; MIDI A: PB, AT, MW ON, MW> CC 1, AT> AT.
+      depths 0, V.SNS 100 %; MIDI A: THRU ON, no routes.
   Nothing else should send to this MIDI input during the tests.''')
         for key, label in (('auto', 'AUTO CHANNEL'), ('track_a', 'TRACK A CHANNEL'), ('chan', "MIDI track A's CHAN")):
             a = ask('%s (1-16) [%d]:' % (label, c[key] + 1)).strip()
@@ -219,19 +219,19 @@ On the Digitakt (with the MIDI Expression build):
     def unticked(self):
         c = self.cfg
         self.note('\n== switched off (stock behaviour)')
-        ask('On MIDI track A\'s EXPRESSION page turn PB, AT and MW (knobs A-C) OFF, keep MIDI track A selected, then press Enter.')
+        ask('On MIDI track A\'s EXPRESSION page turn THRU (knob A) OFF, keep MIDI track A selected, then press Enter.')
         ch, o = c['auto'], c['chan']
         self.expect('unticked', 'notes still pass', [self.non(ch, 62), self.noff(ch, 62)],
                     [self.non(o, 62), bytes([0x90 | o, 62, 0])])
         self.expect('unticked', 'PB, AT, MW dropped as stock',
                     [self.pb(ch, 12000), self.at(ch, 50), self.mw(ch, 50)], [])
-        ask('Turn PB, AT and MW back ON, then press Enter.')
+        ask('Turn THRU back ON, then press Enter.')
 
     def restore(self):
         c = self.cfg
         self.note('\n== restore (leaving a track gives the synth its own values back)')
         ch, o = c['auto'], c['chan']
-        ask('Select MIDI track A (TRK + trig 9) and leave its PB, AT and MW knobs at their defaults. Press Enter.')
+        ask('Select MIDI track A (TRK + trig 9) and leave its EXPRESSION page at the defaults. Press Enter.')
         for msg in (self.pb(ch, 14000), self.at(ch, 90), self.mw(ch, 100)):
             self.io.send(msg)
             wait(0.01)
@@ -369,7 +369,7 @@ Set up the worst case you can:
   SETTINGS > MIDI CONFIG > SYNC: CLOCK SEND ticked.
   A pattern with trigs on several MIDI tracks (chords if you like), all with
   CHAN on, ideally on every step, at 150 BPM or more.
-  MIDI track A selected, its PB, AT and MW ON.''')
+  MIDI track A selected, THRU ON.''')
         ask('Press PLAY on the Digitakt, then Enter here.')
         ch = c['auto']
 

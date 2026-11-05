@@ -52,14 +52,14 @@
 #define D_AMOUNT  0
 #define D_SENS    100
 
-struct me_audio_cfg me_audio_cfg[8] = {
-#define A0 { D_RANGE, 0, 0, 0, D_SENS, D_AMOUNT, D_AMOUNT, D_AMOUNT }
+struct me_cfg me_audio_cfg[8] = {
+#define A0 { { D_RANGE }, 0, 0, 0, D_SENS, D_AMOUNT, D_AMOUNT, D_AMOUNT }
     A0, A0, A0, A0, A0, A0, A0, A0,
 #undef A0
 };
 
-struct me_midi_cfg me_midi_cfg[8] = {
-#define M0 { 1, 1, 1, 1, 0, D_SENS }
+struct me_cfg me_midi_cfg[8] = {
+#define M0 { { 1 }, 0, 0, 0, D_SENS, D_AMOUNT, D_AMOUNT, D_AMOUNT }   /* THRU on */
     M0, M0, M0, M0, M0, M0, M0, M0,
 #undef M0
 };
@@ -201,8 +201,33 @@ static const int8_t dest_order[] = {
 };
 #define DEST_COUNT ((int)(sizeof dest_order / sizeof dest_order[0]))
 
+// A MIDI track's destinations are its LFO page's: None, SRC Pitch Bend,
+// Aftertouch, Mod Wheel, BC, then CC VAL 1-8 (on the CC numbers their SEL
+// picks); value = list position.
+#define MIDI_DEST_COUNT (OUTPUTS + 1)
+
+static int dest_count(int mid)
+{
+    return mid ? MIDI_DEST_COUNT : DEST_COUNT;
+}
+
+static int dest_at(int mid, int i)
+{
+    return mid ? i : dest_order[i];
+}
+
+static int dest_index(int mid, int v)
+{
+    if (mid)
+        return v >= 0 && v < MIDI_DEST_COUNT ? v : 0;
+    for (int i = 0; i < DEST_COUNT; i++)
+        if (dest_order[i] == v)
+            return i;
+    return 0;
+}
+
 // Short names, for the cell's box.
-static const char *dest_short(int s)
+static const char *dest_short(int mid, int s)
 {
     static const char *const n[46] = {
         "---",
@@ -213,22 +238,31 @@ static const char *dest_short(int s)
         "BASE", "WDTH", "DEL", "SRR", "",
         "ATK", "HOLD", "DEC", "OVER", "DEL", "REV", "PAN", "VOL",
     };
+    static const char *const m[MIDI_DEST_COUNT] = {
+        "---", "PB", "AT", "MW", "BC", "VAL1", "VAL2", "VAL3", "VAL4", "VAL5", "VAL6", "VAL7", "VAL8",
+    };
+    if (mid)
+        return s >= 0 && s < MIDI_DEST_COUNT ? m[s] : "---";
     return s >= 0 && s <= 45 ? n[s] : "---";
 }
 
-// The page the slot is on, for the box's first line and the list.
-static const char *dest_page(int s)
+// The page the destination is on, for the box's first line and the list.
+static const char *dest_page(int mid, int s)
 {
+    if (mid)
+        return s <= 0 ? "" : s <= 4 ? "SRC" : "CC";
     return s <= 0 ? "" : s <= 8 ? "LFO1" : s <= 16 ? "LFO2" : s <= 24 ? "SRC" : s <= 37 ? "FLTR" : "AMP";
 }
 
-// Which page a slot is on: 0 none, 1 SRC, 2 FLTR, 3 AMP, 4 LFO1, 5 LFO2.
-static int dest_group(int s)
+// Which page: audio 0 none, 1 SRC, 2 FLTR, 3 AMP, 4 LFO1, 5 LFO2; MIDI 0 none, 1 SRC, 2 CC.
+static int dest_group(int mid, int s)
 {
+    if (mid)
+        return s <= 0 ? 0 : s <= 4 ? 1 : 2;
     return s <= 0 ? 0 : s <= 8 ? 4 : s <= 16 ? 5 : s <= 24 ? 1 : s <= 37 ? 2 : 3;
 }
 
-// The firmware's parameter id of a slot (Digi Perform's measured map).
+// The firmware's parameter id of a sound slot (Digi Perform's measured map).
 static int slot_id(int s)
 {
     if (s <= 8)
@@ -246,16 +280,47 @@ static int slot_id(int s)
     return s + 6;
 }
 
-static int dest_index(int slot)
+// The list's line for a destination: "FLTR:Frequency", "SRC:Mod Wheel",
+// "CC:CC3 Value #74" (the CC number its SEL picks on this track).
+static void dest_line(char *line, int size, int mid, int m, int s)
 {
-    for (int i = 0; i < DEST_COUNT; i++)
-        if (dest_order[i] == slot)
-            return i;
-    return 0;
+    static const char *const src[4] = { "Pitch Bend", "Aftertouch", "Mod Wheel", "BC" };
+    int n = 0;
+    const char *p = s ? dest_page(mid, s) : "None", *name = "";
+    if (s && !mid)
+        name = STOCK_NAME(0, slot_id(s));
+    else if (s && s <= 4)
+        name = src[s - 1];
+    if (!name)
+        name = dest_short(mid, s);
+    while (*p && n < size - 1)
+        line[n++] = *p++;
+    if (s && n < size - 1)
+        line[n++] = ':';
+    while (*name && n < size - 1)
+        line[n++] = *name++;
+    if (mid && s > 4 && n < size - 12) {
+        int k = s - 5, sel = me_midi_sel(m, k);
+        const char *t = "CC";
+        while (*t)
+            line[n++] = *t++;
+        line[n++] = (char)('1' + k);
+        t = " Value";
+        while (*t)
+            line[n++] = *t++;
+        if (sel >= 0) {
+            line[n++] = ' ';
+            line[n++] = '#';
+            if (sel >= 100) line[n++] = (char)('0' + sel / 100);
+            if (sel >= 10) line[n++] = (char)('0' + sel / 10 % 10);
+            line[n++] = (char)('0' + sel % 10);
+        }
+    }
+    line[n] = 0;
 }
 
 // ---- the cells ------------------------------------------------------------------
-enum kind { C_NONE, C_RANGE, C_SENS, C_DEST, C_AMOUNT, C_ONOFF, C_MWCC, C_ATCC };
+enum kind { C_NONE, C_RANGE, C_SENS, C_DEST, C_AMOUNT, C_ONOFF };
 
 struct cell {
     uint8_t kind;
@@ -268,8 +333,8 @@ static const struct cell audio_cells[CELLS] = {
 };
 
 static const struct cell midi_cells[CELLS] = {
-    { C_ONOFF, "PB" }, { C_ONOFF, "AT" }, { C_ONOFF, "MW" }, { C_SENS, "V.SNS" },
-    { C_NONE, "E" },   { C_NONE, "F" },   { C_MWCC, "MW>" }, { C_ATCC, "AT>" },
+    { C_ONOFF, "THRU" }, { C_SENS, "V.SNS" }, { C_DEST, "MW" }, { C_AMOUNT, "M.DEP" },
+    { C_DEST, "VEL" },   { C_AMOUNT, "V.DEP" }, { C_DEST, "AT" }, { C_AMOUNT, "A.DEP" },
 };
 
 static int track(void)
@@ -288,31 +353,24 @@ static int within(int v, int lo, int hi)
     return v < lo ? lo : v > hi ? hi : v;
 }
 
-// The setting behind cell k of track t.
+static struct me_cfg *cfg_track(int t)
+{
+    return t < 8 ? &me_audio_cfg[t] : &me_midi_cfg[t - 8];
+}
+
+// The setting behind cell k of track t (knob A: BEND or THRU).
 int me_page_value(int t, int k)
 {
-    if (t < 8) {
-        struct me_audio_cfg *a = &me_audio_cfg[t];
-        switch (k) {
-        case 0: return a->range;
-        case 1: return a->vel_sens;
-        case 2: return a->mw_dest;
-        case 3: return a->mw_amount;
-        case 4: return a->vel_dest;
-        case 5: return a->vel_amount;
-        case 6: return a->at_dest;
-        default: return a->at_amount;
-        }
-    }
-    struct me_midi_cfg *m = &me_midi_cfg[t - 8];
+    struct me_cfg *a = cfg_track(t);
     switch (k) {
-    case 0: return m->pb_on;
-    case 1: return m->at_on;
-    case 2: return m->mw_on;
-    case 3: return m->vel_sens;
-    case 6: return m->mw_cc;
-    case 7: return m->at_cc;
-    default: return 0;
+    case 0: return a->range;
+    case 1: return a->vel_sens;
+    case 2: return a->mw_dest;
+    case 3: return a->mw_amount;
+    case 4: return a->vel_dest;
+    case 5: return a->vel_amount;
+    case 6: return a->at_dest;
+    default: return a->at_amount;
     }
 }
 
@@ -323,40 +381,26 @@ int me_page_default(int t, int k)
     case C_SENS:   return D_SENS;
     case C_AMOUNT: return D_AMOUNT;
     case C_ONOFF:  return 1;
-    case C_MWCC:   return 1;
-    default:       return 0;            // C_DEST: none; C_ATCC: aftertouch
+    default:       return 0;            // C_DEST: none
     }
 }
 
 static void set_value(int t, int k, int v)
 {
-    if (t < 8) {
-        struct me_audio_cfg *a = &me_audio_cfg[t];
-        switch (k) {
-        case 0: a->range = (int8_t)v; break;
-        case 1: a->vel_sens = (int8_t)v; break;
-        case 2: a->mw_dest = (int8_t)v; break;
-        case 3: a->mw_amount = (int16_t)v; break;
-        case 4: a->vel_dest = (int8_t)v; break;
-        case 5: a->vel_amount = (int16_t)v; break;
-        case 6: a->at_dest = (int8_t)v; break;
-        default: a->at_amount = (int16_t)v; break;
-        }
-        return;
-    }
-    struct me_midi_cfg *m = &me_midi_cfg[t - 8];
+    struct me_cfg *a = cfg_track(t);
     int before = me_page_value(t, k);
     switch (k) {
-    case 0: m->pb_on = (uint8_t)v; break;
-    case 1: m->at_on = (uint8_t)v; break;
-    case 2: m->mw_on = (uint8_t)v; break;
-    case 3: m->vel_sens = (int8_t)v; break;
-    case 6: m->mw_cc = (uint8_t)v; break;
-    case 7: m->at_cc = (uint8_t)v; break;
-    default: return;
+    case 0: a->range = (int8_t)v; break;
+    case 1: a->vel_sens = (int8_t)v; break;
+    case 2: a->mw_dest = (int8_t)v; break;
+    case 3: a->mw_amount = (int16_t)v; break;
+    case 4: a->vel_dest = (int8_t)v; break;
+    case 5: a->vel_amount = (int16_t)v; break;
+    case 6: a->at_dest = (int8_t)v; break;
+    default: a->at_amount = (int16_t)v; break;
     }
-    if (k != 3 && before != v)
-        me_midi_release_track(t - 8);   // the synth gets the track's own values back
+    if (t >= 8 && k != 1 && before != v)
+        me_midi_changed(t - 8);         // what the synth gets follows at once
 }
 
 static int sid_of(int kind)
@@ -365,7 +409,7 @@ static int sid_of(int kind)
     case C_RANGE:  return SID_TUNE;
     case C_SENS:   return SID_VOL;
     case C_AMOUNT: return SID_DEPTH;
-    default:       return SID_LIST;     // C_DEST, C_ONOFF, C_MWCC, C_ATCC
+    default:       return SID_LIST;     // C_DEST, C_ONOFF
     }
 }
 
@@ -385,7 +429,7 @@ static int next_of(const int *list, int count, int v, int d)
 }
 
 // FUNC + turn: the next useful value of cell k from v, in the direction of d.
-static int snap(int kind, int v, int d)
+static int snap(int kind, int mid, int v, int d)
 {
     static const int ranges[] = { 0, 1, 2, 3, 5, 7, 12 };
     static const int sens[] = { 0, 25, 50, 75, 100 };
@@ -399,23 +443,17 @@ static int snap(int kind, int v, int d)
         return within(v, -AMOUNT_MAX, AMOUNT_MAX);
     }
     case C_DEST: {                      // the first of the next page, or of this one going back
-        int i = dest_index(v), g = dest_group(v);
+        int i = dest_index(mid, v), g = dest_group(mid, v), n = dest_count(mid);
         if (d > 0) {
-            while (i + 1 < DEST_COUNT && dest_group(dest_order[i]) == g)
+            while (i + 1 < n && dest_group(mid, dest_at(mid, i)) == g)
                 i++;
         } else if (i > 0) {
-            if (dest_group(dest_order[i - 1]) != g)
-                g = dest_group(dest_order[--i]);    // already the first: the page before
-            while (i > 0 && dest_group(dest_order[i - 1]) == g)
+            if (dest_group(mid, dest_at(mid, i - 1)) != g)
+                g = dest_group(mid, dest_at(mid, --i));     // already the first: the page before
+            while (i > 0 && dest_group(mid, dest_at(mid, i - 1)) == g)
                 i--;
         }
-        return dest_order[i];
-    }
-    case C_MWCC:
-    case C_ATCC: {
-        int lo = kind == C_MWCC ? 1 : 0;
-        v = d > 0 ? (v / 10 + 1) * 10 : (v % 10 ? v / 10 * 10 : v - 10);
-        return within(v, lo, CC_MAX);
+        return dest_at(mid, i);
     }
     default:
         return v;
@@ -431,17 +469,19 @@ void me_page_change(int t, int k, int delta, int snapping)
     if (c->kind == C_NONE || !delta)
         return;
     if (snapping && c->kind != C_ONOFF) {
-        set_value(t, k, snap(c->kind, v, delta));
+        set_value(t, k, snap(c->kind, t >= 8, v, delta));
         return;
     }
     switch (c->kind) {
     case C_RANGE:  v = within(v + delta, 0, PB_RANGE_MAX); break;
     case C_SENS:   v = within(v + delta, 0, VEL_SENS_MAX); break;
     case C_AMOUNT: v = within(v + delta, -AMOUNT_MAX, AMOUNT_MAX); break;
-    case C_DEST:   v = dest_order[within(dest_index(v) + delta, 0, DEST_COUNT - 1)]; break;
+    case C_DEST: {
+        int mid = t >= 8;
+        v = dest_at(mid, within(dest_index(mid, v) + delta, 0, dest_count(mid) - 1));
+        break;
+    }
     case C_ONOFF:  v = delta > 0; break;
-    case C_MWCC:   v = within(v + delta, 1, CC_MAX); break;
-    case C_ATCC:   v = within(v + delta, 0, CC_MAX); break;
     }
     set_value(t, k, v);
 }
@@ -535,9 +575,7 @@ static void format_value(char *b, int t, int k)
                 b[j] = b[j + 1];
         break;
     }
-    case C_SENS:
-    case C_MWCC:
-    case C_ATCC: {
+    case C_SENS: {
         char d[6];
         int n = 0, a = v < 0 ? -v : v, i = 0;
         if (v < 0) b[i++] = '-';
@@ -548,7 +586,7 @@ static void format_value(char *b, int t, int k)
         break;
     }
     case C_ONOFF:  s = v ? "ON" : "OFF"; break;
-    default:       s = dest_short(v); break;
+    default:       s = dest_short(t >= 8, v); break;
     }
     if (s) {
         int i = 0;
@@ -588,17 +626,32 @@ static void draw_cell(void *bmp, int t, int k)
             centred(bmp, FONT5, x + 9, y + 6, "OFF");
         }
         break;
-    case C_MWCC:
-    case C_ATCC:
     case C_DEST: {                      // a wide box like the LFO page's DEST
-        const char *top = c->kind == C_DEST ? dest_page(v) : c->kind == C_ATCC && !v ? "" : "CC";
-        const char *bot = c->kind == C_DEST ? dest_short(v) : c->kind == C_ATCC && !v ? "AT" : val;
+        int mid = t >= 8;
+        char top[6];
+        const char *pg = dest_page(mid, v);
+        int i = 0;
+        if (mid && v > 4) {             // a CC VAL slot: its CC number on top
+            int sel = me_midi_sel(t - 8, v - 5);
+            top[i++] = '#';
+            if (sel < 0) {
+                top[i++] = '-';
+            } else {
+                if (sel >= 100) top[i++] = (char)('0' + sel / 100);
+                if (sel >= 10) top[i++] = (char)('0' + sel / 10 % 10);
+                top[i++] = (char)('0' + sel % 10);
+            }
+        } else {
+            while (*pg && i < 5)
+                top[i++] = *pg++;
+        }
+        top[i] = 0;
         box(bmp, x - 1, y, x + 19, y + 16);
         if (*top) {
             centred(bmp, LABEL_FONT, x + 9, y + 9, top);
-            centred(bmp, LABEL_FONT, x + 9, y + 2, bot);
+            centred(bmp, LABEL_FONT, x + 9, y + 2, dest_short(mid, v));
         } else {
-            centred(bmp, LABEL_FONT, x + 9, y + 6, bot);
+            centred(bmp, LABEL_FONT, x + 9, y + 6, dest_short(mid, v));
         }
         break;
     }
@@ -611,23 +664,16 @@ static void draw_cell(void *bmp, int t, int k)
 // chosen one inverted, a scroll bar (measured off the stock list).
 static void draw_list(void *bmp, int t, int k)
 {
-    int cur = dest_index(me_page_value(t, k));
-    int first = within(cur - 3, 0, DEST_COUNT > 7 ? DEST_COUNT - 7 : 0);
+    int mid = t >= 8, count = dest_count(mid);
+    int cur = dest_index(mid, me_page_value(t, k));
+    int first = within(cur - 3, 0, count > 7 ? count - 7 : 0);
     FILLRECT(bmp, 50, 0, 127, 53, 0);
-    for (int r = 0; r < 7 && first + r < DEST_COUNT; r++) {
-        int s = dest_order[first + r], y = 45 - 7 * r;
-        char line[24];
-        int n = 0;
-        const char *p = s ? dest_page(s) : "None", *name = s ? STOCK_NAME(0, slot_id(s)) : "";
-        if (!name)
-            name = dest_short(s);
-        while (*p && n < 23)
-            line[n++] = *p++;
-        if (s && n < 23)
-            line[n++] = ':';
-        while (*name && n < 23)
-            line[n++] = *name++;
-        line[n] = 0;
+    for (int r = 0; r < 7 && first + r < count; r++) {
+        int y = 45 - 7 * r, n;
+        char line[28];
+        dest_line(line, sizeof line, mid, t - 8, dest_at(mid, first + r));
+        for (n = 0; line[n]; n++)
+            ;
         while (n > 1 && text_width(LABEL_FONT, line) > 70)
             line[--n] = 0;              // what does not fit before the scroll bar
         TEXT(bmp, LABEL_FONT, 52, y, -1, "%s", line);
@@ -636,7 +682,7 @@ static void draw_list(void *bmp, int t, int k)
     }
     for (int y = 0; y < 52; y += 2)     // the bar's track
         FILLRECT(bmp, 125 + (y >> 1 & 1), y, 125 + (y >> 1 & 1), y, 1);
-    int len = 52 * 7 / DEST_COUNT, top = 52 - (52 - len) * first / (DEST_COUNT - 7);
+    int len = 52 * 7 / count, top = 52 - (52 - len) * first / (count - 7);
     FILLRECT(bmp, 124, top - len, 127, top, 0);
     box(bmp, 124, top - len, 127, top);
 }

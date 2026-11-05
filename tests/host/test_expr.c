@@ -15,6 +15,7 @@ volatile uint32_t h_output_to = 3;
 volatile int32_t h_tx_pending;
 volatile uint32_t h_tx_base, h_tx_sent;
 volatile uint16_t h_dma_a, h_dma_b;
+volatile int8_t h_params[8 * 106];
 
 int h_trig_page, h_func_held, h_push_held, h_draw_calls, h_knob_calls;
 static char drawn[2048];
@@ -45,6 +46,9 @@ void h_din_send(int32_t len, const uint8_t *b)
 }
 void h_stock_cc(const uint8_t *msg, int32_t len, int32_t flag) { (void)msg; (void)len; (void)flag; stock_cc_calls++; }
 
+static uint32_t rnd_state = 12345;
+static int rnd_next(int n) { rnd_state = rnd_state * 1103515245u + 12345u; return (int)((rnd_state >> 16) % (uint32_t)n); }
+
 static int failures, checks;
 #define CHECK(cond, ...) do { checks++; if (!(cond)) { failures++; printf("FAIL %s:%d: ", __FILE__, __LINE__); printf(__VA_ARGS__); printf("\n"); } } while (0)
 
@@ -52,7 +56,8 @@ static void reset(void)
 {
     memset((void *)chans, 0, sizeof chans);
     initialised = 0; flushing = 0; waiting = 0; last_active = -1;
-    me_pb_on = me_at_on = me_mw_on = 1;
+    clock_stamp = 0;
+    memset((void *)h_params, 0, sizeof h_params);
     for (int t = 0; t < 16; t++) h_track_channel[t] = t;   // tracks 1-8 ch 1-8, A-H ch 9-16
     for (int m = 0; m < 8; m++) chan_of[m] = -1;
     chan_of[0] = 0;                                        // MIDI track A: CHAN on, channel 1
@@ -62,8 +67,9 @@ static void reset(void)
     memset((void *)atracks, 0, sizeof atracks);
     ALL(range, 2); ALL(mw_dest, 0); ALL(at_dest, 0); ALL(vel_dest, 0); ALL(mw_amount, 0); ALL(at_amount, 0); ALL(vel_amount, 0); ALL(vel_sens, 100);
     for (int m = 0; m < 8; m++) {
-        me_midi_cfg[m].pb_on = me_midi_cfg[m].at_on = me_midi_cfg[m].mw_on = 1;
-        me_midi_cfg[m].mw_cc = 1; me_midi_cfg[m].at_cc = 0; me_midi_cfg[m].vel_sens = 100;
+        me_midi_cfg[m].thru = 1; me_midi_cfg[m].vel_sens = 100;
+        me_midi_cfg[m].mw_dest = me_midi_cfg[m].at_dest = me_midi_cfg[m].vel_dest = 0;
+        me_midi_cfg[m].mw_amount = me_midi_cfg[m].at_amount = me_midi_cfg[m].vel_amount = 0;
     }
     me_page_open = 0; recompose = 0; pend = 0; hold = 0; list_cell = -1; list_t = 0; acc_track = -1;
     for (int k = 0; k < CELLS; k++) { acc[k] = 0; shown[k] = 0; idle_counts[k] = 0; snap_rest[k] = 0; }
@@ -80,6 +86,9 @@ static void words_reset(int16_t value)
             *slot(t, s) = value;
 }
 
+#define ID_PB 21
+#define ID_AT 22
+#define ID_MW 23
 static int pb_of(int i) { return sent[i][1] | (sent[i][2] << 7); }
 
 static void pb_in(int ch, int value, int flag) { uint8_t m[3] = { (uint8_t)(0xE0 | ch), (uint8_t)(value & 127), (uint8_t)(value >> 7) }; me_pitch_bend(m, 3, flag); }
@@ -89,6 +98,12 @@ static void mw_in(int ch, int v, int flag) { uint8_t m[3] = { (uint8_t)(0xB0 | c
 static int32_t track_pb(int ch, int v) { return me_filter(0, ch, ID_PB, v, 0); }
 static int32_t track_at(int ch, int v) { return me_filter(0, ch, ID_AT, v << 8, 0); }
 static int32_t track_mw(int ch, int v) { return me_filter(0, ch, ID_MW, v << 8, 0); }
+
+static void bc_in(int ch, int v, int flag) { uint8_t m[3] = { (uint8_t)(0xB0 | ch), 2, (uint8_t)v }; me_control_change(m, 3, flag); }
+static int32_t track_id(int ch, int id, int v) { return me_filter(0, ch, id, id == ID_PB ? v : v << 8, 0); }
+#define SEL(m, k, cc) (h_params[106 * (m) + 2 * (33 + (k))] = (int8_t)(cc))
+static int last_cc(int cc) { for (int i = nsent - 1; i >= 0; i--) if ((sent[i][0] & 0xF0) == 0xB0 && sent[i][1] == cc) return sent[i][2]; return -1; }
+static int count_cc(int from, int cc) { int n = 0; for (int i = from; i < nsent; i++) if ((sent[i][0] & 0xF0) == 0xB0 && sent[i][1] == cc) n++; return n; }
 
 #define AUTO 0x10
 #define TRACK 8
@@ -182,14 +197,18 @@ int main(void)
     me_tick(0);
     CHECK(nsent == before, "track-channel bend kept on track change: %d", nsent - before);
 
-    // 8. Unticking a row gives the track its value back.
+    // 8. THRU off on the track gives the synth the track's value back, and passes nothing more.
     reset();
     track_pb(0, 8192);
     pb_in(13, 14000, AUTO);
-    me_pb_on = 0;
+    me_midi_cfg[0].thru = 0;
     before = nsent;
-    me_tick(0);
-    CHECK(nsent == before + 1 && pb_of(nsent - 1) == 8192, "unticked: PB back to the track's: %d", nsent > before ? pb_of(nsent - 1) : -1);
+    me_midi_changed(0);
+    CHECK(nsent == before + 1 && pb_of(nsent - 1) == 8192, "THRU off: PB back to the track's: %d", nsent > before ? pb_of(nsent - 1) : -1);
+    before = nsent;
+    pb_in(13, 2000, AUTO);
+    CHECK(nsent == before, "THRU off: a bend sends nothing");
+    CHECK(track_pb(0, 9000) == 9000, "and the track's own bend is stock again");
 
     // 9. Priority: nothing goes out while the DIN ring is busy; the newest value goes once it drains.
     reset();
@@ -226,7 +245,7 @@ int main(void)
     // 12. Other ids pass straight through.
     reset();
     pb_in(13, 9000, AUTO);
-    CHECK(me_filter(0, 0, 24, 77 << 8, 0) == (77 << 8), "breath (id 24) untouched");
+    CHECK(me_filter(0, 0, 24, 77 << 8, 0) == (77 << 8), "breath (id 24) untouched while only PB is live");
     CHECK(me_filter(0, 0, 25, 5 << 8, 1) == (5 << 8), "CC VAL (id 25) untouched");
 
     // ---- audio tracks -------------------------------------------------------
@@ -315,13 +334,6 @@ int main(void)
     me_render(words);
     CHECK(*slot(4, 27) == 5000 + 100 * 32 * 4, "track-channel route kept: %d", *slot(4, 27) - 5000);
 
-    // 17. Unticking a row stops it on audio tracks too.
-    me_mw_on = 0;
-    me_tick(0);
-    words_reset(5000);
-    me_render(words);
-    CHECK(*slot(4, 27) == 5000, "MW THRU unticked: no route: %d", *slot(4, 27));
-    me_mw_on = 1;
 
 
     // ---- per track (the TRIG page's second page) -----------------------------
@@ -343,43 +355,6 @@ int main(void)
     CHECK(*slot(0, 26) == 10000 + 100 * 10 * 4 && *slot(0, 27) == 10000, "track 1 wheel to FLT.FREQ: %d %d", *slot(0, 26), *slot(0, 27));
     CHECK(*slot(1, 27) == 10000 - 100 * 10 * 4 && *slot(1, 26) == 10000, "track 2 wheel to FLT.RESO: %d %d", *slot(1, 27), *slot(1, 26));
 
-    // 19. A MIDI track can leave out PB, AT or MW.
-    reset();
-    me_midi_cfg[0].pb_on = 0;
-    pb_in(13, 12000, AUTO);
-    CHECK(nsent == 0, "PB off on A: nothing: %d", nsent);
-    CHECK(track_pb(0, 9000) == 9000, "PB off: the track's own bend passes");
-    at_in(13, 50, AUTO);
-    CHECK(nsent == 1 && sent[0][0] == 0xD0 && sent[0][1] == 50, "AT still passes");
-    me_midi_cfg[0].mw_on = 0;
-    mw_in(13, 50, AUTO);
-    CHECK(nsent == 1, "MW off on A: nothing");
-
-    // 20. MW AS CC 74: the wheel alone on CC 74; the track's own MW is untouched; leaving sends 0.
-    reset();
-    me_midi_cfg[0].mw_cc = 74;
-    track_mw(0, 33);
-    mw_in(13, 90, AUTO);
-    CHECK(nsent == 1 && sent[0][0] == 0xB0 && sent[0][1] == 74 && sent[0][2] == 90, "wheel on CC 74: %02x %d %d", sent[0][0], sent[0][1], sent[0][2]);
-    CHECK(track_mw(0, 40) == (40 << 8), "the track's own MW (CC 1) still its own");
-    before = nsent;
-    h_active_track = 0;
-    me_tick(0);
-    CHECK(nsent == before + 1 && sent[nsent - 1][1] == 74 && sent[nsent - 1][2] == 0, "leaving: CC 74 back to 0: %d", nsent - before);
-
-    // 21. AT AS CC 2: pressure as CC 2 instead of channel aftertouch.
-    reset();
-    me_midi_cfg[0].at_cc = 2;
-    at_in(13, 64, AUTO);
-    CHECK(nsent == 1 && sent[0][0] == 0xB0 && sent[0][1] == 2 && sent[0][2] == 64, "pressure on CC 2: %02x %d %d", sent[0][0], sent[0][1], sent[0][2]);
-    CHECK(track_at(0, 20) == (20 << 8), "the track's own AT still its own");
-    me_at_on = 0;
-    before = nsent;
-    me_tick(0);
-    CHECK(nsent == before + 1 && sent[nsent - 1][1] == 2 && sent[nsent - 1][2] == 0, "AT THRU unticked: CC 2 back to 0");
-    me_at_on = 1;
-
-    // ---- velocity --------------------------------------------------------------
     // 22. V.SNS on what plays: an audio voice's stored velocity (8.8), a MIDI track's note out.
     reset();
     h_os_vel[0] = 40 << 8;
@@ -633,36 +608,254 @@ int main(void)
     ENC(2, -1);
     CHECK(me_audio_cfg[0].vel_sens == 96 && idle_counts[1] == 0, "the accelerator back: %d", me_audio_cfg[0].vel_sens);
 
-    // 27. MIDI cells; a change gives the channel back.
+    // 27. MIDI cells: THRU, V.SNS, three destinations from the LFO page's list, fine depths.
     reset();
     h_active_track = 8;
     pb_in(13, 12000, AUTO);
     OPEN();
     before = nsent;
     ENC(1, -1);
-    CHECK(me_midi_cfg[0].pb_on == 0, "A PB off");
+    CHECK(me_midi_cfg[0].thru == 0, "A THRU off");
     CHECK(nsent == before + 1 && sent[nsent - 1][0] == 0xE0 && pb_of(nsent - 1) == 8192, "the synth's bend back to the track's: %d", nsent - before);
     ENC(1, 1);
-    CHECK(me_midi_cfg[0].pb_on == 1, "A PB on again");
-    ENC(4, -50);
-    CHECK(me_midi_cfg[0].vel_sens == 50, "D V.SNS 50: %d", me_midi_cfg[0].vel_sens);
-    CHECK(ENC(5, 3) == 1 && ENC(6, 3) == 1, "E, F empty: taken, nothing");
-    ENC(7, 73);
-    CHECK(me_midi_cfg[0].mw_cc == 74, "G MW> CC 74: %d", me_midi_cfg[0].mw_cc);
-    CHECK(h_enc_last_sid == SID_LIST, "feels like the SAMP selector");
-    ENC(7, 200);
-    CHECK(me_midi_cfg[0].mw_cc == CC_MAX, "MW> at most CC 119");
-    ENC(8, 2);
-    CHECK(me_midi_cfg[0].at_cc == 2, "H AT> CC 2");
-    h_func_held = 1;
-    ENC(8, 1); ENC(7, -1);
-    h_func_held = 0;
-    CHECK(me_midi_cfg[0].at_cc == 10 && me_midi_cfg[0].mw_cc == 110, "FUNC + turn: CCs by tens: %d %d", me_midi_cfg[0].at_cc, me_midi_cfg[0].mw_cc);
-    CHECK(me_midi_cfg[1].mw_cc == 1, "MIDI B unchanged");
-    for (int i = 0; i < SHOW_TICKS; i++) me_page_tick(0);
+    CHECK(me_midi_cfg[0].thru == 1, "A THRU on again");
+    ENC(2, -50);
+    CHECK(me_midi_cfg[0].vel_sens == 50, "B V.SNS 50: %d", me_midi_cfg[0].vel_sens);
+    ENC(3, 3);
+    CHECK(me_midi_cfg[0].mw_dest == 3 && list_cell == 2, "C MW -> SRC Mod Wheel (3rd), the list opens: %d", me_midi_cfg[0].mw_dest);
+    ENC(3, 100);
+    CHECK(me_midi_cfg[0].mw_dest == 12, "to the end: CC VAL8: %d", me_midi_cfg[0].mw_dest);
+    SEL(0, 7, 74);
     memset(drawn, 0, sizeof drawn);
     me_page_draw((void *)1, (void *)1);
-    CHECK(strstr(drawn, "ON") && strstr(drawn, "MW>") && strstr(drawn, "AT>") && strstr(drawn, "V.SNS"), "MIDI drawn: %s", drawn);
+    CHECK(strstr(drawn, "CC:CC8 Value #74") && strstr(drawn, "#74") && strstr(drawn, "VAL8"), "the list and box show SEL 74: %s", drawn);
+    KEY(42, 1, 0); KEY(42, 0, 0);
+    h_func_held = 1;
+    ENC(3, -1); for (int i = 0; i < SNAP_REST; i++) me_page_tick(0);
+    CHECK(me_midi_cfg[0].mw_dest == 5, "FUNC back: the first CC slot: %d", me_midi_cfg[0].mw_dest);
+    ENC(3, -1); for (int i = 0; i < SNAP_REST; i++) me_page_tick(0);
+    CHECK(me_midi_cfg[0].mw_dest == 1, "then SRC Pitch Bend: %d", me_midi_cfg[0].mw_dest);
+    ENC(3, -1); for (int i = 0; i < SNAP_REST; i++) me_page_tick(0);
+    CHECK(me_midi_cfg[0].mw_dest == 0, "then None: %d", me_midi_cfg[0].mw_dest);
+    ENC(4, 1); for (int i = 0; i < SNAP_REST; i++) me_page_tick(0);
+    CHECK(me_midi_cfg[0].mw_amount == 16 * 256, "M.DEP +16: %d", me_midi_cfg[0].mw_amount);
+    h_func_held = 0;
+    ENC(5, 1); ENC(6, 2); ENC(7, 2); ENC(8, -3);
+    CHECK(me_midi_cfg[0].vel_dest == 1 && me_midi_cfg[0].vel_amount == 512 && me_midi_cfg[0].at_dest == 2 && me_midi_cfg[0].at_amount == -768,
+          "E-H: VEL -> PB +2.00, AT -> AT -3.00");
+    CHECK(me_midi_cfg[1].vel_dest == 0 && me_midi_cfg[1].thru == 1, "MIDI B unchanged");
+    for (int i = 0; i < SHOW_TICKS + LIST_TICKS; i++) me_page_tick(0);
+    memset(drawn, 0, sizeof drawn);
+    me_page_draw((void *)1, (void *)1);
+    CHECK(strstr(drawn, "THRU") && strstr(drawn, "V.SNS") && strstr(drawn, "M.DEP") && strstr(drawn, "SRC") && strstr(drawn, "PB"), "MIDI drawn: %s", drawn);
+
+    // ---- MIDI routing, merging and whacky combinations -------------------------
+    // 29. Routes add to their destination: wheel -> CC VAL1 (SEL 74), +32.00 = half the range at full wheel.
+    reset();
+    SEL(0, 0, 74);
+    me_midi_cfg[0].mw_dest = 5; me_midi_cfg[0].mw_amount = 32 * 256;
+    track_id(0, 25, 10);                          // VAL1's own value 10
+    track_mw(0, 20);                              // MW knob 20
+    mw_in(13, 127, AUTO);
+    CHECK(last_cc(74) == 74, "VAL1: 10 + 127 x 32/64 = 73.5 -> 74: %d", last_cc(74));
+    CHECK(last_cc(1) == 127, "MW (THRU): 20 + 127 capped: %d", last_cc(1));
+    CHECK(track_id(0, 25, 11) == TAKE_OVER && last_cc(74) == 75, "VAL1's own sends taken over, the sum follows: %d", last_cc(74));
+    CHECK(track_id(0, 26, 50) == (50 << 8), "VAL2, nothing aimed at it: stock");
+    me_midi_cfg[0].mw_amount = -64 * 256;
+    me_midi_changed(0);
+    CHECK(last_cc(74) == 0, "-64.00 at full wheel: down to 0: %d", last_cc(74));
+
+    // 30. Wheel to pitch bend (with THRU's own bend), aftertouch to the mod wheel, velocity to BC.
+    reset();
+    me_midi_cfg[0].mw_dest = 1; me_midi_cfg[0].mw_amount = 64 * 256;
+    me_midi_cfg[0].at_dest = 3; me_midi_cfg[0].at_amount = 32 * 256;
+    me_midi_cfg[0].vel_dest = 4; me_midi_cfg[0].vel_amount = 64 * 256;
+    pb_in(13, 8192 + 1000, AUTO);
+    mw_in(13, 64, AUTO);
+    {
+        int pb = -1; for (int i = 0; i < nsent; i++) if (sent[i][0] == 0xE0) pb = pb_of(i);
+        CHECK(pb == clamp(8192 + 1000 + 64 * 64 * 256 / 64 * 16383 / 32512, 0, 16383), "PB = centre + bend + wheel x 64: %d", pb);
+    }
+    CHECK(last_cc(1) == 64, "MW: THRU's wheel, 64: %d", last_cc(1));
+    at_in(13, 100, AUTO);
+    CHECK(last_cc(1) == 64 + 50, "MW: wheel 64 + pressure 100 x 32/64: %d", last_cc(1));
+    {
+        int at = -1; for (int i = 0; i < nsent; i++) if (sent[i][0] == 0xD0) at = sent[i][1];
+        CHECK(at == 100, "AT: THRU's own pressure too: %d", at);
+    }
+    uint8_t note[3] = { 0x90, 60, 100 };
+    before = nsent;
+    me_note_out(3, note);
+    CHECK(nsent == before + 1 && last_cc(2) == 100, "velocity 100 -> BC at once (before the note): %d", last_cc(2));
+    before = nsent;
+    h_active_track = 0;
+    me_tick(0);
+    CHECK(last_cc(1) == 0, "track change: MW back to the track's own (0): %d", last_cc(1));
+    CHECK(last_cc(2) == 100, "BC keeps the note's velocity (the sequencer's notes set it)");
+
+    // 31. Merging: VAL1 on CC 1 (SEL 1) with the mod wheel: one CC 1, the latest own value + everything live.
+    reset();
+    SEL(0, 0, 1);
+    me_midi_cfg[0].mw_dest = 5; me_midi_cfg[0].mw_amount = 16 * 256;   // wheel -> VAL1 (= CC 1) too
+    track_mw(0, 20);                              // SRC MW knob 20
+    track_id(0, 25, 40);                          // VAL1 40, changed last
+    before = nsent;
+    mw_in(13, 64, AUTO);                          // THRU wheel 64 on MW, and x 16/64 = 16 on VAL1
+    CHECK(count_cc(before, 1) == 1, "one CC 1 for both: %d", count_cc(before, 1));
+    CHECK(last_cc(1) == 40 + 64 + 16, "VAL1's own 40 (the latest) + 64 + 16: %d", last_cc(1));
+    CHECK(track_mw(0, 30) == TAKE_OVER && last_cc(1) == 30 + 80, "the MW knob moves: now it is the latest: %d", last_cc(1));
+    CHECK(track_id(0, 25, 41) == TAKE_OVER && last_cc(1) == 41 + 80, "VAL1 moves: it again: %d", last_cc(1));
+    // an LFO on both, alternating: every send is taken over, every value valid, one CC 1 each
+    for (int i = 0; i < 200; i++) {
+        before = nsent;
+        if (i & 1) track_mw(0, (i * 7) % 128); else track_id(0, 25, (i * 13) % 128);
+        if (nsent > 200) nsent = 0;
+        CHECK(count_cc(before > nsent ? 0 : before, 1) <= 1, "one CC 1 a send");
+    }
+    for (int i = 0; i < nsent; i++) for (int j = 1; j < sent_len[i]; j++) CHECK(sent[i][j] <= 127, "data byte <= 127");
+    // the wheel goes away (track change): CC 1 back to the latest own value, then stock again
+    nsent = 0;
+    track_id(0, 25, 55);
+    h_active_track = 0;
+    me_tick(0);
+    CHECK(last_cc(1) == 55, "released: the latest own value: %d", last_cc(1));
+    CHECK(track_mw(0, 3) == (3 << 8) && track_id(0, 25, 4) == (4 << 8), "then both stock again");
+
+    // 32. SEL changed while merged; two slots on one CC; slot on CC 2 merges with BC; SEL off (-1).
+    reset();
+    SEL(0, 0, 1);
+    track_id(0, 25, 10);
+    mw_in(13, 50, AUTO);
+    CHECK(last_cc(1) == 60, "merged: %d", last_cc(1));
+    SEL(0, 0, 74);
+    before = nsent;
+    mw_in(13, 51, AUTO);
+    CHECK(count_cc(before, 1) == 1 && last_cc(1) == 51 && count_cc(before, 74) == 0, "SEL now 74: CC 1 is the wheel alone; VAL1 not live: %d", last_cc(1));
+    CHECK(track_id(0, 25, 12) == (12 << 8), "VAL1 is stock again");
+    reset();
+    SEL(0, 2, 30); SEL(0, 5, 30);                 // VAL3 and VAL6 both on CC 30
+    me_midi_cfg[0].at_dest = 7; me_midi_cfg[0].at_amount = 64 * 256;   // pressure -> VAL3 (dest 7)
+    track_id(0, 27, 5); track_id(0, 30, 9);       // VAL3 5, VAL6 9 (latest)
+    before = nsent;
+    at_in(13, 20, AUTO);
+    CHECK(count_cc(before, 30) == 1 && last_cc(30) == 9 + 20, "two slots on CC 30: one message, VAL6's 9 + 20: %d", last_cc(30));
+    CHECK(track_id(0, 27, 6) == TAKE_OVER && track_id(0, 30, 7) == TAKE_OVER, "both taken over");
+    reset();
+    SEL(0, 1, 2);                                 // VAL2 on CC 2: merges with BC
+    track_id(0, 24, 30);
+    track_id(0, 26, 70);
+    bc_in(13, 40, AUTO);
+    CHECK(last_cc(2) == 110 && count_cc(0, 2) == 1, "BC thru + VAL2's own 70 (latest): %d", last_cc(2));
+    reset();
+    SEL(0, 0, -1);                                // no CC number
+    me_midi_cfg[0].mw_dest = 5; me_midi_cfg[0].mw_amount = 64 * 256;
+    mw_in(13, 100, AUTO);
+    for (int i = 0; i < nsent; i++) CHECK(sent[i][1] <= 127, "SEL off: nothing invalid: %02x %d", sent[i][0], sent[i][1]);
+
+    // 33. Mod wheel on mod wheel: THRU and a route to MW: added twice; -64 cancels it.
+    reset();
+    me_midi_cfg[0].mw_dest = 3; me_midi_cfg[0].mw_amount = 32 * 256;
+    track_mw(0, 10);
+    mw_in(13, 40, AUTO);
+    CHECK(last_cc(1) == 10 + 40 + 20, "MW: own 10 + 40 + 40 x 32/64: %d", last_cc(1));
+    me_midi_cfg[0].mw_amount = -64 * 256;
+    me_midi_changed(0);
+    CHECK(last_cc(1) == 10, "-64.00: the wheel cancelled: %d", last_cc(1));
+    me_midi_cfg[0].thru = 0;
+    me_midi_changed(0);
+    CHECK(last_cc(1) == 0, "THRU off, route -64 alone: 10 - 40 capped at 0: %d", last_cc(1));
+
+    // 34. Bend routed into bend: pitch bend's own source is THRU only; pressure -> PB down, below 0 capped.
+    reset();
+    me_midi_cfg[0].at_dest = 1; me_midi_cfg[0].at_amount = -64 * 256;
+    track_pb(0, 1000);
+    pb_in(13, 0, AUTO);                           // -8192
+    at_in(13, 127, AUTO);
+    {
+        int pb = -1; for (int i = 0; i < nsent; i++) if (sent[i][0] == 0xE0) pb = pb_of(i);
+        CHECK(pb == 0, "1000 - 8192 - full: capped at 0: %d", pb);
+    }
+
+    // 35. Two MIDI tracks on one channel: the one that last took input owns the settings.
+    reset();
+    chan_of[1] = 0;                               // MIDI B also on channel 1
+    me_midi_cfg[1].thru = 0;
+    mw_in(8, 50, TRACK);                          // A's track channel 9
+    CHECK(last_cc(1) == 50, "A: THRU on: %d", last_cc(1));
+    before = nsent;
+    mw_in(9, 60, TRACK);                          // B's track channel 10: B's settings (THRU off)
+    CHECK(last_cc(1) == 0, "B owns the channel now: THRU off: the track's own (0): %d", last_cc(1));
+
+    // 36. Fuzz: random settings, SEL numbers, inputs, track sends, notes, track changes and
+    //     setting changes; every message valid, at most one per CC per send, and with nothing
+    //     live at the end, everything the mod took is back to the track's own values.
+    {
+        #define RND(n) rnd_next(n)
+        uint32_t sent0 = me_sent, filt0 = me_filtered, taken_over = 0, merged = 0;
+        for (int round = 0; round < 300; round++) {
+            reset();
+            for (int m = 0; m < 2; m++) {
+                me_midi_cfg[m].thru = (int8_t)RND(2);
+                me_midi_cfg[m].mw_dest = (int8_t)RND(13); me_midi_cfg[m].at_dest = (int8_t)RND(13); me_midi_cfg[m].vel_dest = (int8_t)RND(13);
+                me_midi_cfg[m].mw_amount = (int16_t)(RND(2 * AMOUNT_MAX + 1) - AMOUNT_MAX);
+                me_midi_cfg[m].at_amount = (int16_t)(RND(2 * AMOUNT_MAX + 1) - AMOUNT_MAX);
+                me_midi_cfg[m].vel_amount = (int16_t)(RND(2 * AMOUNT_MAX + 1) - AMOUNT_MAX);
+                me_midi_cfg[m].vel_sens = (int8_t)RND(101);
+                for (int k = 0; k < 8; k++) SEL(m, k, RND(5) == 0 ? 1 : RND(5) == 0 ? 2 : RND(8) == 0 ? -1 : RND(128));
+            }
+            chan_of[1] = RND(2) ? 0 : 5;
+            int own[OUTPUTS];
+            for (int o = 0; o < OUTPUTS; o++) own[o] = -1;
+            for (int step = 0; step < 60; step++) {
+                int what = RND(10), from = nsent;
+                if (nsent > 200) { nsent = 0; from = 0; }
+                switch (what) {
+                case 0: pb_in(RND(2) ? 13 : 8, RND(16384), RND(2) ? AUTO : TRACK); break;
+                case 1: at_in(RND(2) ? 13 : 8, RND(128), RND(2) ? AUTO : TRACK); break;
+                case 2: mw_in(RND(2) ? 13 : 8, RND(128), RND(2) ? AUTO : TRACK); break;
+                case 3: bc_in(RND(2) ? 13 : 8, RND(128), RND(2) ? AUTO : TRACK); break;
+                case 4: case 5: {
+                    int o = RND(OUTPUTS), v = o == O_PB ? RND(16384) : RND(128);
+                    own[o] = v;
+                    if (track_id(0, ID_FIRST + o, v) == TAKE_OVER) {
+                        taken_over++;
+                        int32_t cc = cc_of(&chans[0], o);
+                        for (int p2 = O_MW; p2 < OUTPUTS; p2++)
+                            if (p2 != o && cc >= 0 && cc_of(&chans[0], p2) == cc) { merged++; break; }
+                    }
+                    break;
+                }
+                case 6: { uint8_t n[3] = { 0x90, (uint8_t)RND(128), (uint8_t)(1 + RND(127)) }; const uint8_t *r2 = me_note_out(3, n);
+                          CHECK(r2[2] >= n[2] && r2[2] <= 127, "note velocity scaled within %d..127: %d", n[2], r2[2]); break; }
+                case 7: h_active_track = RND(3) ? 8 : RND(16); me_tick(0); break;
+                case 8: me_midi_cfg[0].mw_dest = (int8_t)RND(13); me_midi_cfg[0].thru = (int8_t)RND(2); me_midi_changed(0); break;
+                case 9: SEL(0, RND(8), RND(3) ? RND(128) : 1); me_tick(0); break;
+                }
+                for (int i = from; i < nsent; i++) {
+                    CHECK(sent[i][0] >= 0x80 && sent[i][0] < 0xF0, "a channel message: %02x", sent[i][0]);
+                    for (int j = 1; j < sent_len[i]; j++) CHECK(sent[i][j] <= 127, "data byte: %d", sent[i][j]);
+                }
+                for (int cc = 0; cc < 128; cc++) {
+                    int n = 0;
+                    for (int i = from; i < nsent; i++) if (sent[i][0] == 0xB0 && sent[i][1] == cc) n++;
+                    CHECK(n <= 2, "CC %d sent %d times by one event", cc, n);
+                }
+            }
+            // everything live goes: track change away from MIDI, inputs on the auto channel only
+            for (int ch = 0; ch < 16; ch++) { chans[ch].via_auto = chans[ch].touched & (uint8_t)~BIT(S_VEL); }
+            h_active_track = 1; me_tick(0); h_active_track = 2; me_tick(0);
+            for (int m = 0; m < 8; m++) { me_midi_cfg[m].vel_dest = 0; me_midi_changed(m); }
+            for (int ch = 0; ch < 16; ch++)
+                for (int o = 0; o < OUTPUTS; o++)
+                    CHECK(!group_live(&chans[ch], o), "round %d: ch %d output %d still live", round, ch, o);
+            nsent = 0;
+            for (int o = 0; o < OUTPUTS; o++)
+                if (own[o] >= 0)
+                    CHECK(track_id(0, ID_FIRST + o, own[o]) != TAKE_OVER, "round %d: output %d back to stock", round, o);
+        }
+        printf("fuzz: %u messages sent, %u track sends seen, %u taken over, %u of them merged\n",
+               me_sent - sent0, me_filtered - filt0, taken_over, merged);
+    }
 
     // 28. Leaving: another page key, the page gone from under it, TRIG again.
     reset();

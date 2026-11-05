@@ -1,5 +1,17 @@
 [
   {
+    "version": "0.8.0-experimental",
+    "date": "2026-11-05",
+    "changes": [
+      "MIDI tracks get the same page as audio tracks: knob A THRU (PB, AT, MW and now BC on or off), V.SNS, and MW, VEL and AT routes with depths.",
+      "MIDI destinations are the MIDI LFO page's: PB, AT, MW, BC and CC VAL 1-8 (on their SEL's CC number, shown in the list and box).",
+      "Everything aimed at one value adds up with the track's own (knob, locks, LFO) and goes out as one message.",
+      "Values on the same CC number (MW and a slot on SEL 1, BC and SEL 2, two slots on one SEL) are merged into one CC: the latest own value plus everything live.",
+      "Breath (CC 2) from MIDI IN passes with THRU.",
+      "MW> and AT> are gone: route the wheel or pressure to a CC VAL slot instead."
+    ]
+  },
+  {
     "version": "0.7.0-experimental",
     "date": "2026-11-05",
     "changes": [
