@@ -1,6 +1,6 @@
 # MIDI Expression for the Digitakt
 
-**Play the original Digitakt (mk1, OS 1.54) and the synths it sequences with pitch bend, aftertouch, the mod wheel, breath and velocity from your keyboard.** A [Modwerk](https://modwerk.app/) module, version 0.11.1-experimental.
+**Play the original Digitakt (mk1, OS 1.54) and the synths it sequences with pitch bend, aftertouch, the mod wheel, breath and velocity from your keyboard.** A [Modwerk](https://modwerk.app/) module, version 0.12.0-experimental.
 
 ![The EXPRESSION page of a MIDI track](docs/img/expression-midi.png)
 
@@ -19,7 +19,7 @@ Modwerk is an independent project, not affiliated with or endorsed by Elektron. 
 **Other mods.** It links with every other Modwerk Digitakt module except:
 
 * **Digi Perform**: it opens its own page with the same gesture (TRIG again on the TRIG page), so the two cannot be installed together.
-* **Digi Slicer**: works, but only 0.4 KB of RAM is left with both, so no third mod of any size fits beside them.
+* **Digi Slicer**: works, but only 1.3 KB of RAM is left with both, so no third mod of any size fits beside them.
 
 The others were linked with it one at a time ([results/compat/pairs.txt](results/compat/pairs.txt)); RAM decides which combinations of three or more fit. FX Track sees its CCs, and CC Recall's sends and Digi Matrix's routings add up with it.
 
@@ -32,7 +32,7 @@ The others were linked with it one at a time ([results/compat/pairs.txt](results
 * Writing a settings file holds the screen and the MIDI output for a moment (about 0.1 s in the emulator), so the power-on file is written only once nothing has played for 2 seconds.
 * Avoid a MIDI loop: a synth echoing MIDI OUT back into MIDI IN on the same channel feeds the mod's output back to it.
 * The track's PB, AT and MW knobs on screen show the track's own value, not the sum.
-* Not yet tested on a unit: saving, presets and the MIDI LFO destinations.
+* Not yet tested on a unit: saving, presets, the fine BEND and the MIDI LFO destinations.
 
 ## How to use it
 
@@ -48,15 +48,13 @@ Select a track, press **TRIG** for its TRIG page, then **tap TRIG again**: the E
 
 | Knob | Audio track | MIDI track | Default |
 | --- | --- | --- | --- |
-| A | **BEND**: how far pitch bend moves TUNE, OFF to 12 semitones | **THRU**: pitch bend, aftertouch, mod wheel and breath pass to the synth (ON/OFF) | 2 / ON |
+| A | **BEND**: how far pitch bend moves TUNE, OFF to 12.00 semitones in fine steps | **THRU**: pitch bend, aftertouch, mod wheel and breath pass to the synth (ON/OFF) | 2 / ON |
 | B | **V.SNS**: velocity sensitivity, 0–100 % | **V.SNS** | 100 % |
 | C, D | **MW** and its depth **M.DEP** | **MW** and **M.DEP** | none, 0 |
 | E, F | **VEL** and **V.DEP** | **VEL** and **V.DEP** | none, 0 |
 | G, H | **AT** and **A.DEP** | **AT** and **A.DEP** | none, 0 |
 
-Turning a destination knob opens a list like the LFO page's DEST; push the same knob (or wait) to close it. Depths run from −64.00 to +64.00, as finely as the LFO's depth. **FUNC + turn** jumps between useful values: depths in steps of 16, BEND whole semitones (OFF, 1, 2 … 12), V.SNS in quarters, destinations a page at a time.
-
-*Coming in the next build:* BEND turns in fine steps (fractions of a semitone, as the other parameters), and FUNC + turn snaps it to whole semitones OFF, 1 … 12. In 0.11 BEND turns in whole semitones and FUNC jumps 1, 2, 3, 5, 7, 12.
+Turning a destination knob opens a list like the LFO page's DEST; push the same knob (or wait) to close it. Depths run from −64.00 to +64.00, as finely as the LFO's depth. **FUNC + turn** jumps between useful values: depths in steps of 16, BEND to whole semitones (OFF, 1, 2 … 12), V.SNS in quarters, destinations a page at a time. BEND turns as finely as a depth (2.50 semitones; its box shows 2.5).
 
 ### Destinations
 
@@ -150,7 +148,7 @@ Presets keep one track's EXPRESSION settings, so a favourite routing can go on a
 | Item | What it does |
 | --- | --- |
 | LOAD | lists the 64 presets of this kind of track; YES puts the chosen one on the current track |
-| SAVE | pick one of the 64 slots, then name it as SAVE PROJECT AS names a project: UP/DOWN change the letter, LEFT/RIGHT move, hold FUNC for the letter grid (FUNC + arrows pick, letting go writes the letter), FUNC + YES inserts, FUNC + NO deletes, YES saves (asking first over a used slot), NO aborts |
+| SAVE | pick one of the 64 slots, then name it as SAVE PROJECT AS names a project: UP/DOWN change the letter, LEFT/RIGHT move, hold FUNC for the letter grid (FUNC + arrows pick, letting go writes the letter and moves on, so FUNC, pick, let go types a name letter by letter), FUNC + YES inserts, FUNC + NO deletes, YES saves (asking first over a used slot), NO aborts |
 | RESET TO DEFAULT | puts the current track back to the default preset (asks first) |
 | SELECT DEFAULT | picks the preset that new projects and RESET TO DEFAULT start from: FACTORY (the mod's own defaults) or one of yours, marked `*` |
 
@@ -174,7 +172,7 @@ A preset file reads like this, and can be edited by hand: a value out of range i
 ```
 MIDI EXPRESSION PRESET AUDIO 1
 NAME=Lead
-BEND=5
+BEND=5.00   ; semitones
 V.SNS=100   ; %
 MW=26   ; FLTR:Frequency
 M.DEP=+32.00

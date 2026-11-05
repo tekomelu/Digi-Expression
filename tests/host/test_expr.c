@@ -112,7 +112,7 @@ static void reset(void)
     h_active_track = 8; h_auto_channel = 13;
     nsent = 0; stock_cc_calls = 0;
     memset((void *)atracks, 0, sizeof atracks);
-    ALL(range, 2); ALL(mw_dest, 0); ALL(at_dest, 0); ALL(vel_dest, 0); ALL(mw_amount, 0); ALL(at_amount, 0); ALL(vel_amount, 0); ALL(vel_sens, 100);
+    ALL(range, 2 * 256); ALL(mw_dest, 0); ALL(at_dest, 0); ALL(vel_dest, 0); ALL(mw_amount, 0); ALL(at_amount, 0); ALL(vel_amount, 0); ALL(vel_sens, 100);
     for (int m = 0; m < 8; m++) {
         me_midi_cfg[m].thru = 1; me_midi_cfg[m].vel_sens = 100;
         me_midi_cfg[m].mw_dest = me_midi_cfg[m].at_dest = me_midi_cfg[m].vel_dest = 0;
@@ -434,7 +434,7 @@ int main(void)
     pb_in(13, 0, AUTO);                           // full down
     me_render(words);
     CHECK(*slot(0, 17) == 16384 - 512, "TUNE -2 semitones: %d", *slot(0, 17) - 16384);
-    ALL(range, 12);
+    ALL(range, 12 * 256);
     words_reset(16384);
     pb_in(13, 16383, AUTO);                       // full up: 8191/8192 of 12 semitones
     me_render(words);
@@ -443,12 +443,12 @@ int main(void)
     pb_in(13, 0, AUTO);
     me_render(words);
     CHECK(*slot(0, 17) == 16384 - 3072, "TUNE -12: %d", *slot(0, 17) - 16384);
-    ALL(range, 24);                           // more than the row allows: held to 12
+    ALL(range, 24 * 256);                           // more than the row allows: held to 12
     words_reset(16384);
     pb_in(13, 0, AUTO);
     me_render(words);
     CHECK(*slot(0, 17) == 16384 - 3072, "range held to 12: %d", *slot(0, 17) - 16384);
-    ALL(range, 12);
+    ALL(range, 12 * 256);
     words_reset(16384 + 13 * 256);                /* TUNE knob at +13, bend +12: TUNE's own top */
     pb_in(13, 16383, AUTO);
     me_render(words);
@@ -457,7 +457,7 @@ int main(void)
     pb_in(13, 0, AUTO);
     me_render(words);
     CHECK(*slot(0, 17) == TUNE_MIN, "capped at TUNE -24: %d", *slot(0, 17));
-    ALL(range, 0);
+    ALL(range, 0 * 256);
     words_reset(16384);
     me_render(words);
     CHECK(*slot(0, 17) == 16384, "PB RANGE OFF: TUNE untouched");
@@ -511,8 +511,8 @@ int main(void)
     // ---- per track (the TRIG page's second page) -----------------------------
     // 18. Audio settings are each track's own.
     reset();
-    me_audio_cfg[0].range = 12;
-    me_audio_cfg[1].range = 0;
+    me_audio_cfg[0].range = 12 * 256;
+    me_audio_cfg[1].range = 0 * 256;
     h_track_channel[1] = 0;                       // tracks 1 and 2 both on channel 1
     words_reset(16384);
     pb_in(0, 0, TRACK);                           // full down
@@ -648,11 +648,11 @@ int main(void)
     h_active_track = 0;
     OPEN();
     CHECK(me_audio_cfg[0].mw_amount == 0 && me_audio_cfg[0].at_amount == 0 && me_audio_cfg[0].vel_amount == 0, "depths start at 0");
-    CHECK(me_audio_cfg[0].vel_sens == 100 && me_audio_cfg[0].range == 2, "V.SNS 100 %%, BEND 2");
-    CHECK(ENC(1, 3) == 1 && me_audio_cfg[0].range == 5, "A BEND 2 -> 5: %d", me_audio_cfg[0].range);
-    CHECK(h_enc_last_sid == SID_TUNE, "BEND feels like TUNE");
+    CHECK(me_audio_cfg[0].vel_sens == 100 && me_audio_cfg[0].range == 2 * 256, "V.SNS 100 %%, BEND 2");
+    CHECK(ENC(1, 3) == 1 && me_audio_cfg[0].range == 5 * 256, "A BEND 2 -> 5: %d", me_audio_cfg[0].range);
+    CHECK(h_enc_last_sid == SID_DEPTH, "BEND turns as finely as a depth");
     for (int i = 0; i < 20; i++) ENC(1, 1);
-    CHECK(me_audio_cfg[0].range == PB_RANGE_MAX, "BEND at most 12: %d", me_audio_cfg[0].range);
+    CHECK(me_audio_cfg[0].range == BEND_MAX, "BEND at most 12: %d", me_audio_cfg[0].range);
     ENC(2, -30);
     CHECK(me_audio_cfg[0].vel_sens == 70, "B V.SNS 100 -> 70: %d", me_audio_cfg[0].vel_sens);
     ENC(2, -200);
@@ -683,7 +683,7 @@ int main(void)
     CHECK(me_audio_cfg[0].vel_dest == 16, "E VEL: to the end of the list, LFO2 Depth: %d", me_audio_cfg[0].vel_dest);
     ENC(7, 2); ENC(8, 5);
     CHECK(me_audio_cfg[0].at_dest == 19 && me_audio_cfg[0].at_amount == 5 * 256, "G AT, H A.DEP: %d %d", me_audio_cfg[0].at_dest, me_audio_cfg[0].at_amount);
-    CHECK(me_audio_cfg[1].range == 2 && me_audio_cfg[1].mw_amount == 0, "track 2 unchanged");
+    CHECK(me_audio_cfg[1].range == 2 * 256 && me_audio_cfg[1].mw_amount == 0, "track 2 unchanged");
     h_push_held = 1;
     ENC(6, 1);
     CHECK(me_audio_cfg[0].vel_amount == -6 * 256, "pushed: the push multiplier: %d", me_audio_cfg[0].vel_amount);
@@ -711,12 +711,25 @@ int main(void)
     ENC(4, 1); for (int i = 0; i < SNAP_REST; i++) me_page_tick(0);
     CHECK(me_audio_cfg[0].mw_amount == -16 * 256, "-20 up: -16: %d", me_audio_cfg[0].mw_amount);
     ENC(1, 1); for (int i = 0; i < SNAP_REST; i++) me_page_tick(0);
-    CHECK(me_audio_cfg[0].range == 3, "BEND 2 -> 3: %d", me_audio_cfg[0].range);
+    CHECK(me_audio_cfg[0].range == 3 * 256, "BEND 2 -> 3: %d", me_audio_cfg[0].range);
     ENC(1, 1); for (int i = 0; i < SNAP_REST; i++) me_page_tick(0);
+    CHECK(me_audio_cfg[0].range == 4 * 256, "-> 4: every whole semitone: %d", me_audio_cfg[0].range);
+    me_audio_cfg[0].range = 4 * 256 + 100;        // between whole semitones (4.39)
     ENC(1, 1); for (int i = 0; i < SNAP_REST; i++) me_page_tick(0);
-    CHECK(me_audio_cfg[0].range == 7, "-> 5 -> 7: %d", me_audio_cfg[0].range);
+    CHECK(me_audio_cfg[0].range == 5 * 256, "4.39 up: 5: %d", me_audio_cfg[0].range);
+    me_audio_cfg[0].range = 4 * 256 + 100;
+    ENC(1, -1); for (int i = 0; i < SNAP_REST; i++) me_page_tick(0);
+    CHECK(me_audio_cfg[0].range == 4 * 256, "4.39 down: 4: %d", me_audio_cfg[0].range);
+    me_audio_cfg[0].range = 256;
+    ENC(1, -1); for (int i = 0; i < SNAP_REST; i++) me_page_tick(0);
+    CHECK(me_audio_cfg[0].range == 0, "1 down: OFF: %d", me_audio_cfg[0].range);
+    me_audio_cfg[0].range = 12 * 256;
     ENC(1, 1); for (int i = 0; i < SNAP_REST; i++) me_page_tick(0);
-    CHECK(me_audio_cfg[0].range == 12, "-> 12: %d", me_audio_cfg[0].range);
+    CHECK(me_audio_cfg[0].range == 12 * 256, "12 up: 12: %d", me_audio_cfg[0].range);
+    me_audio_cfg[0].range = 2 * 256;              // fine: the words as they are, as a depth
+    h_func_held = 0; h_enc_fine = 1; ENC(1, 1); h_enc_fine = 0; h_func_held = 1;
+    CHECK(me_audio_cfg[0].range == 2 * 256 + 4, "BEND fine: 2 + 4/256 (as a depth): %d", me_audio_cfg[0].range);
+    me_audio_cfg[0].range = 12 * 256;
     ENC(2, -1); for (int i = 0; i < SNAP_REST; i++) me_page_tick(0);
     CHECK(me_audio_cfg[0].vel_sens == 75, "V.SNS 100 -> 75: %d", me_audio_cfg[0].vel_sens);
     ENC(3, 1); for (int i = 0; i < SNAP_REST; i++) me_page_tick(0);
@@ -1059,15 +1072,15 @@ int main(void)
         h_mounted = 1; h_owner = 1; me_tick(0);
         CHECK(!booted, "drive busy: waits");
         h_owner = 0; me_tick(0);
-        CHECK(booted && me_midi_cfg[0].thru == 1 && me_audio_cfg[0].range == 2, "first power-on: nothing on the card, the factory settings");
+        CHECK(booted && me_midi_cfg[0].thru == 1 && me_audio_cfg[0].range == 2 * 256, "first power-on: nothing on the card, the factory settings");
         // a change: current.txt a second later, in _temp first
-        me_midi_cfg[0].mw_dest = 7; me_midi_cfg[0].mw_amount = 20 * 256; me_audio_cfg[3].range = 7;
+        me_midi_cfg[0].mw_dest = 7; me_midi_cfg[0].mw_amount = 20 * 256; me_audio_cfg[3].range = 7 * 256;
         TICKS(SAVE_WAIT);
         CHECK(!h_ftext("/cfw/expression/current.txt"), "not before a second");
         TICKS(12 + QUIET);                                // looked at three times a second, a second, and quiet
         const char *cur = h_ftext("/cfw/expression/current.txt");
         CHECK(cur && h_ftext("/cfw/expression/_temp/current.txt"), "then written, with its copy");
-        CHECK(cur && strstr(cur, "[A]") && strstr(cur, "MW=7") && strstr(cur, "M.DEP=+20.00") && strstr(cur, "BEND=7") && strstr(cur, "\nEND\n"), "readable text: %s", cur ? cur : "-");
+        CHECK(cur && strstr(cur, "[A]") && strstr(cur, "MW=7") && strstr(cur, "M.DEP=+20.00") && strstr(cur, "BEND=7.00") && strstr(cur, "\nEND\n"), "readable text: %s", cur ? cur : "-");
         CHECK(cur && h_fs[h_find("/cfw/expression/current.txt")].len == PROJ_SIZE, "a fixed size");
         // SAVE PROJECT AS slot 003 "SONG A"
         me_project_saving("SONG A", 2);
@@ -1077,11 +1090,11 @@ int main(void)
         CHECK(pj && strstr(pj, "NAME=SONG A") && strstr(pj, "SLOT=3") && strstr(pj, "MW=7"), "projects/003.txt, as at the save: %s", pj ? pj : "-");
         CHECK(h_ftext("/cfw/expression/_temp/projects/003.txt") != 0, "and its copy in _temp");
         // edits, then LOAD PROJECT slot 003: as saved
-        me_midi_cfg[0].mw_dest = 2; me_audio_cfg[3].range = 1;
+        me_midi_cfg[0].mw_dest = 2; me_audio_cfg[3].range = 1 * 256;
         TICKS(40);
         me_project_loading("SONG A", 2);
         TICKS(1);
-        CHECK(me_midi_cfg[0].mw_dest == 7 && me_audio_cfg[3].range == 7 && me_midi_cfg[0].mw_amount == 20 * 256, "loaded slot 003: as saved (%d %d)", me_midi_cfg[0].mw_dest, me_audio_cfg[3].range);
+        CHECK(me_midi_cfg[0].mw_dest == 7 && me_audio_cfg[3].range == 7 * 256 && me_midi_cfg[0].mw_amount == 20 * 256, "loaded slot 003: as saved (%d %d)", me_midi_cfg[0].mw_dest, me_audio_cfg[3].range);
         // a renamed project: still slot 003
         me_project_loading("RENAMED", 2);
         TICKS(1);
@@ -1089,13 +1102,13 @@ int main(void)
         // a project without a file: the defaults
         me_project_loading("OTHER", 9);
         TICKS(1);
-        CHECK(me_midi_cfg[0].mw_dest == 0 && me_audio_cfg[3].range == 2 && me_midi_cfg[0].thru == 1, "slot 010 without a file: the factory defaults");
+        CHECK(me_midi_cfg[0].mw_dest == 0 && me_audio_cfg[3].range == 2 * 256 && me_midi_cfg[0].thru == 1, "slot 010 without a file: the factory defaults");
         // power-on: as at power-off
         me_midi_cfg[5].vel_sens = 40;
         TICKS(40);
-        booted = 0; me_midi_cfg[5].vel_sens = 100; me_audio_cfg[0].range = 9;
+        booted = 0; me_midi_cfg[5].vel_sens = 100; me_audio_cfg[0].range = 9 * 256;
         TICKS(1);
-        CHECK(me_midi_cfg[5].vel_sens == 40 && me_audio_cfg[0].range == 2 && cur_slot == 9, "power-on: as at power-off (%d), slot kept %d", me_midi_cfg[5].vel_sens, cur_slot);
+        CHECK(me_midi_cfg[5].vel_sens == 40 && me_audio_cfg[0].range == 2 * 256 && cur_slot == 9, "power-on: as at power-off (%d), slot kept %d", me_midi_cfg[5].vel_sens, cur_slot);
         // a torn current.txt: the copy in _temp is read
         int ci = h_find("/cfw/expression/current.txt");
         h_fs[ci].len = 300;                               // cut short: no END
@@ -1123,44 +1136,44 @@ int main(void)
             "M.DEP=+12.5\r\nVEL=37\r\nV.DEP=-300\r\nnonsense line\r\n[b]\r\nTHRU=off\r\nAT=17\r\nA.DEP=-64.00\r\nMW=999\r\n[Z]\r\nBEND=3\r\nEND\r\n");
         me_project_loading("x", 3);
         TICKS(1);
-        CHECK(me_audio_cfg[0].range == 12 && me_audio_cfg[0].vel_sens == 0 && me_audio_cfg[0].mw_dest == 26
+        CHECK(me_audio_cfg[0].range == 12 * 256 && me_audio_cfg[0].vel_sens == 0 && me_audio_cfg[0].mw_dest == 26
               && me_audio_cfg[0].mw_amount == 32 * 100 && me_audio_cfg[0].vel_dest == 0 && me_audio_cfg[0].vel_amount == -AMOUNT_MAX,
               "hand edits: held in range (%d %d %d %d %d %d)", me_audio_cfg[0].range, me_audio_cfg[0].vel_sens, me_audio_cfg[0].mw_dest,
               me_audio_cfg[0].mw_amount, me_audio_cfg[0].vel_dest, me_audio_cfg[0].vel_amount);
         CHECK(me_midi_cfg[1].thru == 0 && me_midi_cfg[1].at_dest == 17 && me_midi_cfg[1].at_amount == -AMOUNT_MAX && me_midi_cfg[1].mw_dest == MIDI_DESTS - 1,
               "MIDI B from [b]: THRU off, AT -> LFO depth -64, MW held (%d)", me_midi_cfg[1].mw_dest);
-        CHECK(me_audio_cfg[2].range == 2 && me_midi_cfg[0].thru == 1, "untouched tracks: factory");
+        CHECK(me_audio_cfg[2].range == 2 * 256 && me_midi_cfg[0].thru == 1, "untouched tracks: factory");
         // presets: save, list, load, reset, default
-        me_audio_cfg[0].range = 5; me_audio_cfg[0].mw_dest = 27; me_audio_cfg[0].mw_amount = 10 * 256;
+        me_audio_cfg[0].range = 5 * 256; me_audio_cfg[0].mw_dest = 27; me_audio_cfg[0].mw_amount = 10 * 256;
         CHECK(me_preset_save(0, 4, "Lead  ", 0), "save audio preset 05");
         CHECK(!me_preset_save(0, 5, "x", 0), "one job at a time");
         TICKS(1);
         const char *pr = h_ftext("/cfw/expression/audio/05.txt");
-        CHECK(pr && strstr(pr, "NAME=Lead\n") && strstr(pr, "BEND=5") && h_ftext("/cfw/expression/_temp/audio/05.txt"), "audio/05.txt: %s", pr ? pr : "-");
+        CHECK(pr && strstr(pr, "NAME=Lead\n") && strstr(pr, "BEND=5.00") && h_ftext("/cfw/expression/_temp/audio/05.txt"), "audio/05.txt: %s", pr ? pr : "-");
         me_presets_rescan(0);
         TICKS(10);
         CHECK(me_presets_ready(0) && !strcmp(me_preset_name(0, 4), "Lead") && !*me_preset_name(0, 0), "the list: 05 Lead, the rest empty");
-        me_audio_cfg[6].range = 0;
+        me_audio_cfg[6].range = 0 * 256;
         CHECK(me_preset_load(0, 4, 6), "load preset 05 on track 7");
         TICKS(1);
-        CHECK(me_audio_cfg[6].range == 5 && me_audio_cfg[6].mw_dest == 27 && me_audio_cfg[6].mw_amount == 10 * 256, "track 7 is Lead");
+        CHECK(me_audio_cfg[6].range == 5 * 256 && me_audio_cfg[6].mw_dest == 27 && me_audio_cfg[6].mw_amount == 10 * 256, "track 7 is Lead");
         me_default_set(0, 4);
         TICKS(1);
         CHECK(h_ftext("/cfw/expression/config.txt") && strstr(h_ftext("/cfw/expression/config.txt"), "DEFAULT AUDIO=5"), "config: default audio 5");
-        me_audio_cfg[2].range = 11;
+        me_audio_cfg[2].range = 11 * 256;
         me_track_reset(0, 2);
         TICKS(1);
-        CHECK(me_audio_cfg[2].range == 5 && me_audio_cfg[2].mw_dest == 27, "RESET: the default preset, Lead");
+        CHECK(me_audio_cfg[2].range == 5 * 256 && me_audio_cfg[2].mw_dest == 27, "RESET: the default preset, Lead");
         me_project_loading("NEW", 20);
         TICKS(1);
-        CHECK(me_audio_cfg[0].range == 5 && me_audio_cfg[7].mw_dest == 27 && me_midi_cfg[0].thru == 1, "a new project: Lead on every audio track, factory MIDI");
+        CHECK(me_audio_cfg[0].range == 5 * 256 && me_audio_cfg[7].mw_dest == 27 && me_midi_cfg[0].thru == 1, "a new project: Lead on every audio track, factory MIDI");
         def_preset[0] = 9; booted = 0;                     // config read back at power-on
         TICKS(1);
         CHECK(def_preset[0] == 4, "config read at power-on: %d", def_preset[0]);
         h_fs[h_find("/cfw/expression/audio/05.txt")].len = 5; h_fs[h_find("/cfw/expression/_temp/audio/05.txt")].len = 5;
         me_track_reset(0, 1);
         TICKS(1);
-        CHECK(me_audio_cfg[1].range == 2, "the default preset broken: factory");
+        CHECK(me_audio_cfg[1].range == 2 * 256, "the default preset broken: factory");
         me_default_set(0, -1);
         TICKS(1);
         CHECK(strstr(h_ftext("/cfw/expression/config.txt"), "DEFAULT AUDIO=0"), "default back to Factory");
@@ -1187,7 +1200,7 @@ int main(void)
             me_project_loading("f", 49);
             TICKS(1);
             for (int t = 0; t < 8; t++) {
-                CHECK(me_audio_cfg[t].range >= 0 && me_audio_cfg[t].range <= 12 && me_dest_valid(0, me_audio_cfg[t].mw_dest) && me_dest_valid(0, me_audio_cfg[t].vel_dest)
+                CHECK(me_audio_cfg[t].range >= 0 && me_audio_cfg[t].range <= BEND_MAX && me_dest_valid(0, me_audio_cfg[t].mw_dest) && me_dest_valid(0, me_audio_cfg[t].vel_dest)
                       && me_dest_valid(0, me_audio_cfg[t].at_dest) && me_audio_cfg[t].vel_sens >= 0 && me_audio_cfg[t].vel_sens <= 100
                       && me_audio_cfg[t].mw_amount >= -AMOUNT_MAX && me_audio_cfg[t].mw_amount <= AMOUNT_MAX, "fuzz %d: audio %d in range", r, t);
                 CHECK(me_midi_cfg[t].thru >= 0 && me_midi_cfg[t].thru <= 1 && me_midi_cfg[t].mw_dest >= 0 && me_midi_cfg[t].mw_dest < MIDI_DESTS
@@ -1215,7 +1228,7 @@ int main(void)
         CHECK(me_menu == M_OFF && me_page_open, "NO: back to the page");
         // the longest a project file gets: every destination, negative depths: within PROJ_SIZE with room
         for (int t = 0; t < 8; t++) {
-            me_audio_cfg[t].mw_dest = 44; me_audio_cfg[t].vel_dest = 39; me_audio_cfg[t].at_dest = 43; me_audio_cfg[t].range = 12; me_audio_cfg[t].vel_sens = 100;
+            me_audio_cfg[t].mw_dest = 44; me_audio_cfg[t].vel_dest = 39; me_audio_cfg[t].at_dest = 43; me_audio_cfg[t].range = 12 * 256; me_audio_cfg[t].vel_sens = 100;
             me_audio_cfg[t].mw_amount = me_audio_cfg[t].vel_amount = me_audio_cfg[t].at_amount = -AMOUNT_MAX;
             me_midi_cfg[t].mw_dest = 12; me_midi_cfg[t].vel_dest = 11; me_midi_cfg[t].at_dest = 10;
             me_midi_cfg[t].mw_amount = me_midi_cfg[t].vel_amount = me_midi_cfg[t].at_amount = -AMOUNT_MAX;
@@ -1229,22 +1242,24 @@ int main(void)
         // LOAD, RESET and DEFAULT through the menu, with the LEVEL knob
         reset(); OPEN();
         h_active_track = 0;                                  // audio track 1
-        me_audio_cfg[0].range = 3;
+        me_audio_cfg[0].range = 3 * 256;
         me_menu = M_MAIN; menu_cur[M_MAIN] = 0;
         KEY(K_YES, 1, 0);                                    // LOAD
         TICKS(10);
         CHECK(me_menu == M_LOAD && me_presets_ready(0), "LOAD: the audio presets");
-        for (int i = 0; i < 4; i++) { int ev2[8] = { 0, 0, 0, 9, RAW_DETENT * 3, 0, 0, 0 }; me_page_enc(0, ev2); }   // LEVEL: four turns down, one step each
+        { int ev2[8] = { 0, 0, 0, 9, RAW_DETENT - 1, 0, 0, 0 }; me_page_enc(0, ev2); }
+        CHECK(menu_cur[M_LOAD] == 0, "LEVEL: less than a detent, no step");
+        for (int i = 0; i < 4 * RAW_DETENT - (RAW_DETENT - 1); i++) { int ev2[8] = { 0, 0, 0, 9, 1, 0, 0, 0 }; me_page_enc(0, ev2); }   // a count an event, as a unit sends
         CHECK(menu_cur[M_LOAD] == 4, "LEVEL moves the cursor: %d", menu_cur[M_LOAD]);
         KEY(K_YES, 1, 0);
         TICKS(1);
-        CHECK(!strcmp(me_preset_name(0, 4), "Lead") ? me_audio_cfg[0].range == 5 : 1, "slot 05 loaded on track 1 (%d)", me_audio_cfg[0].range);
+        CHECK(!strcmp(me_preset_name(0, 4), "Lead") ? me_audio_cfg[0].range == 5 * 256 : 1, "slot 05 loaded on track 1 (%d)", me_audio_cfg[0].range);
         me_menu = M_MAIN; menu_cur[M_MAIN] = 2;
         KEY(K_YES, 1, 0);                                    // RESET
         CHECK(me_menu == M_RESET, "RESET asks first");
         KEY(K_YES, 1, 0);
         TICKS(1);
-        CHECK(me_audio_cfg[0].range == 2 && me_menu == M_MAIN, "RESET: the default (Factory) on track 1");
+        CHECK(me_audio_cfg[0].range == 2 * 256 && me_menu == M_MAIN, "RESET: the default (Factory) on track 1");
         menu_cur[M_MAIN] = 3;
         KEY(K_YES, 1, 0);                                    // DEFAULT
         TICKS(10);
@@ -1266,7 +1281,18 @@ int main(void)
         CHECK(grid_on && grid_cur == 1, "FUNC: the grid, on B");
         KEY(K_RIGHT, 1, 0); KEY(K_DOWN, 1, 0);                // C, then one row down: R
         h_func_held = 0; KEY(1, 0, 0);
-        CHECK(!strcmp(edit_name, "AR"), "let go: R written (%s)", edit_name);
+        CHECK(!strcmp(edit_name, "AR") && edit_pos == 2, "let go: R written, on to the next place (%s %d)", edit_name, edit_pos);
+        strcpy(edit_name, ""); edit_pos = 0;                 // FAST: FUNC, pick, let go, four times
+        { const char *w = "FAST";
+          for (int i = 0; w[i]; i++) {
+              h_func_held = 1; KEY(1, 1, 0);
+              while (grid_chars[grid_cur] != w[i]) KEY(K_RIGHT, 1, 0);
+              h_func_held = 0; KEY(1, 0, 0);
+          } }
+        CHECK(!strcmp(edit_name, "FAST") && edit_pos == 4, "FUNC, pick, let go x4: FAST (%s %d)", edit_name, edit_pos);
+        strcpy(edit_name, "ABCDEFGHIJKL"); edit_pos = ME_NAME_LEN - 1;
+        h_func_held = 1; KEY(1, 1, 0); h_func_held = 0; KEY(1, 0, 0);
+        CHECK(edit_pos == ME_NAME_LEN - 1 && edit_name[ME_NAME_LEN] == 0, "the last place: the cursor stays (%d)", edit_pos);
         // a twist of A while held: a nudge keeps the menu coming, a real turn cancels it
         reset(); OPEN();
         KEY(40, 1, 0); h_push_held = 1;

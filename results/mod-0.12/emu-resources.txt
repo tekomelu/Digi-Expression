@@ -1,0 +1,16 @@
+0.12.0-experimental, image SHA-256 9b76047a…2696, digiemu c1b5735
+
+cpu
+idle: 768893 instructions/s in the module area (1.20 % of 64000000/s)
+audio track, every route live, a flood at the wire rate: 1133629 instructions/s (1.77 %)
+MIDI track A, every route live, the same flood: 1195512 instructions/s (1.87 %)
+
+memory
+idle 10 s: 3330 new, 3330 delete; heap words unchanged
+40 file writes, 40 reads: 19924 new, 19924 delete (balance 0); heap words unchanged
+PASS no memory kept by the mod's file work (new - delete beyond idle: 0)
+PASS no failed write, no bad file (0, 0)
+
+RAM: ramSpare 93496 alone; 1372 with Digi Slicer
+Host tests: 2442552 checks (arm64) / 2442720 (x86-64), 0 failures; the same under ASan/UBSan
+emu-midi-whacky: 330 checks, 0 failures; emu-store: 11 PASS, 0 failures

@@ -145,12 +145,12 @@ static void put_2(struct out *o, int v)        // two digits
     put(o, c);
 }
 
-// A depth in 1/256 as +dd.dd (two decimals, rounded).
-static void put_depth(struct out *o, s32 v)
+// A depth in 1/256 as +dd.dd (two decimals, rounded); BEND without the sign.
+static void put_fixed(struct out *o, s32 v, int sign)
 {
     s32 h = (v < 0 ? -v : v) * 100;
     h = (h + 128) / 256;                       // hundredths
-    if (v < 0) put(o, "-"); else put(o, "+");
+    if (v < 0) put(o, "-"); else if (sign) put(o, "+");
     put_int(o, h / 100, 0);
     put(o, ".");
     put_2(o, (int)(h % 100));
@@ -190,7 +190,7 @@ static s32 field(const struct me_cfg *c, int k)
 static void set_field(struct me_cfg *c, int k, s32 v)
 {
     switch (k) {
-    case 0: c->range = (int8_t)v; break;
+    case 0: c->range = (int16_t)v; break;
     case 1: c->vel_sens = (int8_t)v; break;
     case 2: c->mw_dest = (int8_t)v; break;
     case 3: c->mw_amount = (int16_t)v; break;
@@ -203,7 +203,7 @@ static void set_field(struct me_cfg *c, int k, s32 v)
 
 void me_factory(struct me_cfg *c, int mid)
 {
-    c->range = (int8_t)(mid ? 1 : 2);          // audio BEND 2; MIDI THRU ON
+    c->range = (int16_t)(mid ? 1 : 2 * 256);   // audio BEND 2.00; MIDI THRU ON
     c->vel_sens = VEL_SENS_MAX;
     c->mw_dest = c->at_dest = c->vel_dest = 0;
     c->mw_amount = c->at_amount = c->vel_amount = 0;
@@ -213,7 +213,7 @@ void me_factory(struct me_cfg *c, int mid)
 static void hold_cfg(struct me_cfg *c, int mid)
 {
 #define IN(v, lo, hi) ((v) < (lo) ? (lo) : (v) > (hi) ? (hi) : (v))
-    c->range = (int8_t)(mid ? IN(c->range, 0, 1) : IN(c->range, 0, PB_RANGE_MAX));
+    c->range = (int16_t)(mid ? IN(c->range, 0, 1) : IN(c->range, 0, BEND_MAX));
     c->vel_sens = (int8_t)IN(c->vel_sens, 0, VEL_SENS_MAX);
     int dmax = mid ? MIDI_DESTS - 1 : 45;
     c->mw_dest = (int8_t)IN(c->mw_dest, 0, dmax);
@@ -246,12 +246,12 @@ static void put_track(struct out *o, const struct me_cfg *c, int mid, int track)
         if (k == 0 && mid) {
             put(o, v ? "ON" : "OFF");
         } else if (k == 0) {
-            if (v) put_int(o, v, 0); else put(o, "OFF");
+            if (v) { put_fixed(o, v, 0); put(o, "   ; semitones"); } else put(o, "OFF");
         } else if (k == 1) {
             put_int(o, v, 0);
             put(o, "   ; %");
         } else if (k & 1) {
-            put_depth(o, v);
+            put_fixed(o, v, 1);
         } else {
             put_int(o, v, 0);
             me_dest_name(line, sizeof line, mid, track < 0 ? 0 : track, (int)v);
@@ -390,8 +390,9 @@ static void read_line(const char *line, int len, struct me_cfg *c, int mid)
         for (const char *p = v; p < end; p++)
             if (*p == ';' || *p == '#') { end = p; break; }
         s32 x;
-        if (number(v, end, &x, k >= 3 && (k & 1))) {
-            s32 lo = k >= 3 && (k & 1) ? -32768 : -128, hi = -lo - 1;   // the field's width; hold() does the rest
+        int fine = (k >= 3 && (k & 1)) || (k == 0 && !mid);    // depths and BEND: 1/256 (BEND=5 is 5.00)
+        if (number(v, end, &x, fine)) {
+            s32 lo = fine || k == 0 ? -32768 : -128, hi = -lo - 1;   // the field's width; hold() does the rest
             set_field(c, k, x < lo ? lo : x > hi ? hi : x);
         }
         return;

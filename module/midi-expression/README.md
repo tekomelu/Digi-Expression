@@ -1,6 +1,6 @@
 # MIDI Expression
 
-Module version `0.11.1-experimental`, for the original Digitakt on OS 1.54, Core 2.1.
+Module version `0.12.0-experimental`, for the original Digitakt on OS 1.54, Core 2.1.
 
 ## Overview
 
@@ -8,11 +8,11 @@ Stock, the Digitakt passes an external keyboard's notes through a MIDI track to 
 
 ## The EXPRESSION page (each track's own settings)
 
-Select a track, press **TRIG** for its TRIG page, then **tap TRIG again**. The page looks like the stock FLTR and LFO pages: eight cells on knobs A–H, under the TRIG page's own header, track box and LEV meter. The knobs use the firmware's own acceleration, as the stock pages do (pushed, the stock push multiplier); **FUNC + turn** jumps between useful values, as FUNC + TUNE jumps octaves: depths −64, −48 … +48, +64; BEND OFF, 1, 2, 3, 5, 7, 12 (next build: BEND turns in fine steps and FUNC snaps it to every whole semitone, OFF, 1 … 12); V.SNS 0, 25, 50, 75, 100 %; destinations page by page (SRC, FLTR, AMP, LFO1, LFO2); CCs in tens. Turning a destination cell opens a list like the LFO page's DEST; pushing that knob closes it. TRIG or NO goes back; any other page or menu key does its stock job. The trig keys, TRK + trig, FUNC, PTN, BANK, the transport and LEVEL keep working.
+Select a track, press **TRIG** for its TRIG page, then **tap TRIG again**. The page looks like the stock FLTR and LFO pages: eight cells on knobs A–H, under the TRIG page's own header, track box and LEV meter. The knobs use the firmware's own acceleration, as the stock pages do (pushed, the stock push multiplier); **FUNC + turn** jumps between useful values, as FUNC + TUNE jumps octaves: depths −64, −48 … +48, +64; BEND to whole semitones, OFF, 1, 2 … 12 (turned without FUNC it moves as finely as a depth); V.SNS 0, 25, 50, 75, 100 %; destinations page by page (SRC, FLTR, AMP, LFO1, LFO2); CCs in tens. Turning a destination cell opens a list like the LFO page's DEST; pushing that knob closes it. TRIG or NO goes back; any other page or menu key does its stock job. The trig keys, TRK + trig, FUNC, PTN, BANK, the transport and LEVEL keep working.
 
 | Knob | Audio track | Default | MIDI track | Default |
 | --- | --- | --- | --- | --- |
-| A | BEND: OFF, 1–12 semitones of TUNE | 2 | THRU: the input's PB, AT, MW and BC added to the track's own | ON |
+| A | BEND: OFF to 12.00 semitones of TUNE, in fine steps | 2.00 | THRU: the input's PB, AT, MW and BC added to the track's own | ON |
 | B | V.SNS: velocity sensitivity, 0–100 % | 100 % | V.SNS | 100 % |
 | C | MW: the parameter the wheel moves | none | MW: the value the wheel moves | none |
 | D | M.DEP: −64.00 to +64.00, as fine as LFO DEP | 0 | M.DEP | 0 |
@@ -54,7 +54,7 @@ The settings are text files of the mod's own on the +Drive, in `/cfw/expression`
 ```
 MIDI EXPRESSION PRESET AUDIO 1
 NAME=Lead
-BEND=5
+BEND=5.00   ; semitones
 V.SNS=100   ; %
 MW=26   ; FLTR:Frequency
 M.DEP=+32.00
@@ -74,7 +74,7 @@ Hold **knob A pushed for a second** on the EXPRESSION page: the preset menu, tit
 | Item | What it does |
 | --- | --- |
 | LOAD | the 64 presets of this kind of track (audio or MIDI): YES puts one on this track |
-| SAVE | pick a slot, then name it as SAVE PROJECT AS names a project: UP/DOWN the character, LEFT/RIGHT the cursor, hold FUNC for the letter grid (FUNC + arrows pick, letting go writes it), FUNC + YES inserts, FUNC + NO deletes, YES saves (asking first over a used slot), NO aborts |
+| SAVE | pick a slot, then name it as SAVE PROJECT AS names a project: UP/DOWN the character, LEFT/RIGHT the cursor, hold FUNC for the letter grid (FUNC + arrows pick, letting go writes it and moves on to the next place), FUNC + YES inserts, FUNC + NO deletes, YES saves (asking first over a used slot), NO aborts |
 | RESET TO DEFAULT | this track back to the default preset (asks first) |
 | SELECT DEFAULT | the preset new projects and RESET TO DEFAULT start from: FACTORY (the mod's own defaults) or one of yours, marked `*` |
 
@@ -125,7 +125,7 @@ PORT CONFIG > RECEIVE NOTES and, for the mod wheel and breath, RECEIVE CC/NRPN m
 
 All twelve sites are claimed in `build.json`; no other Modwerk Digitakt module patches them.
 
-**With other mods** (`scripts/compat-pairs.sh`, `results/compat/pairs.txt`): it links with every other Modwerk Digitakt module except Digi Perform (the same TRIG gesture): CC Names, CC Recall, Digichain, Digi EQ, Digi Health, Digi Matrix, Digi Mono, Digi Neighbor, Digi Poly, Digi Slicer, Digi Sophie, Digi String, Digi Utils, Euclidean, FX Track, Input Prefader, MIDI Retrig, Note Accumulator, RAM Machines and Sample Tools. With Digi Slicer about 0.4 KB of RAM is left, so the two fit only on their own. Its CCs go through the task's own CC append, so FX Track sees them (a velocity route's CC goes straight in front of its note and does not). CC Recall's sends pass through it like the track's own. Digi Matrix's routings and its own add up on an audio track.
+**With other mods** (`scripts/compat-pairs.sh`, `results/compat/pairs.txt`): it links with every other Modwerk Digitakt module except Digi Perform (the same TRIG gesture): CC Names, CC Recall, Digichain, Digi EQ, Digi Health, Digi Matrix, Digi Mono, Digi Neighbor, Digi Poly, Digi Slicer, Digi Sophie, Digi String, Digi Utils, Euclidean, FX Track, Input Prefader, MIDI Retrig, Note Accumulator, RAM Machines and Sample Tools. With Digi Slicer about 1.3 KB of RAM is left, so the two fit only on their own. Its CCs go through the task's own CC append, so FX Track sees them (a velocity route's CC goes straight in front of its note and does not). CC Recall's sends pass through it like the track's own. Digi Matrix's routings and its own add up on an audio track.
 
 ## Compatibility and limitations
 

@@ -55,7 +55,7 @@
 
 #include "expr.h"
 
-#define D_RANGE   2
+#define D_RANGE   (2 * 256)                 // BEND 2.00 semitones
 #define D_AMOUNT  0
 #define D_SENS    100
 
@@ -164,7 +164,6 @@ enum {
 #define CELLS      8
 
 // Stock parameter ids whose knob feel each kind of cell borrows.
-#define SID_TUNE   108                  // SRC TUNE: one step a detent when slow
 #define SID_VOL    51                   // AMP VOL: 0..127
 #define SID_DEPTH  59                   // LFO1 DEP: -64..+63
 #define SID_LIST   111                  // the SAMP selector: a list, as Digi Perform's choosers
@@ -420,7 +419,7 @@ static void set_value(int t, int k, int v)
     struct me_cfg *a = cfg_track(t);
     int before = me_page_value(t, k);
     switch (k) {
-    case 0: a->range = (int8_t)v; break;
+    case 0: a->range = (int16_t)v; break;
     case 1: a->vel_sens = (int8_t)v; break;
     case 2: a->mw_dest = (int8_t)v; break;
     case 3: a->mw_amount = (int16_t)v; break;
@@ -436,8 +435,8 @@ static void set_value(int t, int k, int v)
 static int sid_of(int kind)
 {
     switch (kind) {
-    case C_RANGE:  return SID_TUNE;
     case C_SENS:   return SID_VOL;
+    case C_RANGE:                       // BEND turns as finely as a depth: words are 1/256 semitone
     case C_AMOUNT: return SID_DEPTH;
     default:       return SID_LIST;     // C_DEST, C_ONOFF
     }
@@ -461,10 +460,12 @@ static int next_of(const int *list, int count, int v, int d)
 // FUNC + turn: the next useful value of cell k from v, in the direction of d.
 static int snap(int kind, int mid, int v, int d)
 {
-    static const int ranges[] = { 0, 1, 2, 3, 5, 7, 12 };
     static const int sens[] = { 0, 25, 50, 75, 100 };
     switch (kind) {
-    case C_RANGE: return next_of(ranges, 7, v, d);
+    case C_RANGE: {                     // whole semitones: OFF, 1, 2 ... 12
+        int s = d > 0 ? v / 256 + 1 : (v + 255) / 256 - 1;
+        return within(s, 0, PB_RANGE_MAX) * 256;
+    }
     case C_SENS:  return next_of(sens, 5, v, d);
     case C_AMOUNT: {
         int step = 16 * 256, q = v >= 0 ? v / step : -((-v + step - 1) / step);   // floor
@@ -503,7 +504,7 @@ void me_page_change(int t, int k, int delta, int snapping)
         return;
     }
     switch (c->kind) {
-    case C_RANGE:  v = within(v + delta, 0, PB_RANGE_MAX); break;
+    case C_RANGE:  v = within(v + delta, 0, BEND_MAX); break;
     case C_SENS:   v = within(v + delta, 0, VEL_SENS_MAX); break;
     case C_AMOUNT: v = within(v + delta, -AMOUNT_MAX, AMOUNT_MAX); break;
     case C_DEST: {
@@ -587,12 +588,14 @@ static void format_value(char *b, int t, int k)
     int v = me_page_value(t, k);
     const char *s = 0;
     switch (cell_of(t, k)->kind) {
-    case C_RANGE:  if (v <= 0) s = "OFF"; else { b[0] = (char)('0' + v / 10); b[1] = (char)('0' + v % 10); b[2] = 0; if (v < 10) { b[0] = b[1]; b[1] = 0; } } break;
+    case C_RANGE:                       // BEND: 2.50 semitones, no sign
+        if (v <= 0) { s = "OFF"; break; }
+        /* fall through */
     case C_AMOUNT: {                    // as the LFO page's DEP: +12.50
         int a = v < 0 ? -v : v, w = a >> 8, f = ((a & 255) * 100 + 128) >> 8, i = 0;
         if (f > 99)
             f = 99;
-        b[i++] = v > 0 ? '+' : v < 0 ? '-' : ' ';
+        b[i++] = v < 0 ? '-' : v > 0 && cell_of(t, k)->kind == C_AMOUNT ? '+' : ' ';
         if (w >= 10)
             b[i++] = (char)('0' + w / 10);
         b[i++] = (char)('0' + w % 10);
@@ -639,7 +642,14 @@ static void draw_cell(void *bmp, int t, int k)
     case C_RANGE:                       // a box with the semitones, as LFO MULT shows BPM 16
         box(bmp, x + 1, y, x + 17, y + 16);
         centred(bmp, FONT5, x + 9, y + 9, "ST");
-        centred(bmp, FONT5, x + 9, y + 2, val);
+        {                               // in the box: tenths (2.5, 12.0), the label shows 2.50
+            char bx[8];
+            int i = 0;
+            for (; val[i]; i++)
+                bx[i] = val[i];
+            bx[i - (v > 0)] = 0;
+            centred(bmp, FONT5, x + 9, y + 2, bx);
+        }
         break;
     case C_SENS:
         knob(bmp, x, y, v * 127 / VEL_SENS_MAX, 0);
@@ -733,6 +743,7 @@ static const char *const main_items[4] = { "LOAD", "SAVE", "RESET TO DEFAULT", "
 static const char grid_chars[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-_.&+!# ";
 #define GRID_COLS 15
 static int grid_cur, grid_on;
+static int level_acc;                  // the LEVEL knob's raw counts towards a detent, in the menu
 static const char name_chars[] = " ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-_.&+!#";
 int me_menu;                            // read by the tests (0: no menu)
 static int menu_cur[8], menu_top, push_a, push_twist, msg_t, edit_pos, edit_slot;
@@ -1013,6 +1024,8 @@ static int menu_key(void *ev, int t)
                     edit_name[len] = ' ', edit_name[len + 1] = 0;
                 if (edit_pos < ME_NAME_LEN)
                     edit_name[edit_pos] = grid_chars[grid_cur];
+                if (edit_pos < ME_NAME_LEN - 1)
+                    edit_pos++;         // on to the next place, as the stock naming screen
             }
             recompose = 1;
         }
@@ -1216,8 +1229,13 @@ int me_page_enc(void *brain, void *ev)
     int id = *(int *)((char *)ev + 12);
     int n = *(int *)((char *)ev + 16);
     if (me_menu) {                      // the LEVEL knob moves, as in the stock menus
-        if (id == 9 && n) {              // one step a turn event, however fast: as the stock lists
-            menu_move(n > 0 ? 1 : -1);
+        if (id == 9 && n) {              // one step a detent, as the stock SETTINGS lists (no acceleration)
+            level_acc += n;
+            while (level_acc >= RAW_DETENT || level_acc <= -RAW_DETENT) {
+                int d = level_acc > 0 ? 1 : -1;
+                level_acc -= d * RAW_DETENT;
+                menu_move(d);
+            }
             recompose = 1;
         }
         return 1;
@@ -1257,7 +1275,7 @@ int me_page_enc(void *brain, void *ev)
             if (idle_counts[k] >= IDLE_LIMIT)
                 w = n * 256 / RAW_DETENT;
         }
-        if (c->kind == C_AMOUNT) {      // a depth takes the words as they are: 1/256 steps
+        if (c->kind == C_AMOUNT || c->kind == C_RANGE) {    // a depth or BEND takes the words as they are: 1/256 steps
             me_page_change(t, k, w, 0);
         } else {
             acc[k] += w;

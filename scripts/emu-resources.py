@@ -60,8 +60,8 @@ def do(text):
 s.run_ms(300)
 mem = bytes(uc.mem_read(0x47be0000, 0x20000))
 probe = 0x47be0000 + mem.find(struct.pack('>I', 0x4d455850))
-audio = 0x47be0000 + mem.find(bytes([2, 0, 0, 0, 100, 0, 0, 0, 0, 0, 0, 0]) * 8)
-midi = 0x47be0000 + mem.find(bytes([1, 0, 0, 0, 100, 0, 0, 0, 0, 0, 0, 0]) * 8)
+audio = 0x47be0000 + mem.find(bytes([2, 0, 0, 0, 0, 100, 0, 0, 0, 0, 0, 0]) * 8)
+midi = 0x47be0000 + mem.find(bytes([0, 1, 0, 0, 0, 100, 0, 0, 0, 0, 0, 0]) * 8)
 assert probe > 0x47be0000 and audio > 0x47be0000 and midi > 0x47be0000
 
 
@@ -74,7 +74,7 @@ def heap():
 
 
 def cfg(base, t, a, mw, mwa, vel, vela, at, ata, sens):
-    uc.mem_write(base + 12 * t, struct.pack('>bbbbbxhhh', a, mw, at, vel, sens, mwa * 256, ata * 256, vela * 256))
+    uc.mem_write(base + 12 * t, struct.pack('>hbbbbhhh', a * 256 if base == audio else a, mw, at, vel, sens, mwa * 256, ata * 256, vela * 256))
 
 
 lines = []

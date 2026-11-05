@@ -59,6 +59,11 @@
 // byte, so the mod fills them only to ROOM bytes; what does not fit goes with
 // the next pass.
 
+// Small rather than fast, as page.c and store.c: control logic, not the audio
+// render; the room is for Digi Slicer beside it (about 2 KB of code less).
+#ifndef ME_HOST_TEST
+#pragma GCC optimize ("Os", "no-tree-loop-distribute-patterns")   // and no memset, memmove or strlen calls: a mod has no C library
+#endif
 #include <stdint.h>
 
 #ifdef ME_HOST_TEST
@@ -614,7 +619,9 @@ void me_midi_lfo_pre(volatile int16_t *params, int32_t t)
         { cfg->at_dest, cfg->at_amount, S_AT },
         { cfg->vel_dest, cfg->vel_amount, S_VEL },
     };
-    int32_t add[5] = { 0, 0, 0, 0, 0 };
+    int32_t add[5];                    // cleared by hand: -Os would call memset, which a mod lacks
+    for (int k = 0; k < 5; k++)
+        add[k] = 0;
     int any = 0;
     for (int i = 0; i < 3; i++) {
         int k = r[i].dest - MIDI_LFO_FIRST;

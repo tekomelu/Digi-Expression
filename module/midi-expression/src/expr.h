@@ -12,13 +12,14 @@ enum { PB, AT, MW, KINDS };                     // live sources an audio track t
 // in a file of the mod's own on the +Drive (store.c). Audio and MIDI tracks share
 // the layout: knob A is BEND on an audio track, THRU on a MIDI track.
 #define PB_RANGE_MAX 12                         // an octave each way at most
+#define BEND_MAX     (PB_RANGE_MAX * 256)       // BEND in 1/256 semitone: 0..12.00
 #define AMOUNT_MAX   (64 * 256)                 // depths in 1/256: -64.00..+64.00
 #define VEL_SENS_MAX 100
 
 struct me_cfg {
     union {
-        volatile int8_t range;                  // audio: semitones of bend, 0 = none
-        volatile int8_t thru;                   // MIDI: PB, AT, MW and BC pass to the synth
+        volatile int16_t range;                 // audio: bend in 1/256 semitone (TUNE's step), 0 = none
+        volatile int16_t thru;                  // MIDI: PB, AT, MW and BC pass to the synth
     };
     volatile int8_t mw_dest, at_dest, vel_dest; // audio: a sound slot 1..45; MIDI: 1..12 (below); 0 none
     volatile int8_t vel_sens;                   // 0..100 %: how much velocity counts in what plays

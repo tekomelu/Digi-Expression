@@ -133,12 +133,12 @@ def main():
     try:
         s.run_ms(200)
         mem = bytes(uc.mem_read(0x47be0000, 0x20000))
-        audio = 0x47be0000 + mem.find(bytes([2, 0, 0, 0, 100, 0, 0, 0, 0, 0, 0, 0]) * 8)
-        midi_cfg = 0x47be0000 + mem.find(bytes([1, 0, 0, 0, 100, 0, 0, 0, 0, 0, 0, 0]) * 8)
+        audio = 0x47be0000 + mem.find(bytes([2, 0, 0, 0, 0, 100, 0, 0, 0, 0, 0, 0]) * 8)
+        midi_cfg = 0x47be0000 + mem.find(bytes([0, 1, 0, 0, 0, 100, 0, 0, 0, 0, 0, 0]) * 8)
         print('settings: audio %08x, MIDI %08x' % (audio, midi_cfg))
 
         def cfg(m, thru=1, mw=0, mwa=0, at=0, ata=0, vel=0, vela=0, sens=100):
-            uc.mem_write(midi_cfg + 12 * m, struct.pack('>bbbbbxhhh', thru, mw, at, vel, sens, mwa, ata, vela))
+            uc.mem_write(midi_cfg + 12 * m, struct.pack('>hbbbbhhh', thru, mw, at, vel, sens, mwa, ata, vela))
 
         def sel(m, k, cc):
             uc.mem_write(PARAMS + 106 * m + 2 * (33 + k), struct.pack('>b', cc))

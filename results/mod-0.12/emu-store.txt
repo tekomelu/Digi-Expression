@@ -1,0 +1,14 @@
+probe 47be6294, settings 47be61d4
+PASS the store was read at power-on (drive mounted)
+current.txt written after 3900 ms
+PASS a change: current.txt written once nothing plays (1 saves, 0 failed)
+PASS SAVE PROJECT AS 003: the mod got slot 003 (3)
+PASS and wrote its file (3 written)
+PASS LOAD PROJECT 003: MW -> VAL3 +20 back as saved (1, 7, 0, 0, 100, 5120, 0, 0)
+PASS the load job gave slot 003 (3)
+PASS LOAD PROJECT 001 (never saved with the mod): the defaults (1, 0, 0, 0, 100, 0, 0, 0)
+PASS the load job gave slot 001 (1)
+PASS power-on: the file read back, as it was at power-off (track F V.SNS 40)
+PASS no failed write (0)
+PASS no bad file read (0)
+0 failures

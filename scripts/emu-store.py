@@ -35,7 +35,7 @@ s.run_ms(300)
 mem = bytes(uc.mem_read(0x47be0000, 0x20000))
 probe = 0x47be0000 + mem.find(struct.pack('>I', 0x4d455850))
 assert probe > 0x47be0000, 'the probe not found'
-midi_cfg = 0x47be0000 + mem.find(bytes([1, 0, 0, 0, 100, 0, 0, 0, 0, 0, 0, 0]) * 8)
+midi_cfg = 0x47be0000 + mem.find(bytes([0, 1, 0, 0, 0, 100, 0, 0, 0, 0, 0, 0]) * 8)
 
 
 def pr():   # marker, booted, written, failed, read, bad, slot + 1
@@ -43,11 +43,11 @@ def pr():   # marker, booted, written, failed, read, bad, slot + 1
 
 
 def cfg(m):
-    return struct.unpack('>bbbbbxhhh', bytes(uc.mem_read(midi_cfg + 12 * m, 12)))
+    return struct.unpack('>hbbbbhhh', bytes(uc.mem_read(midi_cfg + 12 * m, 12)))
 
 
 def set_cfg(m, thru=1, mw=0, mwa=0, sens=100):
-    uc.mem_write(midi_cfg + 12 * m, struct.pack('>bbbbbxhhh', thru, mw, 0, 0, sens, mwa, 0, 0))
+    uc.mem_write(midi_cfg + 12 * m, struct.pack('>hbbbbhhh', thru, mw, 0, 0, sens, mwa, 0, 0))
 
 
 print('probe %08x, settings %08x' % (probe, midi_cfg))

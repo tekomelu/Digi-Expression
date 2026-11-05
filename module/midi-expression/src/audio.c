@@ -120,11 +120,11 @@ static void render(void *words, int lfo)
             continue;
         volatile int16_t *v = VOICE(words, t);
         if (!lfo && pb) {
-            int32_t range = cfg->range;
-            if (range > PB_RANGE_MAX)
-                range = PB_RANGE_MAX;
+            int32_t range = cfg->range;         // 1/256 semitone: TUNE's own word step
+            if (range > BEND_MAX)
+                range = BEND_MAX;
             if (range > 0)
-                add_within(v + SLOT_TUNE, (pb * range * TUNE_PER_SEMITONE) / 8192, TUNE_MIN, TUNE_MAX);
+                add_within(v + SLOT_TUNE, (pb * range * (TUNE_PER_SEMITONE / 256)) / 8192, TUNE_MIN, TUNE_MAX);
         }
         route(v, cfg->mw_dest, mw, cfg->mw_amount, lfo);
         route(v, cfg->at_dest, at, cfg->at_amount, lfo);

@@ -1,5 +1,14 @@
 [
   {
+    "version": "0.12.0-experimental",
+    "date": "2026-11-05",
+    "changes": [
+      "BEND turns finely, as a depth does (2.50 semitones, shown 2.5 in its box); FUNC + turn snaps it to every whole semitone, OFF, 1, 2 ... 12. Files write it as BEND=2.50; older files' BEND=5 still reads as 5 semitones.",
+      "Preset menu: the LEVEL knob moves through the lists one step a detent, through the firmware's own accelerator, as the LFO page's DEST list.",
+      "Names: letting go of FUNC writes the picked letter and moves on to the next place, as the stock naming screen, so FUNC, pick, let go types a name letter by letter."
+    ]
+  },
+  {
     "version": "0.11.1-experimental",
     "date": "2026-11-05",
     "changes": [

@@ -2,7 +2,7 @@
   "schemaVersion": 3,
   "id": "midi-expression",
   "name": "MIDI Expression",
-  "version": "0.11.1-experimental",
+  "version": "0.12.0-experimental",
   "machine": "digitakt",
   "category": "midi-usb",
   "exclusive": false,
@@ -49,7 +49,7 @@
       "name": "BEND",
       "default": null,
       "labels": null,
-      "doc": "Audio track, knob A: OFF, 1-12 semitones of TUNE. Default 2."
+      "doc": "Audio track, knob A: OFF to 12.00 semitones of TUNE, in fine steps; FUNC + turn snaps to whole semitones. Default 2.00."
     },
     {
       "name": "THRU",
@@ -96,7 +96,7 @@
       "Sends where OUTPUT TO says (MIDI OUT, USB or both), with the track's own values, through the MIDI tracks' own task.",
       "Not recorded: the sequencer never sees the live values; recorded notes keep their velocity as played.",
       "Digi Perform opens its own page with the same gesture (TRIG again on the TRIG page): the two are not built together.",
-      "With Digi Slicer 412 bytes of RAM are left: the two fit, with no room for a third mod of any size.",
+      "With Digi Slicer 1.3 KB of RAM is left: the two fit, with no room for a third mod of any size.",
       "Avoid a MIDI loop: a synth echoing MIDI OUT back into MIDI IN on the same channel feeds the mod's output back as input.",
       "Two values a MIDI track sends on one CC number are merged while anything live is aimed at them; the track's own value is the one that changed last.",
       "Writing a settings file holds the UI for a moment; the power-on file waits until nothing has played for 2 seconds."
@@ -127,7 +127,7 @@
   },
   "evidence": {
     "tier": "none",
-    "moduleVersion": "0.11.1-experimental",
+    "moduleVersion": "0.12.0-experimental",
     "sourceSha256": null,
     "reports": [],
     "hardware": null,
@@ -163,8 +163,8 @@
       "capture": {
         "type": "emulator",
         "release": "1.54",
-        "moduleVersion": "0.11.1-experimental",
-        "imageSha256": "7caa2000d7a1f124e93475a9626819e66902806d2c6bba6f9d2daeec6ff0c636",
+        "moduleVersion": "0.12.0-experimental",
+        "imageSha256": "9b76047a02a0b23379aa124807ecf64d4c62d3ac0c468ca99b888e5b74a02696",
         "setup": "Pinned digiemu c1b5735, firmware-native drawing, disposable first-boot project, settings set in memory for the picture. No audio or timing qualification."
       }
     },
@@ -179,8 +179,8 @@
       "capture": {
         "type": "emulator",
         "release": "1.54",
-        "moduleVersion": "0.11.1-experimental",
-        "imageSha256": "7caa2000d7a1f124e93475a9626819e66902806d2c6bba6f9d2daeec6ff0c636",
+        "moduleVersion": "0.12.0-experimental",
+        "imageSha256": "9b76047a02a0b23379aa124807ecf64d4c62d3ac0c468ca99b888e5b74a02696",
         "setup": "Pinned digiemu c1b5735, firmware-native drawing, disposable first-boot project, settings set in memory for the picture. No audio or timing qualification."
       }
     }
