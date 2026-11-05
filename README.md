@@ -2,8 +2,11 @@
 
 **Mod for the original Digitakt (mk1, OS 1.54) to add support for pitch-bend, modwheel, aftertouch and breath controller messages.**
 
-A [Modwerk](https://modwerk.app/) module,\
+A module for [Modwerk](https://modwerk.app/),\
 version 0.12.1-experimental.
+
+> [!NOTE]
+> **Work in progress.** An independent, experimental module written with the Modwerk SDK. It has not been submitted to or reviewed by Modwerk yet and is not in the Modwerk library, so Modwerk does not support it. Feedback and bug reports are welcome in [Issues](../../issues).
 
 ![The EXPRESSION page of audio track 2: BEND 2, MW to SRC Length, VEL to AMP Attack, AT to LFO1 Depth](docs/img/expression-audio-hero.png)
 
