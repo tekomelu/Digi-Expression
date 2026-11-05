@@ -7,7 +7,7 @@ version 0.12.0-experimental.
 
 ![The EXPRESSION page of a MIDI track](docs/img/expression-midi.png)
 
-Stock, the Digitakt passes an external keyboard's notes and velocity through to its tracks but drops pitch bend, mod wheel and aftertouch. With MIDI Expression:
+On stock version the Digitakt passes an external keyboard's notes and velocity through to its tracks but drops pitch bend, mod wheel and aftertouch. With MIDI Expression:
 
 - **MIDI tracks A–H** pass PB, MW, AT and BC to MIDI output.
 - **Audio tracks 1–8** parameters can be modulated with PB, MW, AT and velocity.
