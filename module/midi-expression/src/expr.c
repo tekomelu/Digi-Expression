@@ -111,6 +111,8 @@ struct chan {
     uint8_t via_auto;           // of those, the ones from the auto channel
     uint8_t pending[OUTPUTS];   // a value is due to go out
     uint8_t taken[OUTPUTS];     // the last message for it was this mod's
+    uint8_t heard[OUTPUTS][3];  // the last message this mod sent for it ...
+    uint8_t known[OUTPUTS];     // ... and that it is still what the synth has
 };
 
 static struct chan chans[16];
@@ -121,7 +123,7 @@ static volatile uint8_t initialised;
 static int32_t last_active = -1;
 
 // Counters for tests.
-volatile uint32_t me_taken, me_sent, me_held, me_filtered, me_released, me_wakes, me_passes;
+volatile uint32_t me_taken, me_sent, me_held, me_filtered, me_released, me_wakes, me_passes, me_skipped;
 
 #ifdef ME_HOST_TEST
 static inline uint16_t irq_off(void) { return 0; }
@@ -155,7 +157,7 @@ static void init(void)
         for (int o = 0; o < OUTPUTS; o++) {
             c->own[o] = 0;
             c->stamp[o] = 0;
-            c->pending[o] = c->taken[o] = 0;
+            c->pending[o] = c->taken[o] = c->known[o] = 0;
         }
         c->own[O_PB] = 8192;            // stock's centre until the track sends
         for (int s = 0; s < SOURCES; s++)
@@ -324,13 +326,24 @@ static int emit(volatile uint8_t *len, volatile uint8_t *buf)
             uint8_t n = compose(c, ch, o, out);
             int live = group_live(c, o);
             int32_t cc = cc_of(c, o);
+            // The track's task calls send() for a value again and again (its
+            // LFO, every pass), stock leaves out what did not change: so does this.
+            int same = c->known[o] && c->heard[o][0] == out[0] && c->heard[o][1] == out[1]
+                       && (n < 3 || c->heard[o][2] == out[2]);
             for (int p = 0; p < OUTPUTS; p++) {
                 if (p == o || (cc >= 0 && cc_of(c, p) == cc)) {
                     c->pending[p] = 0;  // one message for the CC number
                     c->taken[p] = (uint8_t)live;
+                    c->known[p] = 1;
+                    for (uint8_t i = 0; i < n; i++)
+                        c->heard[p][i] = out[i];
                 }
             }
             irq_restore(sr);
+            if (same) {
+                me_skipped++;
+                continue;
+            }
             for (uint8_t i = 0; i < n; i++)
                 buf[at + i] = out[i];
             *len = (uint8_t)(at + n);
@@ -497,7 +510,6 @@ void me_control_change(const uint8_t *msg, int32_t len, int32_t flag)
 // send, or TAKE_OVER when this mod sends the combined value itself.
 int32_t me_filter(int32_t track, int32_t channel, int32_t id, int32_t value, int32_t force)
 {
-    (void)force;
     int o = id - ID_FIRST;
     if (o < 0 || o >= OUTPUTS || channel < 0 || channel > 15)
         return value;
@@ -509,10 +521,16 @@ int32_t me_filter(int32_t track, int32_t channel, int32_t id, int32_t value, int
         c->owner = (int8_t)track;       // whose SEL numbers apply
     c->own[o] = (int16_t)(o == O_PB ? clamp(value, 0, 16383) : clamp((int16_t)value >> 8, 0, 127));
     c->stamp[o] = ++clock_stamp;
+    int32_t cc = cc_of(c, o);
     if (!group_live(c, o)) {
+        for (int p = 0; p < OUTPUTS; p++)   // stock sends it: what the synth has is stock's
+            if (p == o || (cc >= 0 && cc_of(c, p) == cc))
+                c->known[p] = 0;
         irq_restore(sr);
         return value;                   // nothing live here: stock, untouched
     }
+    if (force)
+        c->known[o] = 0;                // a forced send goes out, changed or not
     c->pending[o] = 1;
     irq_restore(sr);
     flush();

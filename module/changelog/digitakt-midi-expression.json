@@ -1,5 +1,12 @@
 [
   {
+    "version": "0.9.1-experimental",
+    "date": "2026-11-05",
+    "changes": [
+      "While live input is aimed at a value, an unchanged value is no longer sent again each time the track resends it (its LFO calls send() every pass): on a unit, CC 1 went out about every 7 ms with the LFO on MW. Changes and forced sends still go out at once."
+    ]
+  },
+  {
     "version": "0.9.0-experimental",
     "date": "2026-11-05",
     "changes": [

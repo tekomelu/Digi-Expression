@@ -275,6 +275,44 @@ int main(void)
     for (int i = stock_msgs; i < nsent; i++) CHECK(sent[i][0] >= 0xE0 && sent[i][0] < 0xE8, "a bend on A-H's channel: %02x", sent[i][0]);
     CHECK(h_in_queue_max <= 1, "never more than one wake queued: %d", h_in_queue_max);
 
+    // 9b. The task calls send() again and again with an unchanged value (hardware: its LFO,
+    //     every pass): what did not change is not sent again; a change, or a forced send, is.
+    reset();
+    mw_in(13, 50, AUTO);
+    before = nsent;
+    for (int i = 0; i < 20; i++) CHECK(track_mw(0, 10) == TAKE_OVER, "taken over");
+    CHECK(nsent == before + 1 && last_cc(1) == 60, "20 unchanged sends: one CC 1 = 60: %d", nsent - before);
+    before = nsent;
+    for (int i = 0; i < 5; i++) mw_in(13, 50, AUTO);
+    CHECK(nsent == before, "the wheel again at 50: nothing: %d", nsent - before);
+    track_mw(0, 11);
+    CHECK(nsent == before + 1 && last_cc(1) == 61, "a change goes: %d", last_cc(1));
+    before = nsent;
+    me_filter(0, 0, ID_MW, 11 << 8, 1);
+    CHECK(nsent == before + 1 && last_cc(1) == 61, "a forced send goes: %d", nsent - before);
+    mw_in(13, 0, AUTO);
+    before = nsent;
+    for (int i = 0; i < 20; i++) track_mw(0, 11);
+    CHECK(nsent == before, "wheel 0, THRU still on it: own 11 not repeated: %d", nsent - before);
+    // stock sent in between (nothing live): the next live value goes even if it matches the last.
+    reset();
+    mw_in(13, 50, AUTO);
+    track_mw(0, 10);
+    me_midi_cfg[0].thru = 0; me_midi_changed(0);         // back to stock: CC 1 = 10
+    CHECK(track_mw(0, 30) != TAKE_OVER, "stock again");
+    me_midi_cfg[0].thru = 1;
+    before = nsent;
+    me_midi_changed(0);
+    CHECK(nsent == before + 1 && last_cc(1) == 30 + 50, "live again: own 30 + 50: %d", last_cc(1));
+    track_mw(0, 10);
+    CHECK(last_cc(1) == 60, "then 10 + 50: %d", last_cc(1));
+    me_midi_cfg[0].thru = 0; me_midi_changed(0);
+    track_mw(0, 60);                                      // stock sends 60 itself
+    me_midi_cfg[0].thru = 1;
+    before = nsent;
+    mw_in(13, 0, AUTO);                                   // live: 60 + 0, as stock's last, but the mod must not assume
+    CHECK(nsent == before + 1 && last_cc(1) == 60, "the mod's 60 goes though stock's was 60 too (unknown): %d", nsent - before);
+
     // 10. Routing: CHAN off, audio track selected, unmatched channel.
     reset();
     chan_of[0] = -1;

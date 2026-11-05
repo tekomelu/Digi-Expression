@@ -161,6 +161,7 @@ def main():
         check(got == [20 + 64 + 16], 'wheel 64: one CC 1 = MW 20 + 64 + 16: %s' % got)
         latest = 20
         wheel = 64
+        heard = [20 + 64 + 16]
         rng = random.Random(7)
         for i in range(120):
             if i % 3 == 2:
@@ -175,7 +176,11 @@ def main():
                 got = cc_vals(got, 1)
             exp = min(127, latest + wheel + (wheel * 16 * 256 // 64 + 128) // 256)
             got = cc_vals(out[n0:], 1)
-            check(len(got) == 1 and got[0] == exp, 'step %d: CC 1 %s, expected [%d]' % (i, got, exp))
+            if exp == heard[0]:                 # unchanged: not sent again (0.9, as stock)
+                check(got == [], 'step %d: CC 1 %s, expected nothing (still %d)' % (i, got, exp))
+            else:
+                check(got == [exp], 'step %d: CC 1 %s, expected [%d]' % (i, got, exp))
+            heard[0] = exp
         s.run_ms(50)
         collect()                               # the MIDI task's pass: stock's buffer, if anything was left in it
         stray = [m for m in out[n0:] if len(m) == 3 and m[0] == 0xB0 and m[1] == 1 and m[2] != exp]
