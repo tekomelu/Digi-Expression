@@ -12,9 +12,7 @@ static int16_t h_os_vel[8];
 
 volatile int32_t h_auto_channel = 13, h_active_track = 8, h_track_channel[16], h_receive_cc = 1;
 volatile uint32_t h_output_to = 3;
-volatile int32_t h_tx_pending;
-volatile uint32_t h_tx_base, h_tx_sent;
-volatile uint16_t h_dma_a, h_dma_b;
+volatile uint8_t h_notes[1 + 1024], h_ccs[1 + 1024];
 volatile int8_t h_params[8 * 106];
 
 int h_trig_page, h_func_held, h_push_held, h_draw_calls, h_knob_calls;
@@ -39,10 +37,47 @@ static uint8_t sent[256][3];
 static int sent_len[256], nsent, stock_cc_calls;
 
 int32_t h_channel(int32_t m) { return chan_of[m]; }
-void h_din_send(int32_t len, const uint8_t *b)
+// The task's buffers as midi_out sends them: message by message into sent[].
+static void drain(volatile uint8_t *buf)
 {
-    memcpy(sent[nsent], b, (size_t)len);
-    sent_len[nsent++] = len;
+    int n = buf[0];
+    for (int i = 0; i < n; ) {
+        int len = (buf[1 + i] & 0xE0) == 0xC0 ? 2 : 3;
+        if (nsent < 256) {
+            for (int j = 0; j < len; j++) sent[nsent][j] = buf[1 + i + j];
+            sent_len[nsent++] = len;
+        }
+        i += len;
+    }
+    buf[0] = 0;
+}
+// The MIDI tracks' task: with h_task_auto, a posted wake is served at once
+// (the task's pass, then its buffers); otherwise it waits for task().
+static int h_task_auto = 1, h_queued, h_in_queue_max, h_task_busy;
+static void task(void)
+{
+    while (h_queued) {
+        h_queued--;
+        h_task_busy = 1;
+        me_task_pass();
+        drain(h_notes);
+        drain(h_ccs);
+        h_task_busy = 0;
+    }
+}
+void h_queue_send(void *q, void *item)
+{
+    (void)q; (void)item;
+    h_queued++;
+    if (h_queued > h_in_queue_max) h_in_queue_max = h_queued;
+    if (h_task_auto && !h_task_busy) task();
+}
+// notes_append's caller: the notes buffer goes out after the pass (sent[] in order).
+static const uint8_t *note_out(int32_t len, const uint8_t *b)
+{
+    const uint8_t *r = me_note_out(len, b);
+    drain(h_notes);
+    return r;
 }
 void h_stock_cc(const uint8_t *msg, int32_t len, int32_t flag) { (void)msg; (void)len; (void)flag; stock_cc_calls++; }
 
@@ -55,14 +90,14 @@ static int failures, checks;
 static void reset(void)
 {
     memset((void *)chans, 0, sizeof chans);
-    initialised = 0; flushing = 0; waiting = 0; last_active = -1;
+    initialised = 0; posted = 0; last_active = -1;
+    h_notes[0] = h_ccs[0] = 0; h_task_auto = 1; h_queued = 0; h_in_queue_max = 0; h_task_busy = 0;
     clock_stamp = 0;
     memset((void *)h_params, 0, sizeof h_params);
     for (int t = 0; t < 16; t++) h_track_channel[t] = t;   // tracks 1-8 ch 1-8, A-H ch 9-16
     for (int m = 0; m < 8; m++) chan_of[m] = -1;
     chan_of[0] = 0;                                        // MIDI track A: CHAN on, channel 1
     h_active_track = 8; h_auto_channel = 13;
-    h_tx_pending = 0; h_tx_base = h_tx_sent = 0; h_dma_a = h_dma_b = 0;
     nsent = 0; stock_cc_calls = 0;
     memset((void *)atracks, 0, sizeof atracks);
     ALL(range, 2); ALL(mw_dest, 0); ALL(at_dest, 0); ALL(vel_dest, 0); ALL(mw_amount, 0); ALL(at_amount, 0); ALL(vel_amount, 0); ALL(vel_sens, 100);
@@ -210,15 +245,35 @@ int main(void)
     CHECK(nsent == before, "THRU off: a bend sends nothing");
     CHECK(track_pb(0, 9000) == 9000, "and the track's own bend is stock again");
 
-    // 9. Priority: nothing goes out while the DIN ring is busy; the newest value goes once it drains.
+    // 9. Only the task sends: input posts one wake, however much comes in; the newest value goes in its pass.
     reset();
-    h_tx_pending = 100;
+    h_task_auto = 0;
     pb_in(13, 9000, AUTO);
     pb_in(13, 10000, AUTO);
-    CHECK(nsent == 0, "held while busy: %d", nsent);
-    h_tx_pending = 0;
+    mw_in(13, 40, AUTO);
     me_tick(0);
-    CHECK(nsent == 1 && pb_of(0) == 10000, "newest value after: %d sent, %d", nsent, nsent ? pb_of(0) : -1);
+    CHECK(nsent == 0 && h_ccs[0] == 0, "nothing sent outside the task: %d", nsent);
+    CHECK(h_queued == 1, "one wake in the queue: %d", h_queued);
+    task();
+    CHECK(nsent == 2 && pb_of(0) == 10000 && last_cc(1) == 40, "the pass: newest PB and MW: %d sent", nsent);
+    me_tick(0);
+    CHECK(h_queued == 0, "nothing pending: no wake");
+    // The buffer's room: with the CC buffer near ROOM, what does not fit waits for the next pass.
+    reset();
+    h_task_auto = 0;
+    for (int m = 1; m < 8; m++) chan_of[m] = m;
+    for (int ch = 0; ch < 8; ch++) h_track_channel[8 + ch] = 5;   // A-H all on channel 6
+    h_ccs[0] = ROOM - 8;                                            // stock's bytes: room for two
+    for (int i = 0; i < ROOM - 8; i++) h_ccs[1 + i] = (i % 3) ? 0 : 0xB5;
+    pb_in(5, 3000, TRACK);
+    int stock_msgs = (ROOM - 8) / 3;
+    h_queued--; me_task_pass(); drain(h_notes); drain(h_ccs);   // one record, one pass
+    CHECK(nsent == stock_msgs + 2, "first pass: stock's bytes and two of eight: %d", nsent - stock_msgs);
+    CHECK(h_queued == 1 && posted, "and asks for another pass");
+    task();
+    CHECK(nsent == stock_msgs + 8, "next pass: the other six: %d", nsent - stock_msgs);
+    for (int i = stock_msgs; i < nsent; i++) CHECK(sent[i][0] >= 0xE0 && sent[i][0] < 0xE8, "a bend on A-H's channel: %02x", sent[i][0]);
+    CHECK(h_in_queue_max <= 1, "never more than one wake queued: %d", h_in_queue_max);
 
     // 10. Routing: CHAN off, audio track selected, unmatched channel.
     reset();
@@ -235,11 +290,11 @@ int main(void)
     pb_in(4, 9000, TRACK);
     CHECK(nsent == 0, "channel 5 (audio track 5 only): nothing");
 
-    // 11. OUTPUT TO without MIDI: nothing.
+    // 11. OUTPUT TO: the task's midi_out sends the buffer where it says, the mod's bytes with stock's.
     reset();
     h_output_to = 2;
     pb_in(13, 9000, AUTO);
-    CHECK(nsent == 0, "OUTPUT TO USB only: nothing");
+    CHECK(nsent == 1, "OUTPUT TO USB only: into the buffer, as stock's: %d", nsent);
     h_output_to = 3;
 
     // 12. Other ids pass straight through.
@@ -385,16 +440,16 @@ int main(void)
     me_midi_cfg[2].vel_sens = 50;
     {
         const uint8_t on[3] = { 0x94, 60, 1 }, off[3] = { 0x84, 60, 0 }, other[3] = { 0x95, 60, 1 };
-        const uint8_t *r = me_note_out(3, on);
+        const uint8_t *r = note_out(3, on);
         CHECK(r != on && r[0] == 0x94 && r[1] == 60 && r[2] == 64, "MIDI C's note on its channel: velocity 1 -> %d", r[2]);
         CHECK(on[2] == 1, "the caller's bytes untouched");
-        CHECK(me_note_out(3, off) == off, "a note off passes as it is");
-        CHECK(me_note_out(3, other) == other, "another channel passes as it is");
+        CHECK(note_out(3, off) == off, "a note off passes as it is");
+        CHECK(note_out(3, other) == other, "another channel passes as it is");
         const uint8_t two[6] = { 0x94, 60, 100, 0x94, 64, 2 };
-        r = me_note_out(6, two);
+        r = note_out(6, two);
         CHECK(r[2] == 114 && r[5] == 65, "two notes in one call: %d %d", r[2], r[5]);
         me_midi_cfg[2].vel_sens = 100;
-        CHECK(me_note_out(3, on) == on, "100 %%: as played");
+        CHECK(note_out(3, on) == on, "100 %%: as played");
     }
 
     // 23. Velocity as a source: the last note the track played (live or from the sequencer),
@@ -685,7 +740,7 @@ int main(void)
     }
     uint8_t note[3] = { 0x90, 60, 100 };
     before = nsent;
-    me_note_out(3, note);
+    note_out(3, note);
     CHECK(nsent == before + 1 && last_cc(2) == 100, "velocity 100 -> BC at once (before the note): %d", last_cc(2));
     before = nsent;
     h_active_track = 0;
@@ -825,7 +880,7 @@ int main(void)
                     }
                     break;
                 }
-                case 6: { uint8_t n[3] = { 0x90, (uint8_t)RND(128), (uint8_t)(1 + RND(127)) }; const uint8_t *r2 = me_note_out(3, n);
+                case 6: { uint8_t n[3] = { 0x90, (uint8_t)RND(128), (uint8_t)(1 + RND(127)) }; const uint8_t *r2 = note_out(3, n);
                           CHECK(r2[2] >= n[2] && r2[2] <= 127, "note velocity scaled within %d..127: %d", n[2], r2[2]); break; }
                 case 7: h_active_track = RND(3) ? 8 : RND(16); me_tick(0); break;
                 case 8: me_midi_cfg[0].mw_dest = (int8_t)RND(13); me_midi_cfg[0].thru = (int8_t)RND(2); me_midi_changed(0); break;

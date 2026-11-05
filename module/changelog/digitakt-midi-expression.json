@@ -1,5 +1,15 @@
 [
   {
+    "version": "0.9.0-experimental",
+    "date": "2026-11-05",
+    "changes": [
+      "Fixes the freeze on a unit with live input to MIDI tracks: the mod no longer sends MIDI itself. It hands what it has to the MIDI tracks' own task, which sends it with its normal output (CC buffer, after the sequencer's), so nothing waits on the DIN driver from the MIDI input or the UI.",
+      "Live pass-through on MIDI tracks reaches MIDI OUT within about a millisecond in the emulator; a velocity route goes into the notes buffer just before its note.",
+      "Sends where OUTPUT TO says (MIDI and/or USB), as the track's own values go.",
+      "Known issue: the MIDI-track side is not yet tested on a unit."
+    ]
+  },
+  {
     "version": "0.8.0-experimental",
     "date": "2026-11-05",
     "changes": [

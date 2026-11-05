@@ -7,7 +7,8 @@
     "src/send.s",
     "src/render.s",
     "src/lfo.s",
-    "src/vel.s"
+    "src/vel.s",
+    "src/task.s"
   ],
   "defsym": {},
   "cflags": [],
@@ -103,6 +104,13 @@
           "stockSha256": "e6b06970da8d0dabdfd08f7c0353dc1622c2235a32b1e74fd4668006e519d33e",
           "op": "jmp",
           "target": "me_noteout_entry"
+        },
+        {
+          "addr": "0x400e1dbe",
+          "len": 6,
+          "stockSha256": "96a01ce03e91f73d58c09abfbc50fe76956388f1a10d0b7d296062ecba010bdc",
+          "op": "jsr",
+          "target": "me_task_hook"
         }
       ]
     }

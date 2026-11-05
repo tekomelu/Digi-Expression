@@ -45,11 +45,18 @@
 // takes effect at once.
 //
 // Sending. Each output keeps a pending flag; the value is computed when it
-// goes out. It goes through the stock DIN driver (din_send, which masks
-// interrupts while it copies into its 4 KB transmit ring) only while that
-// ring holds at most PRIORITY_BYTES, so expression never queues in front of a
-// burst of sequencer notes; what waits goes with the next message or the UI's
-// 30 Hz tick. A velocity route goes at once, just before its note. DIN only.
+// goes out. Only the MIDI tracks' own task sends, the way it sends everything
+// else: the mod never calls a MIDI driver itself (0.8 did, from the MIDI input
+// and UI tasks, and that froze the unit on hardware). A change anywhere posts
+// one wake record to the task's queue (queue_send 0x40001b7a, 0x421b51f0, a
+// type the task does nothing else with); after every record the task makes its
+// per-track pass and then sends its two buffers, the notes (0x421b6620) and
+// the CCs (0x421b6a21), with midi_out (0x400e0992: DIN and/or USB, as OUTPUT TO
+// says). A 6-byte jsr site just before that (task.s) calls me_task_pass, which
+// appends what is pending to the CC buffer. A velocity route goes into the
+// notes buffer just before its note. Both buffers count their bytes in one
+// byte, so the mod fills them only to ROOM bytes; what does not fit goes with
+// the next pass.
 
 #include <stdint.h>
 
@@ -66,20 +73,20 @@
 // parameter p's word at + 2p, 8.8. The SEL of CC VAL slot k is parameter 33 + k.
 #define PARAMS         ((volatile int8_t *)0x421c9188)
 
-// The DIN transmit ring's state, read as din_send reads it.
-#define TX_PENDING     (*(volatile int32_t *)0x4060f7e8)
-#define TX_BASE        (*(volatile uint32_t *)0x4060f7e0)
-#define TX_SENT        (*(volatile uint32_t *)0x4060f7ec)
-#define DMA37_A        (*(volatile uint16_t *)0xfc0454b4)
-#define DMA37_B        (*(volatile uint16_t *)0xfc0454bc)
-#define TX_RING        4096
+// The MIDI tracks' task: its queue, and the two buffers it sends each pass
+// (a length byte, then the bytes).
+#define TASK_QUEUE     ((void *)0x421b51f0)
+#define NOTES_LEN      (*(volatile uint8_t *)0x421b6620)
+#define NOTES_BUF      ((volatile uint8_t *)0x421b6621)
+#define CCS_LEN        (*(volatile uint8_t *)0x421b6a21)
+#define CCS_BUF        ((volatile uint8_t *)0x421b6a22)
 
 typedef int32_t (*channel_fn)(int32_t midi_track);
-typedef void (*din_send_fn)(int32_t len, const uint8_t *bytes);
+typedef void (*queue_send_fn)(void *queue, void *item);
 typedef void (*handler_fn)(const uint8_t *msg, int32_t len, int32_t flag);
 
 #define CHANNEL        ((channel_fn)0x400e09d8)   // a MIDI track's CHAN, -1 when off
-#define DIN_SEND       ((din_send_fn)0x400028c6)
+#define QUEUE_SEND     ((queue_send_fn)0x40001b7a)
 #define STOCK_CC       ((handler_fn)0x400d4cb8)
 #endif
 
@@ -87,7 +94,8 @@ typedef void (*handler_fn)(const uint8_t *msg, int32_t len, int32_t flag);
 
 #define ID_FIRST       21                         // send() ids 21..32: outputs 0..11
 #define TAKE_OVER      ((int32_t)0x80000000)      // me_filter: stock must not send
-#define PRIORITY_BYTES 24                         // about 8 ms of DIN line time
+#define ROOM           128                        // of a buffer's 255, the mod fills up to
+#define WAKE_TYPE      0x6d65                     // a record type the task only wakes for
 #define SEL_PARAM      33
 
 // Live sources.
@@ -107,13 +115,13 @@ struct chan {
 
 static struct chan chans[16];
 static uint16_t clock_stamp;
-static volatile uint8_t flushing;
-static volatile uint8_t waiting;
+static volatile uint8_t posted;     // the wake record is in the task's queue
+static struct { int32_t type, spare[4]; } wake_rec = { WAKE_TYPE, { 0, 0, 0, 0 } };
 static volatile uint8_t initialised;
 static int32_t last_active = -1;
 
 // Counters for tests.
-volatile uint32_t me_taken, me_sent, me_held, me_filtered, me_released;
+volatile uint32_t me_taken, me_sent, me_held, me_filtered, me_released, me_wakes, me_passes;
 
 #ifdef ME_HOST_TEST
 static inline uint16_t irq_off(void) { return 0; }
@@ -279,47 +287,41 @@ static uint8_t compose(const struct chan *c, int ch, int o, uint8_t *out)
     return 3;
 }
 
-// Bytes waiting in the DIN transmit ring, as din_send computes them.
-static uint32_t tx_queued(void)
-{
-    uint32_t used = ((uint32_t)DMA37_A - (uint32_t)DMA37_B + TX_BASE - TX_SENT) & (TX_RING - 1);
-    return used + (uint32_t)TX_PENDING;
-}
-
-static void flush_now(int urgent)
+// Ask the MIDI tracks' task for a pass. Any task may call this; one record at
+// most is in the queue (the pass clears `posted` before it looks).
+static void wake(void)
 {
     uint16_t sr = irq_off();
-    if (flushing) {                     // another task is sending: it will see ours
-        waiting = 1;
+    if (posted) {
         irq_restore(sr);
         return;
     }
-    flushing = 1;
-    waiting = 0;
+    posted = 1;
     irq_restore(sr);
+    me_wakes++;
+    QUEUE_SEND(TASK_QUEUE, &wake_rec);
+}
 
+// In the MIDI tracks' task only: append what is pending to a buffer, up to
+// ROOM bytes in it. Returns 0 when something had to wait.
+static int emit(volatile uint8_t *len, volatile uint8_t *buf)
+{
     for (int ch = 0; ch < 16; ch++) {
         struct chan *c = &chans[ch];
         for (int o = 0; o < OUTPUTS; o++) {
             uint8_t out[3];
-            uint8_t len;
-            sr = irq_off();
+            uint16_t sr = irq_off();
             if (!c->pending[o]) {
                 irq_restore(sr);
                 continue;
             }
-            if (!(OUTPUT_TO & 1)) {     // OUTPUT TO without MIDI: nothing to send
-                c->pending[o] = 0;
-                irq_restore(sr);
-                continue;
-            }
-            if (!urgent && tx_queued() > PRIORITY_BYTES) {
-                waiting = 1;            // the sequencer's bytes go first
+            uint32_t at = *len;
+            if (at + 3 > ROOM) {
                 me_held++;
                 irq_restore(sr);
-                goto done;
+                return 0;
             }
-            len = compose(c, ch, o, out);
+            uint8_t n = compose(c, ch, o, out);
             int live = group_live(c, o);
             int32_t cc = cc_of(c, o);
             for (int p = 0; p < OUTPUTS; p++) {
@@ -329,19 +331,29 @@ static void flush_now(int urgent)
                 }
             }
             irq_restore(sr);
-            DIN_SEND(len, out);
+            for (uint8_t i = 0; i < n; i++)
+                buf[at + i] = out[i];
+            *len = (uint8_t)(at + n);
             me_sent++;
         }
     }
-done:
-    sr = irq_off();
-    flushing = 0;
-    irq_restore(sr);
+    return 1;
+}
+
+// task.s: the task's pass, just before it sends its buffers.
+void me_task_pass(void)
+{
+    posted = 0;
+    me_passes++;
+    if (!initialised)
+        return;
+    if (!emit(&CCS_LEN, CCS_BUF))
+        wake();
 }
 
 static void flush(void)
 {
-    flush_now(0);
+    wake();
 }
 
 // After a change on a channel: every output that is live now, or was this
@@ -562,8 +574,8 @@ const uint8_t *me_note_out(int32_t len, const uint8_t *bytes)
         }
         i += n;
     }
-    if (routed)
-        flush_now(1);                   // the velocity's route before its note
+    if (routed && !emit(&NOTES_LEN, NOTES_BUF))  // the velocity's route before its note
+        wake();
     return changed ? note_copy : bytes;
 }
 
@@ -573,10 +585,10 @@ void me_tick(void *ctrl)
     me_page_tick(ctrl);
     init();
     check_track();
-    for (int ch = 0; ch < 16 && !waiting; ch++)
+    for (int ch = 0; ch < 16; ch++)
         for (int o = 0; o < OUTPUTS; o++)
-            if (chans[ch].pending[o])
-                waiting = 1;
-    if (waiting)
-        flush();
+            if (chans[ch].pending[o]) {
+                wake();                 // a pass that did not happen yet: ask again
+                return;
+            }
 }

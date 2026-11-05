@@ -2,7 +2,7 @@
   "schemaVersion": 3,
   "id": "midi-expression",
   "name": "MIDI Expression",
-  "version": "0.8.0-experimental",
+  "version": "0.9.0-experimental",
   "machine": "digitakt",
   "category": "midi-usb",
   "exclusive": false,
@@ -87,7 +87,7 @@
     "limitations": [
       "Built for OS 1.54 only.",
       "Not saved: every track's settings start at their defaults at every power-on. With BEND set to OFF and no destinations, an audio track is stock; a MIDI track with PB, AT and MW OFF is stock.",
-      "Sends to DIN MIDI OUT only, not USB: the stock USB sender is not safe to call from the MIDI input task.",
+      "Sends to MIDI OUT and USB, as OUTPUT TO says, not USB: the stock USB sender is not safe to call from the MIDI input task.",
       "Not recorded: the sequencer never sees the live values.",
       "A bend can reach the synth a few milliseconds before the note played with it.",
       "Digi Perform opens its own page with the same gesture (TRIG again on the TRIG page): the two are not built together.",
@@ -120,7 +120,7 @@
   },
   "evidence": {
     "tier": "none",
-    "moduleVersion": "0.8.0-experimental",
+    "moduleVersion": "0.9.0-experimental",
     "sourceSha256": null,
     "reports": [],
     "hardware": null,
@@ -172,7 +172,7 @@
       "capture": {
         "type": "emulator",
         "release": "1.54",
-        "moduleVersion": "0.8.0-experimental",
+        "moduleVersion": "0.9.0-experimental",
         "imageSha256": "7aad5ba72c827f4891488f22dae2ef7afaaa241a358153d59e1731954bf0876c",
         "setup": "Pinned digiemu c1b5735, firmware-native drawing, disposable first-boot project, settings set in memory for the picture. No audio or timing qualification."
       }

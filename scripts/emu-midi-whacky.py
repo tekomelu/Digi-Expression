@@ -30,6 +30,7 @@ import unicorn.m68k_const as K  # noqa: E402
 REGS = [getattr(K, n) for n in dir(K) if n.startswith('UC_M68K_REG_') and n[12:13] in 'AD' and len(n) == 14] + [K.UC_M68K_REG_SR]
 
 SEND, DIN_SEND, PARAMS = 0x400e0ddc, 0x400028c6, 0x421c9188
+TASK_MS = int(os.environ.get('TASK_MS', '20'))  # the MIDI tracks' task sends: its next pass
 AUTO = 13                       # the auto channel (0-based), as the fresh project has it
 
 out = []                        # every message sent on DIN: bytes
@@ -93,7 +94,7 @@ def main():
 
     def midi(*b):
         io.send(s, bytes(b))
-        s.run_ms(8)
+        s.run_ms(TASK_MS)
         collect()
 
     def call_send(track, ch, oid, value, force=0):
@@ -125,7 +126,7 @@ def main():
                 uc.reg_write(r, v)
             except Exception:
                 pass
-        s.run_ms(4)                             # the DMA hands it to MIDI OUT
+        s.run_ms(TASK_MS)                       # the task's pass, then the DMA to MIDI OUT
         collect()
         return out[before:]
 

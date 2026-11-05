@@ -1,6 +1,6 @@
 # MIDI Expression
 
-Module version `0.8.0-experimental`, for the original Digitakt on OS 1.54, Core 2.1.
+Module version `0.9.0-experimental`, for the original Digitakt on OS 1.54, Core 2.1.
 
 ## Overview
 
@@ -67,23 +67,23 @@ PORT CONFIG > RECEIVE NOTES and, for the mod wheel and breath, RECEIVE CC/NRPN m
 
 - **Input:** the MIDI task hands each incoming message to one of sixteen handlers from a table, by type. Stock's pitch bend and channel aftertouch entries are an empty function. The mod points them at its own handlers and the control-change entry at a wrapper that calls the stock handler first. Three 4-byte pointer sites.
 - **The track's own values:** an 8-byte site at the entry of the MIDI tracks' `send(track, channel, id, value, force)` lets the mod see and, while live input is active, take over the track's twelve LFO-page values (ids 21–32: PB, AT, MW, BC, CC VAL 1–8). Every other parameter passes untouched. The SEL numbers are read from the MIDI tracks' parameters in use (0x421c9188, as CC Recall documents).
-- **Priority:** each output channel keeps one pending flag per message type, and the value is worked out when it goes out. It goes through the stock DIN driver only while its transmit ring holds at most 24 bytes (about 8 ms of line time), so it never queues in front of a burst of sequencer notes. What waits goes with the next message or within one UI tick (33 ms).
+- **Sending (0.9):** the mod never calls a MIDI driver. Each output channel keeps one pending flag per message type, and the value is worked out when it goes out. A change posts one wake record to the MIDI tracks' task; after its per-track pass, a 6-byte site at 0x400e1dbe (task.s) appends what is pending to the task's CC buffer, which the task then sends with its own midi_out, after the sequencer's notes. A velocity route goes into the notes buffer just before its note. Each buffer counts its bytes in one byte, so the mod fills it only to 128 bytes; the rest goes in the next pass. (0.8 called the DIN driver from the MIDI input and UI tasks, which froze a unit.)
 
 - **Velocity:** an 8-byte site at 0x40077a60, right after the render stores a note's velocity for its voice, and a 6-byte site at the entry of the MIDI tracks' notes_append (0x400e1002) apply V.SNS to what plays (vel.s). The note router and recording are untouched.
 - **The LFO slots:** an 8-byte site at the LFO stage's entry, 0x400ed766 (lfo.s).
 - **The page:** the core's key, encoder, draw and tick hooks only. Which page is up is read from the UI's view controller (measured, see docs/RESEARCH-OS154.md); nothing there is written.
 - **Audio tracks:** a 6-byte site at 0x40077eea, the first call after the render's LFO stage that takes the parameter words (after Digi Matrix's and Digi Poly's sites), adds the live values to them.
 
-All eight sites are claimed in `build.json`; no other Modwerk Digitakt module patches them. It links beside Digi Matrix, Digi Poly, Digichain, FX Track and CC Recall together.
+All nine sites are claimed in `build.json`; no other Modwerk Digitakt module patches them. It links beside Digi Matrix, Digi Poly, Digichain, FX Track and CC Recall together.
 
 ## Compatibility and limitations
 
 - Built for OS 1.54 only.
 - Not saved: each track's settings start at their defaults at every power-on.
 - Digi Perform opens its own page with the same gesture (TRIG again on the TRIG page), so the two are not built together.
-- DIN MIDI OUT only, not USB.
+- Sends where OUTPUT TO says (MIDI, USB or both), with the track's own values.
 - Not recorded: the sequencer never sees the live values.
-- A bend can reach the synth a few milliseconds before the note played with it: live notes go through the MIDI tracks' task (about 6 ms in the emulator), pass-through goes straight out.
+- A bend can reach the synth a few milliseconds before the note played with it: live notes go through the MIDI tracks' task (about 6 ms in the emulator), pass-through goes out in the same task's next pass (about 1 ms in the emulator).
 - The track's PB, AT and MW knobs on screen show the track's own value, not the sum.
 - Machines other than the sample ones take TUNE from their own SRC knob A.
 

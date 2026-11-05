@@ -30,7 +30,7 @@ About four slots of SRC (MW / AT / PB), DEST (FLT FREQ, FLT RESO, LFO1 DEPTH, LF
 
 ## Status
 
-**Phase 1 works in the emulator** (4 November 2026): module `midi-expression` 0.8.0-experimental in [`module/midi-expression/`](module/midi-expression/), with its [README](module/midi-expression/README.md) and [TESTING.md](module/midi-expression/TESTING.md). Not yet tested on a unit.
+**Phase 1 works in the emulator** (4 November 2026): module `midi-expression` 0.9.0-experimental in [`module/midi-expression/`](module/midi-expression/), with its [README](module/midi-expression/README.md) and [TESTING.md](module/midi-expression/TESTING.md). Audio tracks tested on a unit (0.4–0.7); the MIDI-track side of 0.8 froze a unit, fixed in 0.9, not yet re-tested.
 
 - Version 1 sends to DIN MIDI OUT only, and leaves out the THIN setting: coalescing plus the priority gate replace it.
 - 0.2: live input adds to the track's own PB/AT/MW (knob, locks, LFO) within the MIDI limits; leaving an auto-channel track restores its values. Host unit tests: `cc -std=c11 -DME_HOST_TEST -I tests/host tests/host/test_expr.c -o build/test_expr && build/test_expr`.
@@ -40,13 +40,14 @@ About four slots of SRC (MW / AT / PB), DEST (FLT FREQ, FLT RESO, LFO1 DEPTH, LF
 - 0.6: the list closes on a push of its knob; depths as fine as LFO DEP; FUNC + turn jumps between useful values; depths default to 0; the SETTINGS THRU rows are gone (each track's switches replace them, and the mod works from power-on).
 - 0.7: the sequencer records the velocity as played; V.SNS applies to what plays, live or recorded; velocity routes follow sequencer notes too.
 - 0.8: MIDI tracks get THRU (PB, AT, MW, BC), V.SNS and MW/VEL/AT routes to the MIDI LFO page's twelve values; values on one CC number merged; tested with odd combinations on the host and on the firmware in the emulator.
+- 0.9: fixes 0.8's freeze on a unit: the mod no longer calls the DIN driver; the MIDI tracks' own task sends its values with its normal output (DIN and/or USB, as OUTPUT TO says).
 - Research notes: [docs/RESEARCH-OS154.md](docs/RESEARCH-OS154.md). Setup: [SETUP.md](SETUP.md).
 
 ### Build a test image
 
 ```sh
 source env.sh
-scripts/build-mod.sh "$PWD/build/midi-expression-0.8.0-experimental.syx"
+scripts/build-mod.sh "$PWD/build/midi-expression-0.9.0-experimental.syx"
 ```
 
 The image is built from your own OS file and stays on your computer. Flash it with Elektron Transfer; to go back, hold FUNC at power-on, choose OS UPGRADE (TRIG 4) and send the stock .syx.
@@ -55,7 +56,7 @@ The image is built from your own OS file and stays on your computer. Flash it wi
 
 GPL-3.0-or-later. See [LICENSE](LICENSE).
 
-## Stress test (hardware, 0.8)
+## Stress test (hardware, 0.9)
 
 `scripts/hwstress.py` plays expression, notes and floods into the Digitakt's MIDI IN, records everything from its MIDI OUT, and checks it against 0.8's arithmetic. No synth is needed: the Digitakt's MIDI OUT goes back to the computer.
 
