@@ -1,0 +1,46 @@
+
+== setup
+  auto channel 10, MIDI A sends on 1
+
+== own: the track sends its own values (the first trig of a pattern sends them all)
+  CCs the track sent: {1: 10, 2: 0, 74: 0}
+  PASS  MW and VAL1 on CC 1 = 10, if sent  (got 10)
+  PASS  VAL2 on CC 74 = 0, if sent  (got 0)
+  PASS  sequencer note at velocity 100 (V.SNS 100 %)  (notes ['90 3c 64'])
+
+== thru: PB, AT, MW and BC added to the track's own; CC 1 and CC 2 merged
+  PASS  200 random PB/AT/MW/BC: each out as own + input
+  PASS  at most one CC 1 per wheel move (MW and VAL1 merged)  (52 CC 1 for 52 moves)
+  PASS  every message valid (200)
+  PASS  wheel held at 90: nothing more on CC 1
+
+== release: leaving the track gives the synth its own values back
+  PASS  PB back to 8192  (got 8192)
+  PASS  AT back to 0  (got 0)
+  PASS  CC 1 back to 10  (got 10)
+  PASS  CC 2 back to 0  (got 0)
+  PASS  nothing sent on coming back
+
+== routes: wheel -> VAL2 (CC 74), pressure -> PB, velocity -> BC
+  PASS  wheel: CC 1 own + wheel (THRU), CC 74 + wheel x 32/64
+  PASS  pressure: AT passes, PB pulled down by it (-64 = the whole way)
+  PASS  velocity -> BC: CC 2 = velocity, sent before its note; note unchanged
+  PASS  every message valid (82)
+
+== sens: V.SNS 50 % on live notes
+  PASS  notes out at 50 % (1->64, 64->96 ...); the VEL route takes the played velocity
+
+== seq: the sequencer's notes through V.SNS 50 %, and the VEL route from them
+  PASS  trigs at 100 play at 114  (9 notes, velocities [114])
+  PASS  each sequencer note plays with CC 2 = 100 (VEL route; sent once, unchanged after)  (0 without)
+  PASS  every message valid (19)
+
+== lfo: an LFO on MW, merged with VAL1 on CC 1, and the wheel held
+  LFO alone (wheel at 0): 80 CC 1, range 0..49
+  PASS  the LFO moves CC 1  (11 values)
+  PASS  wheel 64 held: every CC 1 at 64 or more (own + 64; a stray stock value would be lower)  (119 CC 1, 0 below 64, range 64..113)
+  PASS  never two different CC 1 values at once  (0 pairs under 0.5 ms)
+  PASS  every message valid (360)
+
+== record: the sequencer records the velocity as played (V.SNS still 50 %)
+  PASS  played back at the velocities played: 20, 60, 120 (scaled would be 74, 94, 124)  (got {65: 60, 66: 120, 64: 20})

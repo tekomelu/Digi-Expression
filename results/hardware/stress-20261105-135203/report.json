@@ -1,0 +1,178 @@
+{
+ "when": "2026-11-05 13:59:08",
+ "version": "0.9.2-experimental",
+ "ports": {
+  "in": "USB Midi 4i4o Portti 1",
+  "out": "USB Midi 4i4o Portti 1"
+ },
+ "config": {
+  "auto": 10,
+  "chan": 1
+ },
+ "own": {
+  "PB": 8192,
+  "AT": 0,
+  "MW": 10,
+  "BC": 0,
+  "VAL1": 10,
+  "VAL2": 0,
+  "VAL3": 0
+ },
+ "sel": {
+  "VAL1": 1,
+  "VAL2": 74,
+  "VAL3": 2
+ },
+ "results": [
+  {
+   "phase": "own",
+   "check": "MW and VAL1 on CC 1 = 10, if sent",
+   "status": "PASS",
+   "detail": "got 10"
+  },
+  {
+   "phase": "own",
+   "check": "VAL2 on CC 74 = 0, if sent",
+   "status": "PASS",
+   "detail": "got 0"
+  },
+  {
+   "phase": "own",
+   "check": "sequencer note at velocity 100 (V.SNS 100 %)",
+   "status": "PASS",
+   "detail": "notes ['90 3c 64']"
+  },
+  {
+   "phase": "thru",
+   "check": "200 random PB/AT/MW/BC: each out as own + input",
+   "status": "PASS",
+   "detail": ""
+  },
+  {
+   "phase": "thru",
+   "check": "at most one CC 1 per wheel move (MW and VAL1 merged)",
+   "status": "PASS",
+   "detail": "52 CC 1 for 52 moves"
+  },
+  {
+   "phase": "thru",
+   "check": "every message valid (200)",
+   "status": "PASS",
+   "detail": ""
+  },
+  {
+   "phase": "thru",
+   "check": "wheel held at 90: nothing more on CC 1",
+   "status": "PASS",
+   "detail": ""
+  },
+  {
+   "phase": "release",
+   "check": "PB back to 8192",
+   "status": "PASS",
+   "detail": "got 8192"
+  },
+  {
+   "phase": "release",
+   "check": "AT back to 0",
+   "status": "PASS",
+   "detail": "got 0"
+  },
+  {
+   "phase": "release",
+   "check": "CC 1 back to 10",
+   "status": "PASS",
+   "detail": "got 10"
+  },
+  {
+   "phase": "release",
+   "check": "CC 2 back to 0",
+   "status": "PASS",
+   "detail": "got 0"
+  },
+  {
+   "phase": "release",
+   "check": "nothing sent on coming back",
+   "status": "PASS",
+   "detail": ""
+  },
+  {
+   "phase": "routes",
+   "check": "wheel: CC 1 own + wheel (THRU), CC 74 + wheel x 32/64",
+   "status": "PASS",
+   "detail": ""
+  },
+  {
+   "phase": "routes",
+   "check": "pressure: AT passes, PB pulled down by it (-64 = the whole way)",
+   "status": "PASS",
+   "detail": ""
+  },
+  {
+   "phase": "routes",
+   "check": "velocity -> BC: CC 2 = velocity, sent before its note; note unchanged",
+   "status": "PASS",
+   "detail": ""
+  },
+  {
+   "phase": "routes",
+   "check": "every message valid (82)",
+   "status": "PASS",
+   "detail": ""
+  },
+  {
+   "phase": "sens",
+   "check": "notes out at 50 % (1->64, 64->96 ...); the VEL route takes the played velocity",
+   "status": "PASS",
+   "detail": ""
+  },
+  {
+   "phase": "seq",
+   "check": "trigs at 100 play at 114",
+   "status": "PASS",
+   "detail": "9 notes, velocities [114]"
+  },
+  {
+   "phase": "seq",
+   "check": "each sequencer note plays with CC 2 = 100 (VEL route; sent once, unchanged after)",
+   "status": "PASS",
+   "detail": "0 without"
+  },
+  {
+   "phase": "seq",
+   "check": "every message valid (19)",
+   "status": "PASS",
+   "detail": ""
+  },
+  {
+   "phase": "lfo",
+   "check": "the LFO moves CC 1",
+   "status": "PASS",
+   "detail": "11 values"
+  },
+  {
+   "phase": "lfo",
+   "check": "wheel 64 held: every CC 1 at 64 or more (own + 64; a stray stock value would be lower)",
+   "status": "PASS",
+   "detail": "119 CC 1, 0 below 64, range 64..113"
+  },
+  {
+   "phase": "lfo",
+   "check": "never two different CC 1 values at once",
+   "status": "PASS",
+   "detail": "0 pairs under 0.5 ms"
+  },
+  {
+   "phase": "lfo",
+   "check": "every message valid (360)",
+   "status": "PASS",
+   "detail": ""
+  },
+  {
+   "phase": "record",
+   "check": "played back at the velocities played: 20, 60, 120 (scaled would be 74, 94, 124)",
+   "status": "PASS",
+   "detail": "got {65: 60, 66: 120, 64: 20}"
+  }
+ ]
+}

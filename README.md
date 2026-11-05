@@ -30,7 +30,7 @@ About four slots of SRC (MW / AT / PB), DEST (FLT FREQ, FLT RESO, LFO1 DEPTH, LF
 
 ## Status
 
-**Phase 1 works in the emulator** (4 November 2026): module `midi-expression` 0.9.2-experimental in [`module/midi-expression/`](module/midi-expression/), with its [README](module/midi-expression/README.md) and [TESTING.md](module/midi-expression/TESTING.md). Audio tracks tested on a unit (0.4–0.7); the MIDI-track side of 0.8 froze a unit, fixed in 0.9, not yet re-tested.
+**Phase 1 works in the emulator** (4 November 2026): module `midi-expression` 0.9.2-experimental in [`module/midi-expression/`](module/midi-expression/), with its [README](module/midi-expression/README.md) and [TESTING.md](module/midi-expression/TESTING.md). Audio tracks tested on a unit (0.4–0.7); the MIDI-track side of 0.8 froze a unit; 0.9.2 passes the hardware stress test (25 of 25, flood not yet run).
 
 - Version 1 sends to DIN MIDI OUT only, and leaves out the THIN setting: coalescing plus the priority gate replace it.
 - 0.2: live input adds to the track's own PB/AT/MW (knob, locks, LFO) within the MIDI limits; leaving an auto-channel track restores its values. Host unit tests: `cc -std=c11 -DME_HOST_TEST -I tests/host tests/host/test_expr.c -o build/test_expr && build/test_expr`.
