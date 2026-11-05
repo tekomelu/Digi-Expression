@@ -29,7 +29,7 @@ The others were linked with it one at a time ([results/compat/pairs.txt](results
 **Other limits.**
 
 * Original Digitakt (mk1) with OS 1.54 only.
-* Live only: the sequencer never records the live pitch bend, aftertouch or wheel (it records notes, with their velocity as played).
+* Live only: the sequencer never records the added expressions.
 * Settings belong to the project's slot and the track's place (1–8, A–H): copying a sound or a track does not copy them; a preset carries them.
 * A project put into a slot from outside (with Transfer) takes that slot's old settings file, if one is left.
 * Writing a settings file holds the screen and the MIDI output for a moment (about 0.1 s in the emulator), so the power-on file is written only once nothing has played for 2 seconds.
@@ -202,7 +202,7 @@ The research behind every address is in [docs/RESEARCH-OS154.md](docs/RESEARCH-O
 
 ## Status and tests
 
-Experimental. Tested with about 2.4 million host unit checks (including thousands of random broken files), on the firmware in the [digiemu](https://github.com/irpina/digiemu) emulator (MIDI-track sums and merging, saving and loading through the firmware's own menus, the preset menu, memory and CPU use), and on one unit: the audio-track features and a hardware stress test of the MIDI tracks, 25 of 25. Saving, presets and the MIDI LFO destinations are not yet tested on a unit. Details: [module/midi-expression/TESTING.md](module/midi-expression/TESTING.md).
+Experimental. Tested with about 2.4 million host unit checks (including thousands of random broken files), on the firmware in the [digiemu](https://github.com/irpina/digiemu) emulator (MIDI-track sums and merging, saving and loading through the firmware's own menus, the preset menu, memory and CPU use), and on one unit: the audio-track features and a hardware stress test of the MIDI tracks, 25 of 25. Details: [module/midi-expression/TESTING.md](module/midi-expression/TESTING.md).
 
 **Resources** (emulator): no memory is allocated, and hundreds of file writes and reads leave the firmware's heap exactly as it was. CPU in the module area: about 1.2 % of the emulated CPU idle and 1.8 % with every route of every track live under a flood of MIDI at the wire rate (the emulator counts 64 million instructions a second; the unit's CPU is faster). RAM: in an image of its own, 92 KB of the module area stay free.
 
