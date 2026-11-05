@@ -1,5 +1,15 @@
 [
   {
+    "version": "0.7.0-experimental",
+    "date": "2026-11-05",
+    "changes": [
+      "The sequencer now records the velocity as played; V.SNS applies to what plays, live or from the sequencer, and can be changed afterwards.",
+      "VEL as a modulation source follows every note the track plays, sequencer trigs included, and stays when another track is selected.",
+      "MIDI tracks: V.SNS applies to the notes they send, live or from the sequencer.",
+      "Under the hood: the velocity hook moved from the note router to the render's note store (audio) and the MIDI tracks' note output."
+    ]
+  },
+  {
     "version": "0.6.0-experimental",
     "date": "2026-11-05",
     "changes": [

@@ -91,11 +91,18 @@
           "target": "me_lfo_entry"
         },
         {
-          "addr": "0x400d5d8e",
-          "len": 6,
-          "stockSha256": "db11bfa4de9f4ddf15ceb8d62bfb97afdc44f1f95f1310967cab8ffeea14a21f",
+          "addr": "0x40077a60",
+          "len": 8,
+          "stockSha256": "fb36fd2b15c562e8ab9e8efdd41c3e00b91ac29480ef517a1731156cf1161d6b",
           "op": "jsr",
-          "target": "me_note_hook"
+          "target": "me_voice_hook"
+        },
+        {
+          "addr": "0x400e1002",
+          "len": 6,
+          "stockSha256": "e6b06970da8d0dabdfd08f7c0353dc1622c2235a32b1e74fd4668006e519d33e",
+          "op": "jmp",
+          "target": "me_noteout_entry"
         }
       ]
     }

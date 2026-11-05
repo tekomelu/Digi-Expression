@@ -4,6 +4,8 @@
 #include <string.h>
 
 #include "../../module/midi-expression/src/expr.c"
+static int16_t h_os_vel[8];
+#define OS_VEL h_os_vel
 #include "../../module/midi-expression/src/audio.c"
 #include "../../module/midi-expression/src/page.c"
 #include <stdarg.h>
@@ -378,49 +380,71 @@ int main(void)
     me_at_on = 1;
 
     // ---- velocity --------------------------------------------------------------
-    // 22. VEL SENS: 100 % as played, 50 % 0..127 -> 64..127, 0 % always 127; MIDI tracks too.
+    // 22. V.SNS on what plays: an audio voice's stored velocity (8.8), a MIDI track's note out.
     reset();
-    CHECK(me_note_velocity(0, 40, AUTO) == 40, "100 %%: as played");
+    h_os_vel[0] = 40 << 8;
+    me_voice_velocity(0);
+    CHECK(h_os_vel[0] == 40 << 8, "100 %%: as played: %d", h_os_vel[0]);
     me_audio_cfg[0].vel_sens = 50;
-    CHECK(me_note_velocity(0, 1, AUTO) == 64, "50 %%: 1 -> %d", me_note_velocity(0, 1, AUTO));
-    CHECK(me_note_velocity(0, 127, AUTO) == 127, "50 %%: 127 stays");
-    CHECK(me_note_velocity(0, 64, AUTO) == 96, "50 %%: 64 -> %d", me_note_velocity(0, 64, AUTO));
+    h_os_vel[0] = 1 << 8;
+    me_voice_velocity(0);
+    CHECK(h_os_vel[0] == (256 + ((32512 - 256) * 50 + 50) / 100), "50 %%: 1 -> about 64: %d", h_os_vel[0] >> 8);
+    h_os_vel[0] = 32512;
+    me_voice_velocity(0);
+    CHECK(h_os_vel[0] == 32512, "50 %%: full stays full");
     me_audio_cfg[0].vel_sens = 0;
-    CHECK(me_note_velocity(0, 10, AUTO) == 127, "0 %%: every note 127");
-    me_midi_cfg[2].vel_sens = 50;
-    CHECK(me_note_velocity(10, 1, TRACK) == 64, "MIDI track C at 50 %%");
-    CHECK(me_note_velocity(11, 30, TRACK) == 30, "MIDI track D untouched");
-    CHECK(me_note_velocity(3, 0, AUTO) == 0, "velocity 0 passes as it is");
+    h_os_vel[0] = 10 << 8;
+    me_voice_velocity(0);
+    CHECK(h_os_vel[0] == 32512, "0 %%: every note full");
+    h_os_vel[3] = 0;
+    me_voice_velocity(3);
+    CHECK(h_os_vel[3] == 0, "no velocity: untouched");
     for (int v = 1; v < 128; v++)
         for (int sns = 0; sns <= 100; sns += 10) {
-            me_audio_cfg[1].vel_sens = (int8_t)sns;
-            int r2 = me_note_velocity(1, v, AUTO);
+            int r2 = me_velocity_scaled(v, sns);
             CHECK(r2 >= v && r2 <= 127, "sens %d v %d -> %d", sns, v, r2);
         }
+    CHECK(me_velocity_scaled(1, 50) == 64 && me_velocity_scaled(64, 50) == 96, "MIDI scale: 1 -> 64, 64 -> 96 at 50 %%");
+    // MIDI tracks: notes out through notes_append
+    chan_of[2] = 4;
+    me_midi_cfg[2].vel_sens = 50;
+    {
+        const uint8_t on[3] = { 0x94, 60, 1 }, off[3] = { 0x84, 60, 0 }, other[3] = { 0x95, 60, 1 };
+        const uint8_t *r = me_note_out(3, on);
+        CHECK(r != on && r[0] == 0x94 && r[1] == 60 && r[2] == 64, "MIDI C's note on its channel: velocity 1 -> %d", r[2]);
+        CHECK(on[2] == 1, "the caller's bytes untouched");
+        CHECK(me_note_out(3, off) == off, "a note off passes as it is");
+        CHECK(me_note_out(3, other) == other, "another channel passes as it is");
+        const uint8_t two[6] = { 0x94, 60, 100, 0x94, 64, 2 };
+        r = me_note_out(6, two);
+        CHECK(r[2] == 114 && r[5] == 65, "two notes in one call: %d %d", r[2], r[5]);
+        me_midi_cfg[2].vel_sens = 100;
+        CHECK(me_note_out(3, on) == on, "100 %%: as played");
+    }
 
-    // 23. Velocity as a source: the last note's velocity x V.DEP into VEL DEST; released on track change.
+    // 23. Velocity as a source: the last note the track played (live or from the sequencer),
+    //     unscaled, x V.DEP into VEL DEST; it stays on a track change.
     reset();
+    me_tick(0);
     h_active_track = 0;
-    me_tick(0);                                   // the UI has been ticking since power-on
     me_audio_cfg[0].vel_dest = 26; me_audio_cfg[0].vel_amount = 16 * 256;
-    me_note_velocity(0, 100, AUTO);
+    h_os_vel[0] = 100 << 8;
+    me_voice_velocity(0);
     words_reset(10000);
     me_render(words);
     CHECK(*slot(0, 26) == 10000 + 100 * 16 * 4, "velocity 100 x 16 on FLT.FREQ: %d", *slot(0, 26) - 10000);
-    me_note_velocity(0, 20, AUTO);
-    words_reset(10000);
-    me_render(words);
-    CHECK(*slot(0, 26) == 10000 + 20 * 16 * 4, "the next note's velocity: %d", *slot(0, 26) - 10000);
     me_audio_cfg[0].vel_sens = 0;                 // the source is the played velocity, not the scaled one
-    me_note_velocity(0, 20, AUTO);
+    h_os_vel[0] = 20 << 8;
+    me_voice_velocity(0);
     words_reset(10000);
     me_render(words);
-    CHECK(*slot(0, 26) == 10000 + 20 * 16 * 4, "source unscaled: %d", *slot(0, 26) - 10000);
+    CHECK(*slot(0, 26) == 10000 + 20 * 16 * 4, "the next note, unscaled: %d", *slot(0, 26) - 10000);
+    CHECK(h_os_vel[0] == 32512, "while it plays at full (V.SNS 0)");
     h_active_track = 1;
     me_tick(0);
     words_reset(10000);
     me_render(words);
-    CHECK(*slot(0, 26) == 10000, "released on track change");
+    CHECK(*slot(0, 26) == 10000 + 20 * 16 * 4, "kept on a track change (the sequencer keeps playing it)");
 
     // 24. LFO destinations go in at the LFO stage's entry, the rest after it.
     reset();

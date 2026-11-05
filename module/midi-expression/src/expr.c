@@ -407,6 +407,47 @@ int32_t me_filter(int32_t track, int32_t channel, int32_t id, int32_t value, int
 
 void me_page_tick(void *ctrl);
 
+// ---- the MIDI tracks' notes: V.SNS ------------------------------------------
+// The MIDI tracks' task collects the notes it sends, from the sequencer and
+// from MIDI IN alike, with notes_append(len, bytes) at 0x400e1002 into the
+// buffer at 0x421b6620, sent each pass. A 6-byte jmp site at its entry
+// (vel.s) hands the bytes here first: a note on with a velocity goes on with
+// the velocity through V.SNS of the MIDI track that sends on its channel
+// (the first, if several share one). Recording is untouched: the sequencer
+// keeps the velocity as played, and V.SNS can be changed afterwards.
+static uint8_t note_copy[16];
+
+const uint8_t *me_note_out(int32_t len, const uint8_t *bytes)
+{
+    if (len < 3 || len > (int32_t)sizeof note_copy)
+        return bytes;
+    int changed = 0;
+    for (int32_t i = 0; i < len; i++)
+        note_copy[i] = bytes[i];
+    for (int32_t i = 0; i + 2 < len; ) {
+        uint8_t st = note_copy[i];
+        if (st < 0x80 || st >= 0xF0) {
+            i++;
+            continue;
+        }
+        int n = (st & 0xE0) == 0xC0 ? 2 : 3;
+        if ((st & 0xF0) == 0x90 && note_copy[i + 2]) {
+            for (int m = 0; m < 8; m++) {
+                if (CHANNEL(m) != (st & 15))
+                    continue;
+                int32_t sens = me_midi_cfg[m].vel_sens;
+                if (sens < VEL_SENS_MAX) {
+                    note_copy[i + 2] = (uint8_t)me_velocity_scaled(note_copy[i + 2], sens);
+                    changed = 1;
+                }
+                break;
+            }
+        }
+        i += n;
+    }
+    return changed ? note_copy : bytes;
+}
+
 // ---- ev_tick: track changes, unticked rows, values that waited --------------
 void me_tick(void *ctrl)
 {

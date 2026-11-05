@@ -70,7 +70,7 @@ void me_audio_release_auto(void)
     for (int t = 0; t < 8; t++) {
         if (!atracks[t].via_auto)
             continue;
-        for (int k = 0; k < AKINDS; k++)
+        for (int k = 0; k < KINDS; k++)  // the velocity stays: it is the track's last note's
             atracks[t].live[k] = 0;
         atracks[t].via_auto = 0;
     }
@@ -147,28 +147,49 @@ void me_render_lfo(void *words)
 }
 
 // ---- velocity ------------------------------------------------------------------
-// The note router (0x400d5c1c) hands each routed track the note with
-// live_note(track, note, velocity, flag, 0, -1, -1) at 0x400d5d8e; vel.s
-// calls this first and passes on what it returns. That one call is both what
-// sounds and what the sequencer records. VEL SENS (0..100 %) scales how much
-// the played velocity counts: 100 % as played, 50 % maps 0..127 to 64..127,
-// 0 % plays every note at 127. An audio track also keeps the played velocity
-// as a modulation source (VEL DEST).
-int32_t me_note_velocity(int32_t track, int32_t velocity, int32_t flag)
+// Every note an audio track plays, from the sequencer or from MIDI IN, reaches
+// the render as a note message; its velocity (8.8, 0..32512) is stored to the
+// voice's word at 0x80001f18 + 2 x voice (at 0x40077a4c or 0x40077a5c; the
+// trig's velocity as Digi Neighbor documents it), and the next instruction,
+// 0x40077a60, is a 6+2-byte jsr site (vel.s) that calls this. So:
+//   - the sequencer records the velocity as played (the note router is not
+//     touched), and V.SNS applies to what plays, live or recorded, and can be
+//     changed afterwards;
+//   - VEL as a source is the velocity of the last note the track played,
+//     live or from the sequencer, held until its next note (not released on
+//     a track change: it is the track's own, like its LFO).
+// V.SNS 100 %: as played; 50 %: 0..127 plays as 64..127; 0 %: every note full.
+#ifndef OS_VEL
+#define OS_VEL ((volatile int16_t *)0x80001f18)
+#endif
+#define VEL_FULL 32512
+
+static int32_t sensitive(int32_t v, int32_t full, int32_t sens)
 {
-    int32_t sens;
-    if (track < 0 || track > 15 || velocity <= 0 || velocity > 127)
-        return velocity;
-    if (track < 8) {
-        me_audio_velocity(track, velocity, (flag & 0x14) != 0);
-        sens = me_audio_cfg[track].vel_sens;
-    } else {
-        sens = me_midi_cfg[track - 8].vel_sens;
-    }
     if (sens >= VEL_SENS_MAX)
-        return velocity;
+        return v;
     if (sens < 0)
         sens = 0;
-    int32_t v = velocity + ((127 - velocity) * (VEL_SENS_MAX - sens) + VEL_SENS_MAX / 2) / VEL_SENS_MAX;
+    return v + ((full - v) * (VEL_SENS_MAX - sens) + VEL_SENS_MAX / 2) / VEL_SENS_MAX;
+}
+
+void me_voice_velocity(int32_t voice)
+{
+    if (voice < 0 || voice > 7)
+        return;
+    int32_t v = OS_VEL[voice];
+    if (v <= 0)
+        return;
+    if (v > VEL_FULL)
+        v = VEL_FULL;
+    me_audio_velocity(voice, (v + 128) >> 8, 0);
+    OS_VEL[voice] = (int16_t)sensitive(v, VEL_FULL, me_audio_cfg[voice].vel_sens);
+}
+
+int32_t me_velocity_scaled(int32_t velocity, int32_t sens)
+{
+    if (velocity <= 0 || velocity > 127)
+        return velocity;
+    int32_t v = sensitive(velocity, 127, sens);
     return v < 1 ? 1 : v > 127 ? 127 : v;
 }

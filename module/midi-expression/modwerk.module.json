@@ -2,7 +2,7 @@
   "schemaVersion": 3,
   "id": "midi-expression",
   "name": "MIDI Expression",
-  "version": "0.6.0-experimental",
+  "version": "0.7.0-experimental",
   "machine": "digitakt",
   "category": "midi-usb",
   "exclusive": false,
@@ -23,7 +23,7 @@
     "highlights": [
       "Play a synth through a MIDI track with pitch bend, aftertouch and the mod wheel.",
       "Audio tracks: bend by up to 12 semitones; route the wheel, aftertouch and velocity to any SRC, FLTR, AMP or LFO amount.",
-      "Velocity sensitivity per track, for the sound and what is recorded.",
+      "Velocity sensitivity per track on what plays, live or recorded; the sequencer keeps the velocity as played, and velocity routes work in playback too.",
       "A stock-looking EXPRESSION page on the TRIG page's second page, with the stock knob feel and the LFO page's destination list.",
       "Adds to the track's own values, LFOs and parameter locks within their limits; leaving a track restores them."
     ],
@@ -55,13 +55,13 @@
       "name": "V.SNS",
       "default": null,
       "labels": null,
-      "doc": "Audio knob B, MIDI knob D: 0-100 %, how much the played velocity counts; 50 % maps 0-127 to 64-127, 0 % plays every note at 127. Also what is recorded. Default 100 %."
+      "doc": "Audio knob B, MIDI knob D: 0-100 %, how much velocity counts in what plays, live or from the sequencer; 50 % plays 0-127 as 64-127, 0 % plays every note full. The sequencer records the velocity as played, so V.SNS can be changed afterwards. Default 100 %."
     },
     {
       "name": "MW / VEL / AT",
       "default": null,
       "labels": null,
-      "doc": "Audio track, knobs C, E, G: the parameter the wheel, the velocity and aftertouch move (SRC, FLTR, AMP or LFO amounts), from a list like the LFO page's DEST. Default none."
+      "doc": "Audio track, knobs C, E, G: the parameter the wheel, the velocity and aftertouch move (SRC, FLTR, AMP or LFO amounts), from a list like the LFO page's DEST. Default none. VEL is the velocity of the last note the track played, live or from the sequencer."
     },
     {
       "name": "M.DEP / V.DEP / A.DEP",
@@ -130,7 +130,7 @@
   },
   "evidence": {
     "tier": "none",
-    "moduleVersion": "0.6.0-experimental",
+    "moduleVersion": "0.7.0-experimental",
     "sourceSha256": null,
     "reports": [],
     "hardware": null,

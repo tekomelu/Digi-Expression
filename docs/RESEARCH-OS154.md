@@ -104,3 +104,9 @@ Stock heap addresses are the same from boot to boot in the emulator but are not 
 - Note router 0x400d5c1c: for each routed track, `lea %pc@(0x400d5604),%a2` at 0x400d5d5e, then per track `live_note(track, note, velocity, flag, 0, -1, -1)` by `jsr (%a2)` at 0x400d5d8e and `lea 28(%sp),%sp` (6 bytes together, SHA-256 db11bfa4…a21f). Velocity is the router's own argument. This is MIDI IN only; the unit's keys reach the live note elsewhere (Digi Poly's 0x40028bae).
 - Encoder accelerator 0x400c06ae(state, encoder, raw × multiplier, curve, pushed): the stock pages call it from 0x40032bbe after 0x40065794(id) (the UI record) and 0x400c047e. A detent is 4 raw counts in digiemu; there the accelerator returns 0 for stock pages too.
 - `STOCK_NAME` 0x4000feac(0, id) gives the firmware's parameter names; the label font 0x401fe44c has a width table at word 2, the 5-pixel font 0x40200ebc does not (fixed 4-pixel advance).
+
+## 10. Where a note's velocity is used (0.7)
+
+- Audio: the render's message loop (0x400777a2..) takes every note message, sequencer or live; the note-on branch stores the message's velocity (msg+20, 8.8) to the voice's word 0x80001f18 + 2 × voice at 0x40077a5c (or a computed one at 0x40077a4c, clamped to 0..32512); both continue at 0x40077a60 (`move.l %d2,%d0; addi.l #287,%d0`, 8 bytes, SHA-256 fb36fd2b…1d6b). Those are the only writes of that table. Digi Neighbor reads it as the trig's velocity.
+- MIDI tracks: notes go out of the MIDI tracks' task through notes_append(len, bytes) 0x400e1002 into the buffer at 0x421b6620 (length byte, then the bytes), flushed with midi_out at 0x400e1dd0; CCs go through append 0x400e0dac into 0x421b6a21, flushed at 0x400e1dea. notes_append's first instruction is `mvz.b 0x421b6620,%d1` (6 bytes, SHA-256 e6b06970…d33e); its callers: 0x400e14e0, 0x400e1984, 0x400e19a6, 0x400e1b96, 0x400e1c38, 0x400e1cc6.
+- Recording: the live note (0x400d5604) records what the note router hands it.

@@ -52,8 +52,12 @@ void me_audio_velocity(int t, int32_t velocity, int from_auto);
 void me_render(void *words);                    // after the LFO stage: every slot but the LFOs'
 void me_render_lfo(void *words);                // the LFO stage's entry: the LFO slots (1..16)
 
-// vel.s / audio.c: a note from MIDI IN, on its way to a track (0..15).
-int32_t me_note_velocity(int32_t track, int32_t velocity, int32_t flag);
+// vel.s / audio.c: a note the render plays on a voice (its velocity is in the
+// voice's word); a velocity 1..127 through V.SNS 0..100 %.
+void me_voice_velocity(int32_t voice);
+int32_t me_velocity_scaled(int32_t velocity, int32_t sens);
+// vel.s / expr.c: notes the MIDI tracks send: V.SNS on their velocity.
+const uint8_t *me_note_out(int32_t len, const uint8_t *bytes);
 
 // expr.c: a MIDI track's settings changed on the page: give its channel back.
 void me_midi_release_track(int m);

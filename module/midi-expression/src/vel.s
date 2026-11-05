@@ -1,29 +1,45 @@
 | SPDX-License-Identifier: GPL-3.0-or-later
-| MIDI Expression: the velocity of notes from MIDI IN (OS 1.54).
-| The note router (0x400d5c1c) calls the live note-on for each routed track:
-|     400d5d8e  jsr (%a2)            | %a2 = 0x400d5604, live_note
-|     400d5d90  lea 28(%sp),%sp      | (track, note, velocity, flag, 0, -1, -1)
-| A 6-byte jsr site over those two instructions comes here. me_note_velocity
-| (audio.c) gives the velocity to use; the stock live note gets the same
-| seven arguments with it, and the caller's arguments are dropped as its own
-| lea did. Only %d0/%d1/%a0/%a1 change; the router keeps nothing in them.
-        .equ    LIVE_NOTE, 0x400d5604
+| MIDI Expression: velocity (OS 1.54). V.SNS applies to what plays, never to
+| what is recorded, and VEL as a source follows every note a track plays.
+|
+| Audio tracks. The render takes each note message; its velocity (8.8) is
+| stored to the voice's word at 0x80001f18 + 2 x voice (%d2), then
+|     40077a60  move.l %d2,%d0
+|     40077a62  addi.l #287,%d0
+| An 8-byte jsr site there comes to me_voice_hook: me_voice_velocity (audio.c)
+| reads the stored velocity and writes it back through V.SNS; then the two
+| instructions. Only %d0 changes, as they change it.
+|
+| MIDI tracks. notes_append(len, bytes) 0x400e1002 collects the notes the MIDI
+| tracks' task sends; its first instruction
+|     400e1002  mvz.b 0x421b6620,%d1
+| is a 6-byte jmp site to me_noteout_entry: me_note_out (expr.c) returns the
+| bytes to send (a copy with V.SNS on a note's velocity, or the caller's);
+| then the instruction, and on at 0x400e1008.
+        .equ    NOTES_REST, 0x400e1008
 
         .section .run, "ax"
         .balign 2
-        .globl  me_note_hook
-me_note_hook:                           | (sp) return, 4 track, 8 note, 12 velocity, 16 flag ...
-        move.l  16(%sp), -(%sp)         | flag
-        move.l  16(%sp), -(%sp)         | velocity
-        move.l  12(%sp), -(%sp)         | track
-        jsr     me_note_velocity
-        lea     12(%sp), %sp
-        move.l  %d0, 12(%sp)            | the velocity to play and record
-        .rept   7
-        move.l  28(%sp), -(%sp)         | the seven arguments again
-        .endr
-        jsr     LIVE_NOTE
-        lea     28(%sp), %sp
-        movea.l (%sp)+, %a0             | back to the router,
-        lea     28(%sp), %sp            | without its arguments (its own lea)
-        jmp     (%a0)
+        .globl  me_voice_hook
+me_voice_hook:
+        lea     -16(%sp), %sp
+        movem.l %d0-%d1/%a0-%a1, (%sp)
+        move.l  %d2, -(%sp)
+        jsr     me_voice_velocity
+        addq.l  #4, %sp
+        movem.l (%sp), %d0-%d1/%a0-%a1
+        lea     16(%sp), %sp
+        move.l  %d2, %d0
+        addi.l  #287, %d0
+        rts
+
+        .balign 2
+        .globl  me_noteout_entry
+me_noteout_entry:                       | (sp) return, 4 len, 8 bytes
+        move.l  8(%sp), -(%sp)          | bytes
+        move.l  8(%sp), -(%sp)          | len
+        jsr     me_note_out
+        addq.l  #8, %sp
+        move.l  %d0, 8(%sp)             | the bytes to send
+        mvz.b   0x421b6620, %d1
+        jmp     NOTES_REST

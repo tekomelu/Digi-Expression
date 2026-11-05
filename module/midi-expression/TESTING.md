@@ -102,3 +102,9 @@ Shared mod memory: 5,612 bytes in 0.3 (`ramSpare` 124,084), 2,704 bytes in 0.2 (
 
 - **Host unit tests:** 1978 checks, 0 failures (`results/mod-0.6/host-unit-tests.txt`): fine depths in 1/256, FUNC + turn jumps for every kind of cell with the 0.4 s rest, a push of the list's own knob closing it, depths starting at 0.
 - **Emulator** (`results/mod-0.6/emulator-checks.txt`): pass-through works from power-on with nothing ticked; PB OFF on a MIDI track gives the synth its values back; a fine depth of +20.25 lands exactly on LFO1 depth. Captures in `results/mod-0.6/page/`.
+
+## 0.7 (velocity on what plays, not on what is recorded)
+
+- **Host unit tests:** 1982 checks, 0 failures (`results/mod-0.7/host-unit-tests.txt`).
+- **Emulator** (`results/mod-0.7/emulator-checks.txt`): a live note of velocity 20 at V.SNS 50 % is recorded as 20, plays as 73.5 on the audio voice and goes out as 74 from a MIDI track; VEL as a source uses the played 20 and stays when another track is selected.
+- **Not measurable in the emulator:** sequencer playback (PLAY does not start the transport); the code paths are the same as for live notes. To confirm on the unit.
