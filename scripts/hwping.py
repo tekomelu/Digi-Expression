@@ -26,8 +26,14 @@ def main():
     out_name = sys.argv[2] if len(sys.argv) > 2 else name
     mi, mo = rtmidi.MidiIn(), rtmidi.MidiOut()
     mi.ignore_types(timing=True, sysex=True, active_sense=True)
-    mi.open_port([p for p in mi.get_ports() if name in p][0])
-    mo.open_port([p for p in mo.get_ports() if out_name in p][0])
+    def index(port, want):
+        names = port.get_ports()
+        hits = [i for i, p in enumerate(names) if want in p]
+        if not hits:
+            sys.exit('no port matching %r; ports: %s' % (want, names))
+        return hits[0]
+    mi.open_port(index(mi, name))
+    mo.open_port(index(mo, out_name))
     got = []
     mi.set_callback(lambda m, _: got.append(m[0]))
     c = AUTO - 1
