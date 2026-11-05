@@ -5,7 +5,7 @@
 A [Modwerk](https://modwerk.app/) module,\
 version 0.12.0-experimental.
 
-![The EXPRESSION page of a MIDI track](docs/img/expression-midi.png)
+![The EXPRESSION page of audio track 2: BEND 2, MW to SRC Length, VEL to AMP Attack, AT to LFO1 Depth](docs/img/expression-audio-hero.png)
 
 On stock version the Digitakt passes an external keyboard's notes and velocity through to its tracks but drops pitch bend, mod wheel and aftertouch. With MIDI Expression:
 
