@@ -125,8 +125,6 @@ LFO: FADE IN/OUT<br>
 LFO: START PHASE<br>
 LFO: DEPTH
 </small><br><br>
-<small>Each CC VAL goes out on the CC number its AMP-page SEL picks; the list shows it (CC:CC2 VAL #74). The LFO destinations move the MIDI track's own LFO.</small><br><br>
-<img src="docs/img/expression-midi-list.png" alt="A MIDI track's LFO as a destination">
 </td>
 </tr>
 </table>
