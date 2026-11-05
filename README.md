@@ -54,3 +54,20 @@ The image is built from your own OS file and stays on your computer. Flash it wi
 ## Licence
 
 GPL-3.0-or-later. See [LICENSE](LICENSE).
+
+## Stress test (hardware, 0.8)
+
+`scripts/hwstress.py` plays expression, notes and floods into the Digitakt's MIDI IN, records everything from its MIDI OUT, and checks it against 0.8's arithmetic. No synth is needed: the Digitakt's MIDI OUT goes back to the computer.
+
+**Cables:** interface MIDI OUT → Digitakt MIDI IN, Digitakt MIDI OUT → interface MIDI IN.
+
+**Project (once, in a scratch project):**
+1. SETTINGS > MIDI CONFIG > SYNC: CLOCK SEND on. PORT CONFIG: INPUT FROM MIDI, OUTPUT TO MIDI, RECEIVE NOTES on, RECEIVE CC/NRPN on. CHANNELS: note the AUTO CHANNEL.
+2. MIDI track A (TRK + trig 9):
+   - SRC: CHAN on (FUNC + knob A), channel 1; PB 0, AT 0, MW 10, BC 0.
+   - FLTR (CC values): VAL1 10, VAL2 0, VAL3 0.
+   - AMP (CC numbers): SEL1 1, SEL2 74, SEL3 2.
+   - Four trigs: steps 1, 5, 9, 13 (velocity 100, the default).
+3. Leave the EXPRESSION pages at their power-on defaults.
+
+**Run:** `~/.venvs/dt/bin/python scripts/hwstress.py --in "<port>" --out "<port>"`. It asks for a few EXPRESSION-page and LFO changes on the way. Results: `results/hardware/stress-<date>/` (report.json, log.txt, midi.jsonl).
