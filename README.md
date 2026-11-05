@@ -64,7 +64,7 @@ Every destination adds to the track's own value (its knob, parameter locks and L
 <table>
 <tr>
 <td width="50%" valign="top">
-<b>Audio tracks</b><br>
+<b>Audio track mod destinations</b><br>
 <img src="docs/img/expression-audio-list.png" alt="The audio destination list"><br>
 <small>
 SRC: TUNE<br>
@@ -104,7 +104,7 @@ LFO2: DEPTH
 </small>
 </td>
 <td width="50%" valign="top">
-<b>MIDI tracks</b><br>
+<b>MIDI track mod destinations</b><br>
 <img src="docs/img/expression-midi-list-cc.png" alt="The MIDI destination list"><br>
 <small>
 SRC: PITCH BEND<br>
