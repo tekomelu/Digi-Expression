@@ -33,7 +33,6 @@ The others were linked with it one at a time ([results/compat/pairs.txt](results
 * Settings belong to the project's slot and the track's place (1–8, A–H): copying a sound or a track does not copy them; a preset carries them.
 * A project put into a slot from outside (with Transfer) takes that slot's old settings file, if one is left.
 * Writing a settings file holds the screen and the MIDI output for a moment (about 0.1 s in the emulator), so the power-on file is written only once nothing has played for 2 seconds.
-* Avoid a MIDI loop: a synth echoing MIDI OUT back into MIDI IN on the same channel feeds the mod's output back to it.
 * The track's PB, AT and MW knobs on screen show the track's own value, not the sum.
 
 ## How to use it
