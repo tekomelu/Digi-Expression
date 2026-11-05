@@ -113,16 +113,17 @@
       "ev_enc"
     ],
     "claims": [
-      "ui:TRIG page:second page, TRIG pressed again"
+      "ui:TRIG page:second page, TRIG pressed again",
+      "drive:/cfw/expression"
     ]
   },
   "resources": {
-    "memoryBytes": 5612,
+    "memoryBytes": 36181,
     "fastBytes": 0,
     "load": {
-      "display": "Not measured yet",
-      "method": "unmeasured",
-      "conditions": "Measure under a flood of notes, CC, pitch bend, aftertouch and clock at the wire rate."
+      "display": "About 1.2% of the emulated CPU idle, 1.9% under a MIDI flood with every route live (emulator)",
+      "method": "emulator",
+      "conditions": "digiemu c1b5735, OS 1.54 on Core 2.1, image 9b76047a...2696: executed instructions in the module's code per emulated second, against the emulator's 64 million a second. Idle: 0.77 M/s (1.20%). Every route of every audio track live under a flood of pitch bend, aftertouch, mod wheel and notes at the MIDI wire rate: 1.13 M/s (1.77%); the same on MIDI track A: 1.20 M/s (1.87%). Instruction counts, not cycles: no contention or wait states. Not a hardware measurement."
     }
   },
   "evidence": {

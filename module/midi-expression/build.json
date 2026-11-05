@@ -43,7 +43,8 @@
   "copied": [],
   "regions": [],
   "claims": [
-    "ui:TRIG page:second page, TRIG pressed again"
+    "ui:TRIG page:second page, TRIG pressed again",
+    "drive:/cfw/expression"
   ],
   "requires": [],
   "derive": null,
