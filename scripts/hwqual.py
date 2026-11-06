@@ -464,7 +464,8 @@ class Qual:
     def flood(self, seconds=20):
         c, P = self.cfg, 'flood'
         self.note('\n== flood: %d s at the MIDI wire rate to tracks A, B and C, clock included, sequencer playing' % seconds)
-        ask('Set the tempo to 160 BPM or more and press PLAY. Enter.')
+        ask('Set the tempo to 160 BPM or more and press PLAY. During the %d seconds, watch the screen: turn a knob, '
+            'change a page or two, see that it keeps up. Enter to start.' % seconds)
         m0 = self.io.mark()
         sent_on, held = {}, {}
         tin = (c['ta'], c['tb'], c['tc'])
@@ -499,7 +500,7 @@ class Qual:
             self.io.send(bytes(self.off(ch, n)))
         self.extra['flood'] = {'messages_sent': count, 'seconds': seconds}
         self.settle(0.5)
-        self.answer(P, 'Did the screen and keys stay responsive during the flood?')
+        self.answer(P, 'During the flood, did the screen and keys keep up (knobs, page changes)?')
         ask('Press STOP. Enter.')
         self.settle(0.5)
         self.valid(P, m0)
