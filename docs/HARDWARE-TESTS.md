@@ -17,6 +17,7 @@ Everything to test on a unit before a release, and how. Most of it runs automati
 | 1. Everything, DIN and USB | `hwqual.py --in "INTERFACE" --out "INTERFACE" --in2 "Digitakt" --out2 "Digitakt" --label full` | about 30 min | load projects, one power cycle, answer the questions |
 | 2. The auto channel (optional) | `hwqual.py --in "INTERFACE" --out "INTERFACE" --label auto --only auto` | 2 min | its own channel set-up (TEST-SETUP.md), select tracks when asked |
 | 3. By ear (optional) | `--label ears --only ears` | 3 min | listen to audio track 1 |
+| 4. The interface alone (optional) | `loopback.py --port "INTERFACE"` | 1 min | one MIDI cable from the interface's OUT to its own IN, no Digitakt |
 
 Each run writes `results/hardware/qual-LABEL-DATE/`: `summary.md` (the table for the Modwerk hardware report), `report.json`, `log.txt` and `midi.jsonl` (every message on every port).
 
@@ -32,6 +33,8 @@ Each run writes `results/hardware/qual-LABEL-DATE/`: `summary.md` (the table for
 - **DIN and USB:** in every phase, both outputs carry exactly the same messages: DIN in to DIN and USB out, then USB in to both.
 
 **Playing (sent over DIN):**
+
+- **clockloss:** 300 pitch bends to track A, each with a note to track H (THRU OFF: only stock passes it), with the clock stopped, running, and with the sequencer playing; then with the clock byte timed to land inside the pitch bend, and inside the note. On a DIN cable a clock byte may arrive in the middle of another message; if the note is lost as often as the pitch bend, the loss is in the interface or the stock input, not in the mod. Run 4 tells the interface apart.
 
 - **flood:** 20 seconds at the MIDI wire rate to all eight tracks with the sequencer playing at 160 BPM: no stuck notes, every message well formed, the model exact again afterwards, and you check the screen keeps up.
 

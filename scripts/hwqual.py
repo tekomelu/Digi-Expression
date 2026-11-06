@@ -502,7 +502,8 @@ class Qual:
         """Do live inputs get lost while clock runs into the Digitakt? Each input should get one answer.
         Notes to track H (THRU OFF: only stock passes them) are the stock baseline."""
         P = 'clockloss'
-        self.note('\n== clockloss: %d inputs each with the clock stopped, the clock running, and the sequencer playing' % n)
+        self.note('\n== clockloss: %d inputs each with the clock stopped, the clock running, the sequencer playing, '
+                  'and the clock byte aimed inside a message' % n)
         o_a, o_h = self.tout('A'), self.tout('H')
 
         def run(label):
@@ -525,6 +526,49 @@ class Qual:
             self.check(P, '%s: live pitch bends with no answer %d of %d; stock notes lost %d of %d' % (
                 label, lost_pb, n, lost_note, n), True if not lost_pb and not lost_note else 'INFO')
             self.extra.setdefault('clockloss', {})['%s via %s' % (label, self.io.out_name)] = {'pb_lost': lost_pb, 'notes_lost': lost_note, 'n': n}
+        def aimed(label, first):
+            period = 60 / 160 / 24
+            lost_pb, lost_note = 0, 0
+
+            def at(t):
+                while True:
+                    left = t - time.perf_counter()
+                    if left <= 0:
+                        return
+                    if left > 0.002:
+                        time.sleep(left - 0.0015)
+
+            nxt = time.perf_counter() + period
+            for k in range(n):
+                v = (k % 2 * 2 - 1) * (300 + (k * 53) % 7000)
+                note = 48 + k % 48
+                pb = self.msg('A', 'PB', v)
+                on, off = (0x90 | self.tin('H'), note, 90), (0x80 | self.tin('H'), note, 0)
+                m = self.io.mark()
+                at(nxt - (0.0001 + random.random() * 0.0006))
+                self.state['A']['PB'] = v
+                for x in ((pb, on) if first == 'PB' else (on, pb)):
+                    self.io.send(bytes(x))
+                at(nxt)
+                self.io.send(b'\xf8')
+                nxt += period
+                at(nxt - period / 2)
+                self.io.send(bytes(off))
+                for _ in range(2):              # two more clock ticks, away from anything else
+                    at(nxt)
+                    self.io.send(b'\xf8')
+                    nxt += period
+                at(nxt - period / 2)
+                got = self.io.since(m)
+                if not any(self.key(x) == (o_a, 'PB') for _, x in got):
+                    lost_pb += 1
+                if not any((x[0] & 0xF0) == 0x90 and (x[0] & 15) == o_h and x[1] == note and x[2] for _, x in got):
+                    lost_note += 1
+            self.fold()
+            self.check(P, '%s: live pitch bends with no answer %d of %d; stock notes lost %d of %d' % (
+                label, lost_pb, n, lost_note, n), True if not lost_pb and not lost_note else 'INFO')
+            self.extra.setdefault('clockloss', {})['%s via %s' % (label, self.io.out_name)] = {'pb_lost': lost_pb, 'notes_lost': lost_note, 'n': n}
+
         run('clock stopped')
         stop = threading.Event()
 
@@ -545,6 +589,11 @@ class Qual:
         wait(0.3)
         stop.set()
         th.join()
+        # The clock byte on purpose inside a message: sent 0.1 to 0.7 ms after it, so on a DIN
+        # cable it lands among the message's bytes (one byte takes 0.32 ms). Once inside the
+        # pitch bend (the mod's path), once inside the note (stock's alone).
+        aimed('clock byte inside the pitch bend', 'PB')
+        aimed('clock byte inside the note', 'note')
         self.reset_inputs()
 
     def probe(self, P, when):
@@ -691,7 +740,7 @@ class Qual:
             fh.write('\n'.join(self.log) + '\n')
         ev = []
         for p in self.ports:
-            ev += [(t, 'out ' + p.out_name, m) for t, m in p.tx if m != b'\xf8']
+            ev += [(t, 'out ' + p.out_name, m) for t, m in p.tx]      # the clock sent too: its timing
             ev += [(t, 'in ' + p.in_name, m) for t, m in p.rx if m != b'\xf8']
         ev.sort(key=lambda e: e[0])
         t0 = ev[0][0] if ev else 0
