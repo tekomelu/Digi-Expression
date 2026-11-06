@@ -76,7 +76,7 @@ MIDI track C (TRK + trig 11): CHAN on, channel {oc}.
 
 On tracks B and C make sure CC VAL1 / CC VAL2 (FLTR page) are switched on (a value, not --).
 
-Audio track 1: any sustained sample (a pad or a long tone).
+Audio track 1: a sample of 3 seconds or more (a pad), or any bright sample with LOOP on.
   EXPRESSION: BEND 2.00, V.SNS 100 %,
     MW -> FLTR:FREQUENCY, M.DEP +64.00 (set the filter low so you hear it open)
     AT -> AMP:VOLUME,     A.DEP -64.00
@@ -581,19 +581,21 @@ class Qual:
         c, P = self.cfg, 'ears'
         self.note('\n== ears: audio track 1 (BEND 2.00, MW to filter frequency +64, AT to volume -64)')
         ch = c['audio']
-        ask('Select audio track 1, volume at a comfortable level. Enter; the program holds a note.')
-        self.send(self.on(ch, 60, 100))
-        wait(0.5)
-        for v in list(range(8192, 16384, 256)) + [16383] * 10 + list(range(16383, 0, -256)) + [0] * 10 + list(range(0, 8193, 256)):
-            self.send(self.pb(ch, min(v, 16383)), gap=0.01)
+        ask('Select audio track 1, volume at a comfortable level. Enter; the program plays a note for each sweep.')
+        def sweep(msgs, gap):
+            self.send(self.on(ch, 60, 100))         # a fresh note per sweep: an unlooped sample has its length
+            wait(0.3)
+            for m in msgs:
+                self.send(m, gap=gap)
+            wait(0.2)
+            self.send(self.off(ch, 60))
+        up = list(range(8192, 16384, 512)) + [16383] * 5 + list(range(16383, 0, -512)) + [0] * 5 + list(range(0, 8193, 512))
+        sweep([self.pb(ch, min(v, 16383)) for v in up], 0.02)
         self.answer(P, 'The pitch rose about a whole tone (2 semitones), fell a whole tone below, came back?')
-        for v in list(range(0, 128, 2)) + list(range(127, -1, -2)):
-            self.send(self.cc(ch, 1, v), gap=0.02)
+        sweep([self.cc(ch, 1, v) for v in list(range(0, 128, 4)) + list(range(127, -1, -4))], 0.03)
         self.answer(P, 'The mod wheel opened the filter and closed it again?')
-        for v in list(range(0, 128, 2)) + list(range(127, -1, -2)):
-            self.send(self.at(ch, v), gap=0.02)
+        sweep([self.at(ch, v) for v in list(range(0, 128, 4)) + list(range(127, -1, -4))], 0.03)
         self.answer(P, 'Aftertouch turned the volume down and back up?')
-        self.send(self.off(ch, 60))
         self.reset_inputs()
         ask('On audio track 1\'s EXPRESSION page set V.SNS to 0 %. Enter; the program plays soft and loud notes.')
         for v in (10, 127, 10, 127):
