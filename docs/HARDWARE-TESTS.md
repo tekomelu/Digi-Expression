@@ -62,10 +62,11 @@ On the author's Digitakt mk1, OS 1.54, DIN (through a USB MIDI interface) and US
 | latency: pitch bend round trip | USB to USB 0.9 ms, DIN to USB 1.9 ms, USB to DIN 2.0 ms, DIN to DIN 2.9 ms |
 | seq: the sequencer started over MIDI | its notes out, live input exact while it plays |
 | clockloss: live input with external clock, a clock byte inside a message | over USB nothing lost; over DIN nothing lost once the interface's fault was kept out of the way (below) |
+| flood: 15,511 messages in 20 s to all eight tracks, sequencer playing at 160 BPM (over USB, OUTPUT TO USB) | no stuck notes, every message well formed, the model exact afterwards, the screen and keys kept up |
 | persist: loading, power cycle, unsaved change, CREATE NEW with the default presets | as set |
 | ui and ears: the page, TRIG held, BEND, the preset menu and naming, listening on the audio tracks | by eye and ear, as expected |
 
-Every loss seen over DIN was traced to the test setup, not the mod: the interface drops the message after a clock byte (run 4 lost 300 of 300 with no Digitakt connected), and once a loose cable set bits in the bytes reaching the Digitakt. The flood (20 s at the DIN wire rate with clock) lost note offs the same way in its first runs; it is to be repeated with the clock guard.
+Every loss seen over DIN was traced to the test setup, not the mod: the interface drops the message after a clock byte (run 4 lost 300 of 300 with no Digitakt connected), and once a loose cable set bits in the bytes reaching the Digitakt. The flood lost note offs the same way in its first runs over DIN; over USB it passed everything.
 
 ## Not covered by the program
 
