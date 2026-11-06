@@ -70,63 +70,77 @@ Every destination adds to the track's own value (its knob, parameter locks and L
 <b>Audio track mod destinations</b><br>
 <img src="docs/img/expression-audio-list.png" alt="The audio destination list"><br>
 <small>
-SRC: TUNE<br>
-SRC: BIT REDUCTION<br>
-SRC: START<br>
-SRC: LENGTH<br>
-SRC: SAMPLE LEVEL<br>
-FLTR: FREQUENCY<br>
-FLTR: RESONANCE<br>
-FLTR: ENV. DEPTH<br>
-FLTR: ATTACK TIME<br>
-FLTR: DECAY TIME<br>
-FLTR: SUSTAIN LEVEL<br>
-FLTR: RELEASE TIME<br>
-FLTR: BASE<br>
-FLTR: WIDTH<br>
-FLTR: ENV. DELAY<br>
-FLTR: SAMPLE-RATE REDUX<br>
-AMP: ATTACK TIME<br>
-AMP: HOLD TIME<br>
-AMP: DECAY TIME<br>
-AMP: OVERDRIVE<br>
-AMP: DELAY SEND<br>
-AMP: REVERB SEND<br>
-AMP: PAN<br>
-AMP: VOLUME<br>
-LFO1: SPEED<br>
-LFO1: MULTIPLIER<br>
-LFO1: FADE IN/OUT<br>
-LFO1: START PHASE<br>
-LFO1: DEPTH<br>
-LFO2: SPEED<br>
-LFO2: MULTIPLIER<br>
-LFO2: FADE IN/OUT<br>
-LFO2: START PHASE<br>
-LFO2: DEPTH
+<ins>SOURCE</ins><br>
+TUNE<br>
+BIT REDUCTION<br>
+START<br>
+LENGTH<br>
+SAMPLE LEVEL<br>
+<br>
+<ins>FILTER</ins><br>
+FREQUENCY<br>
+RESONANCE<br>
+ENV. DEPTH<br>
+ATTACK TIME<br>
+DECAY TIME<br>
+SUSTAIN LEVEL<br>
+RELEASE TIME<br>
+BASE<br>
+WIDTH<br>
+ENV. DELAY<br>
+SAMPLE-RATE REDUX<br>
+<br>
+<ins>AMP</ins><br>
+ATTACK TIME<br>
+HOLD TIME<br>
+DECAY TIME<br>
+OVERDRIVE<br>
+DELAY SEND<br>
+REVERB SEND<br>
+PAN<br>
+VOLUME<br>
+<br>
+<ins>LFO 1</ins><br>
+SPEED<br>
+MULTIPLIER<br>
+FADE IN/OUT<br>
+START PHASE<br>
+DEPTH<br>
+<br>
+<ins>LFO 2</ins><br>
+SPEED<br>
+MULTIPLIER<br>
+FADE IN/OUT<br>
+START PHASE<br>
+DEPTH
 </small>
 </td>
 <td width="50%" valign="top">
 <b>MIDI track mod destinations</b><br>
 <img src="docs/img/expression-midi-list-cc.png" alt="The MIDI destination list"><br>
 <small>
-SRC: PITCH BEND<br>
-SRC: AFTERTOUCH<br>
-SRC: MOD WHEEL<br>
-SRC: BC (breath, CC 2)<br>
-CC: CC1 VAL<br>
-CC: CC2 VAL<br>
-CC: CC3 VAL<br>
-CC: CC4 VAL<br>
-CC: CC5 VAL<br>
-CC: CC6 VAL<br>
-CC: CC7 VAL<br>
-CC: CC8 VAL<br>
-LFO: SPEED<br>
-LFO: MULTIPLIER<br>
-LFO: FADE IN/OUT<br>
-LFO: START PHASE<br>
-LFO: DEPTH
+<ins>SOURCE</ins><br>
+PITCH BEND<br>
+AFTERTOUCH<br>
+MOD WHEEL<br>
+BC (breath, CC 2)<br>
+<br>
+<ins>CC</ins><br>
+CC1 VAL<br>
+CC2 VAL<br>
+CC3 VAL<br>
+CC4 VAL<br>
+CC5 VAL<br>
+CC6 VAL<br>
+CC7 VAL<br>
+CC8 VAL<br>
+<br>
+<ins>LFO</ins><br>
+SPEED<br>
+MULTIPLIER<br>
+FADE IN/OUT<br>
+START PHASE<br>
+DEPTH
 </small><br><br>
 </td>
 </tr>
@@ -206,7 +220,9 @@ The research behind every address is in [docs/RESEARCH-OS154.md](docs/RESEARCH-O
 
 ## Status and tests
 
-Experimental. Tested with about 2.4 million host unit checks (including thousands of random broken files), on the firmware in the [digiemu](https://github.com/irpina/digiemu) emulator (MIDI-track sums and merging, saving and loading through the firmware's own menus, the preset menu, memory and CPU use), and on the author's own Digitakt (mk1, OS 1.54): every feature, over DIN MIDI and USB MIDI, sequencing several synths at once, saving and loading projects and presets, plus a hardware stress test of the MIDI tracks, 25 of 25. Details: [module/midi-expression/TESTING.md](module/midi-expression/TESTING.md).
+Experimental. Tested with about 2.4 million host unit checks (including thousands of random broken files), on the firmware in the [digiemu](https://github.com/irpina/digiemu) emulator (MIDI-track sums and merging, saving and loading through the firmware's own menus, the preset menu, memory and CPU use), and on the author's own Digitakt (mk1, OS 1.54) with 0.12.4.
+
+**On the hardware** ([docs/HARDWARE-TESTS.md](docs/HARDWARE-TESTS.md), November 2026): all eight MIDI tracks set up to test a different part of the mod and checked value by value against a model, over DIN and USB at once, both outputs carrying exactly the same messages: pass-through, routes to CC VALs, pitch bend, aftertouch and the mod wheel, merging, THRU OFF, V.SNS and velocity routes, 3,000 random messages, the sequencer started over MIDI, live input with external clock running; saving, loading, power cycles and CREATE NEW with the default presets; the page and the preset menu by eye. Round trip: 0.9 ms USB to USB, 2.0 ms DIN to DIN through the interface.
 
 **Resources** (emulator): no memory is allocated, and hundreds of file writes and reads leave the firmware's heap exactly as it was. CPU in the module area: about 1.2 % of the emulated CPU idle and 1.8 % with every route of every track live under a flood of MIDI at the wire rate (the emulator counts 64 million instructions a second; the unit's CPU is faster). RAM: in an image of its own, 93 KB of the module area stay free; 1.0 KB beside Digi Slicer.
 
@@ -221,13 +237,9 @@ scripts/build-mod.sh "$PWD/build/midi-expression.syx"
 
 The image is built from your OS file and stays on your computer. Send it with Elektron Transfer. To go back, hold FUNC at power-on, choose OS UPGRADE and send the stock OS.
 
-### Hardware stress test
+### Hardware tests
 
-`scripts/hwstress.py` plays expression, notes and floods into the Digitakt's MIDI IN, records everything from its MIDI OUT, and checks it. No synth is needed: the Digitakt's MIDI OUT goes back to the computer (Python 3 with `python-rtmidi`).
-
-- **Cables:** interface MIDI OUT → Digitakt MIDI IN, Digitakt MIDI OUT → interface MIDI IN. Check the loop first: `scripts/hwping.py "<port>"` must print what came back.
-- **Project (a scratch project):** SETTINGS > MIDI CONFIG > SYNC: CLOCK SEND on; PORT CONFIG: RECEIVE NOTES and RECEIVE CC/NRPN on. MIDI track A: CHAN 1; SRC PB 0, AT 0, MW 10, BC 0; FLTR VAL1 10, VAL2 0, VAL3 0; AMP SEL1 1, SEL2 74, SEL3 2; trigs on steps 1, 5, 9 and 13; LFO DEST none. Its EXPRESSION page at the defaults (THRU ON, V.SNS 100 %, no routes, depths 0).
-- **Run:** `scripts/hwstress.py --in "<port>" --out "<port>"`, optionally `--only own,thru,release,routes,sens,seq,lfo,record` to leave out the flood. It asks for a few page changes on the way. Results go to `results/hardware/stress-<date>/`.
+`scripts/hwqual.py` tests a unit over DIN and USB: set up the test project as [docs/TEST-SETUP.md](docs/TEST-SETUP.md) describes, then follow [docs/HARDWARE-TESTS.md](docs/HARDWARE-TESTS.md). Check the MIDI interface and cables first (`scripts/loopback.py`, `scripts/hwcheck.py`).
 
 ## Licence
 

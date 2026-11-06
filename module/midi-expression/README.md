@@ -141,7 +141,7 @@ All twelve sites are claimed in `build.json`; no other Modwerk Digitakt module p
 
 ## Tests
 
-See [TESTING.md](TESTING.md). Host unit tests and the emulator for everything; on a unit, every feature over DIN MIDI and USB MIDI, sequencing several synths at once (saving, presets and the MIDI LFO destinations included), and the MIDI-track stress test (0.9.2, 25 of 25).
+See [TESTING.md](TESTING.md). Host unit tests and the emulator for everything; on a unit, every feature over DIN MIDI and USB MIDI, sequencing several synths at once (saving, presets and the MIDI LFO destinations included), the MIDI-track stress test (0.9.2, 25 of 25), and on 0.12.4 the full `hwqual.py` run over DIN and USB at once (all eight MIDI tracks exact against a model).
 
 ## Credits
 

@@ -50,6 +50,23 @@ Each run writes `results/hardware/qual-LABEL-DATE/`: `summary.md` (the table for
 
 Check the interface before blaming the Digitakt. Run 4 (`loopback.py`) found that the interface used here (a 4-in, 4-out USB interface) drops on its DIN output any message that follows a clock byte within about 0.3 ms, 300 of 300, with no Digitakt connected. So `hwqual.py` holds every message back until 0.4 ms after a clock byte; with an interface that passes run 4, that guard does nothing. A loose MIDI cable corrupted bytes too (a bit set, or a message lost): `hwcheck.py --out "INTERFACE"` shows it in 10 seconds, so run it after any re-cabling.
 
+## Results: 0.12.4, November 2026
+
+On the author's Digitakt mk1, OS 1.54, DIN (through a USB MIDI interface) and USB at once:
+
+| Phase | Result |
+| --- | --- |
+| tracks: all eight MIDI tracks, every value against the model | exact over DIN and USB; both outputs carry the same messages |
+| notes: V.SNS 100 / 50 / 25 / 0 %, velocity routes before their note | exact |
+| multi: 3,000 random messages to all eight tracks | the model exact afterwards |
+| latency: pitch bend round trip | USB to USB 0.9 ms, DIN to USB 1.9 ms, USB to DIN 2.0 ms, DIN to DIN 2.9 ms |
+| seq: the sequencer started over MIDI | its notes out, live input exact while it plays |
+| clockloss: live input with external clock, a clock byte inside a message | over USB nothing lost; over DIN nothing lost once the interface's fault was kept out of the way (below) |
+| persist: loading, power cycle, unsaved change, CREATE NEW with the default presets | as set |
+| ui and ears: the page, TRIG held, BEND, the preset menu and naming, listening on the audio tracks | by eye and ear, as expected |
+
+Every loss seen over DIN was traced to the test setup, not the mod: the interface drops the message after a clock byte (run 4 lost 300 of 300 with no Digitakt connected), and once a loose cable set bits in the bytes reaching the Digitakt. The flood (20 s at the DIN wire rate with clock) lost note offs the same way in its first runs; it is to be repeated with the clock guard.
+
 ## Not covered by the program
 
 Write a line in the notes for each one you try:
