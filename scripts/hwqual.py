@@ -43,7 +43,7 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
 from hwtest import Io, ask, hexs, wait, ROOT  # noqa: E402
 
-VERSION = '0.12.2-experimental'
+VERSION = '0.12.3-experimental'
 SETTLE = 0.06                   # the Digitakt answers in about 4..40 ms
 
 SETUP = '''
@@ -666,7 +666,9 @@ class Qual:
             'Depths turn finely; FUNC + turn jumps in 16s; destination lists open and close with the knob',
             'Holding knob A for a second opens the preset menu; a twist while holding cancels it',
             'In LOAD / SAVE lists the LEVEL knob moves one row a detent',
-            'SAVE: FUNC, pick a letter, let go writes it and moves on (type FAST); FUNC + YES/NO insert/delete',
+            'SAVE: FUNC, pick a letter, let go writes it and moves on (type FAST)',
+            'SAVE name: holding an arrow repeats; FUNC + NO deletes the letter before the cursor; FUNC + YES inserts a space, as SAVE PROJECT AS',
+            'Holding UP or DOWN scrolls the LOAD / SAVE lists',
             'SAVE over a used slot asks first; NO goes back without saving',
             'LOAD puts the preset on the current track only; other tracks unchanged',
             'RESET TO DEFAULT asks first and resets only the current track',

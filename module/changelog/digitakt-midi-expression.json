@@ -1,5 +1,13 @@
 [
   {
+    "version": "0.12.3-experimental",
+    "date": "2026-11-06",
+    "changes": [
+      "Preset names edit as on the stock SAVE PROJECT AS screen: hold an arrow and it repeats, FUNC + NO deletes the letter before the cursor, FUNC + YES inserts a space and the cursor stays on its letter, and the cursor can move past the end of the name.",
+      "Holding UP or DOWN scrolls the preset lists."
+    ]
+  },
+  {
     "version": "0.12.2-experimental",
     "date": "2026-11-06",
     "changes": [

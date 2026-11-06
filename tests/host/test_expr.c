@@ -1323,6 +1323,23 @@ int main(void)
         strcpy(edit_name, "ABCDEFGHIJKL"); edit_pos = ME_NAME_LEN - 1;
         h_func_held = 1; KEY(1, 1, 0); h_func_held = 0; KEY(1, 0, 0);
         CHECK(edit_pos == ME_NAME_LEN - 1 && edit_name[ME_NAME_LEN] == 0, "the last place: the cursor stays (%d)", edit_pos);
+        // as the stock SAVE PROJECT AS screen: FUNC + NO deletes the letter before the cursor
+        strcpy(edit_name, "NEW PROJECT"); edit_pos = 2;
+        h_func_held = 1; KEY(1, 1, 0); KEY(K_NO, 1, 0); KEY(K_NO, 0, 0);
+        CHECK(!strcmp(edit_name, "NW PROJECT") && edit_pos == 1, "FUNC + NO: the letter before the cursor (%s %d)", edit_name, edit_pos);
+        KEY(K_NO, 1, 0); KEY(K_NO, 0, 0); KEY(K_NO, 1, 0); KEY(K_NO, 0, 0);
+        CHECK(!strcmp(edit_name, " PROJECT") && edit_pos == 0, "FUNC + NO at the first place: the one under it (%s %d)", edit_name, edit_pos);
+        KEY(K_YES, 1, 0); KEY(K_YES, 0, 0);
+        CHECK(!strcmp(edit_name, "  PROJECT") && edit_pos == 1 && me_menu == M_NAME, "FUNC + YES: a space, the cursor stays on its letter (%s %d)", edit_name, edit_pos);
+        h_func_held = 0; KEY(1, 0, 0);
+        CHECK(!strcmp(edit_name, "  PROJECT") && edit_pos == 1, "letting go of FUNC after FUNC + YES/NO writes nothing (%s %d)", edit_name, edit_pos);
+        strcpy(edit_name, "AB"); edit_pos = 1;
+        KEY(K_RIGHT, 1, 0); KEY(K_RIGHT, 1, 1); KEY(K_RIGHT, 1, 1); KEY(K_RIGHT, 0, 0);
+        CHECK(edit_pos == 4, "RIGHT held: the firmware's repeats move on, past the end too (%d)", edit_pos);
+        KEY(K_UP, 1, 0); KEY(K_UP, 1, 1); KEY(K_UP, 0, 0);
+        CHECK(!strcmp(edit_name, "AB  B") && edit_pos == 4, "UP held past the end: spaces fill the gap, the letter steps twice (%s)", edit_name);
+        KEY(K_YES, 1, 1);
+        CHECK(me_menu == M_NAME, "a repeat of YES does nothing");
         // a twist of A while held: a nudge keeps the menu coming, a real turn cancels it
         reset(); OPEN();
         KEY(40, 1, 0); h_push_held = 1;

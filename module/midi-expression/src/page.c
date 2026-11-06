@@ -845,7 +845,7 @@ static void draw_menu(void *bmp, int t)
         line[n] = 0;
         box(bmp, 20, 30, 122, 43);
         TEXT(bmp, TITLE_FONT, 23, 34, -1, "%s", line);
-        for (int i = 0; i < 3 + edit_pos; i++) pre[i] = line[i];
+        for (int i = 0; i < 3 + edit_pos; i++) pre[i] = i < n ? line[i] : ' ';   // past the end: spaces
         pre[3 + edit_pos] = 0;
         char c[2] = { edit_pos < len ? edit_name[edit_pos] : ' ', 0 };
         int x0 = 23 + text_width(TITLE_FONT, pre) + 1, w = c[0] == ' ' ? 3 : text_width(TITLE_FONT, c);
@@ -904,16 +904,23 @@ static int char_index(char c)
     return 0;
 }
 
+// The cursor may stand past the name's end, as on the stock naming screen:
+// writing there fills the gap with spaces (trimmed again when saved).
+static int name_pad(void)
+{
+    int len = 0;
+    while (edit_name[len]) len++;
+    while (len <= edit_pos && len < ME_NAME_LEN)
+        edit_name[len++] = ' ';
+    edit_name[len] = 0;
+    return edit_pos < len;
+}
+
 static void name_change(int d)
 {
     int n = (int)sizeof name_chars - 1;
-    int len = 0;
-    while (edit_name[len]) len++;
-    if (edit_pos >= len) {              // past the end: a new character
-        if (len >= ME_NAME_LEN) return;
-        edit_name[len] = ' ';
-        edit_name[len + 1] = 0;
-    }
+    if (!name_pad())
+        return;
     int i = (char_index(edit_name[edit_pos]) + d % n + n) % n;
     edit_name[edit_pos] = name_chars[i];
 }
@@ -976,12 +983,14 @@ static void menu_yes(int t)
         break;
     }
     case M_NAME:
-        if (KEYHELD(K_FUNC)) {          // FUNC + YES: insert a space at the cursor
+        if (KEYHELD(K_FUNC)) {          // FUNC + YES: insert a space; the cursor stays on its letter, as stock
+            grid_on = 0;                // and letting go of FUNC then writes nothing
             int len = 0;
             while (edit_name[len]) len++;
-            if (len < ME_NAME_LEN && edit_pos <= len) {
+            if (len < ME_NAME_LEN && edit_pos < len) {
                 for (int i = len; i >= edit_pos; i--) edit_name[i + 1] = edit_name[i];
                 edit_name[edit_pos] = ' ';
+                if (edit_pos < ME_NAME_LEN - 1) edit_pos++;
             }
             break;
         }
@@ -1008,8 +1017,13 @@ static void menu_yes(int t)
 static void menu_no(void)
 {
     int m = me_menu;
-    if (m == M_NAME && KEYHELD(K_FUNC)) {   // FUNC + NO: delete at the cursor
-        for (int i = edit_pos; edit_name[i]; i++) edit_name[i] = edit_name[i + 1];
+    if (m == M_NAME && KEYHELD(K_FUNC)) {   // FUNC + NO: delete as stock: the letter before the cursor
+        grid_on = 0;                    // and letting go of FUNC then writes nothing
+        int len = 0, at = edit_pos > 0 ? edit_pos - 1 : 0;   // (at the first place, the one under it)
+        while (edit_name[len]) len++;
+        if (at < len)
+            for (int i = at; edit_name[i]; i++) edit_name[i] = edit_name[i + 1];
+        if (edit_pos > 0) edit_pos--;
         return;
     }
     me_menu = m == M_MAIN ? M_OFF : m == M_NAME ? M_SAVE : m == M_OVERWRITE ? M_NAME : M_MAIN;
@@ -1036,11 +1050,7 @@ static int menu_key(void *ev, int t)
                 grid_on = 1;
             } else if (!KEYDOWN(ev) && grid_on) {   // letting go: the picked character
                 grid_on = 0;
-                int len = 0;
-                while (edit_name[len]) len++;
-                if (edit_pos >= len && len < ME_NAME_LEN)
-                    edit_name[len] = ' ', edit_name[len + 1] = 0;
-                if (edit_pos < ME_NAME_LEN)
+                if (name_pad())
                     edit_name[edit_pos] = grid_chars[grid_cur];
                 if (edit_pos < ME_NAME_LEN - 1)
                     edit_pos++;         // on to the next place, as the stock naming screen
@@ -1058,7 +1068,9 @@ static int menu_key(void *ev, int t)
             close_page();
         return id == K_TRIG ? 1 : 0;
     }
-    if (!press)
+    int arrow = id == K_UP || id == K_DOWN || id == K_LEFT || id == K_RIGHT;
+    int repeat = (*(int *)((char *)(ev) + 16) & 9) == 9;   // held: the firmware's own repeat, as stock
+    if (!press && !(arrow && repeat))
         return 1;
     int grid = me_menu == M_NAME && grid_on && KEYHELD(K_FUNC);
     switch (id) {
@@ -1077,10 +1089,8 @@ static int menu_key(void *ev, int t)
     case K_RIGHT:
         if (grid) {
             grid_cur = (grid_cur + 1) % ((int)sizeof grid_chars - 1);
-        } else if (me_menu == M_NAME) {
-            int len = 0;
-            while (edit_name[len]) len++;
-            if (edit_pos < len && edit_pos < ME_NAME_LEN - 1) edit_pos++;
+        } else if (me_menu == M_NAME && edit_pos < ME_NAME_LEN - 1) {
+            edit_pos++;                 // past the end too, as stock
         }
         break;
     case K_NO:    menu_no(); break;
