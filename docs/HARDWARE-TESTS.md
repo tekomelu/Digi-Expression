@@ -41,7 +41,7 @@ Each run writes `results/hardware/qual-LABEL-DATE/`: `summary.md` (the table for
 
 - **persist:** a short probe of track B and C's settings, before and after loading another project and back, after a power cycle, and after an unsaved change and a reload (the saved value comes back). Two questions: a project saved under a new name keeps its own settings, and deleting another project changes nothing.
 
-**By ear (about 3 minutes):**
+**By ear (optional, `--only ears`; about 3 minutes):**
 
 - **ears:** audio track 1 bends a whole tone each way, the wheel opens the filter, aftertouch turns the volume down, V.SNS 0 % plays soft and loud notes alike, and another audio track is not affected.
 

@@ -22,9 +22,9 @@ Phases (--only takes a comma list or a group):
   play     seq, flood (the program starts and stops the sequencer itself)
   auto     the auto channel and track changes (you select tracks; not in all)
   persist  power-cycle and reload: the settings come back
-  ears     audio tracks, by ear
+  ears     audio tracks, by ear (not in all)
   ui       the page, presets and 0.12's changes, by eye
-  all      everything (the default)
+  all      core, play, persist, ui (the default)
 
 Writes results/hardware/qual-<label>-<date-time>/: report.json (every check,
 the timing and your notes), summary.md (for the Modwerk hardware report),
@@ -719,7 +719,7 @@ class Qual:
 
 GROUPS = {'core': ['thru', 'routes', 'merge', 'multi', 'latency'], 'play': ['seq', 'flood'],
           'persist': ['persist'], 'ears': ['ears'], 'ui': ['ui']}
-GROUPS['all'] = GROUPS['core'] + GROUPS['play'] + GROUPS['persist'] + GROUPS['ears'] + GROUPS['ui']
+GROUPS['all'] = GROUPS['core'] + GROUPS['play'] + GROUPS['persist'] + GROUPS['ui']   # ears and auto: --only
 
 
 def main():
