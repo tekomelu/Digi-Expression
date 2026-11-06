@@ -43,7 +43,7 @@ Anything not listed stays at its default: THRU ON, V.SNS 100 %, every source to 
 | **C** | 11 | 3 | AMP: SEL2 = 1; FLTR: VAL2 = 100 | THRU OFF; MW → CC:CC2 VAL (#1) −32.00 | a negative route merged with the track's own CC 1; THRU OFF |
 | **D** | 12 | 4 | AMP: SEL3 = 71; FLTR: VAL3 = 100 | THRU ON, V.SNS 0 %; MW → SRC:PITCH BEND +64.00; AT → CC:CC3 VAL (#71) −64.00 | the wheel to pitch bend at full depth, a full negative route, V.SNS 0 % |
 | **E** | 13 | 5 | — | THRU ON; MW → SRC:AFTERTOUCH +64.00 | one source added to another's pass-through |
-| **F** | 14 | 6 | SRC: MW = 100 | THRU OFF, V.SNS 25 %; AT → SRC:MOD WHEEL −64.00 | a route taking the track's own wheel down; THRU OFF; V.SNS 25 % |
+| **F** | 14 | 6 | SRC: MW = 100 | THRU OFF, V.SNS 25 %; **AT** (the third knob, G) → SRC:MOD WHEEL, A.DEP −64.00; MW stays None | a route taking the track's own wheel down; THRU OFF; V.SNS 25 % |
 | **G** | 15 | 7 | AMP: SEL4 = 2 | THRU ON; AT → CC:CC4 VAL (#2) +32.00 | a route merged with breath's own pass-through on CC 2 |
 | **H** | 16 | 8 | — | THRU OFF, no routes | nothing passes but the notes |
 

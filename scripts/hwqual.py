@@ -476,7 +476,8 @@ class Qual:
             count += 1
             wait(0.001)
         for ch, n in list(held):
-            self.send((0x80 | ch, n, 0), gap=0)
+            self.send((0x80 | ch, n, 0), gap=0.002)
+        wait(0.5)                               # the note offs through DIN before STOP
         self.transport(False)
         self.extra['flood'] = {'messages_sent': count, 'seconds': seconds}
         self.settle(0.8)
@@ -495,6 +496,55 @@ class Qual:
             self.compare(t, '%s after the flood' % t)
         self.check(P, 'after the flood every track\'s outputs are the model\'s', not self.fails, '; '.join(self.fails[:6]))
         self.mirrored(P, marks, 'flood', info=True)
+        self.reset_inputs()
+
+    def clockloss(self, n=300):
+        """Do live inputs get lost while clock runs into the Digitakt? Each input should get one answer.
+        Notes to track H (THRU OFF: only stock passes them) are the stock baseline."""
+        P = 'clockloss'
+        self.note('\n== clockloss: %d inputs each with the clock stopped, the clock running, and the sequencer playing' % n)
+        o_a, o_h = self.tout('A'), self.tout('H')
+
+        def run(label):
+            lost_pb, lost_note = 0, 0
+            for k in range(n):
+                v = (k % 2 * 2 - 1) * (300 + (k * 53) % 7000)
+                m = self.io.mark()
+                self.play('A', 'PB', v, gap=0)
+                note = 36 + k % 48
+                self.send((0x90 | self.tin('H'), note, 90), gap=0)
+                wait(0.012 + random.random() * 0.02)
+                self.send((0x80 | self.tin('H'), note, 0), gap=0)
+                wait(0.012)
+                got = self.io.since(m)
+                if not any(self.key(x) == (o_a, 'PB') for _, x in got):
+                    lost_pb += 1
+                if not any((x[0] & 0xF0) == 0x90 and (x[0] & 15) == o_h and x[1] == note and x[2] for _, x in got):
+                    lost_note += 1
+            self.fold()
+            self.check(P, '%s: live pitch bends with no answer %d of %d; stock notes lost %d of %d' % (
+                label, lost_pb, n, lost_note, n), True if not lost_pb and not lost_note else 'INFO')
+            self.extra.setdefault('clockloss', {})['%s via %s' % (label, self.io.out_name)] = {'pb_lost': lost_pb, 'notes_lost': lost_note, 'n': n}
+        run('clock stopped')
+        stop = threading.Event()
+
+        def tick():
+            nxt = time.perf_counter()
+            while not stop.is_set():
+                self.io.send(b'\xf8')
+                nxt += 60 / 160 / 24
+                time.sleep(max(0, nxt - time.perf_counter()))
+        th = threading.Thread(target=tick, daemon=True)
+        th.start()
+        wait(0.3)
+        run('clock running, sequencer stopped')
+        self.io.send(b'\xfa')
+        wait(0.2)
+        run('clock running, sequencer playing')
+        self.io.send(b'\xfc')
+        wait(0.3)
+        stop.set()
+        th.join()
         self.reset_inputs()
 
     def probe(self, P, when):
@@ -668,10 +718,10 @@ class Qual:
             print('  FAIL %s: %s  %s' % (r['phase'], r['check'], r['detail']))
 
 
-GROUPS = {'core': ['tracks', 'notes', 'multi', 'latency'], 'play': ['seq', 'flood'],
+GROUPS = {'core': ['tracks', 'notes', 'multi', 'latency'], 'play': ['seq', 'clockloss', 'flood'],
           'persist': ['persist'], 'ui': ['ui'], 'ears': ['ears'], 'auto': ['auto']}
 GROUPS['all'] = GROUPS['core'] + GROUPS['play'] + GROUPS['persist'] + GROUPS['ui']
-SECOND_PASS = ('tracks', 'notes', 'multi', 'latency', 'seq')     # repeated, sending on the second connection
+SECOND_PASS = ('tracks', 'notes', 'multi', 'latency', 'seq', 'clockloss')     # repeated, sending on the second connection
 
 
 def main():
