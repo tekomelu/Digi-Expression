@@ -526,7 +526,7 @@ class Qual:
             self.check(P, '%s: live pitch bends with no answer %d of %d; stock notes lost %d of %d' % (
                 label, lost_pb, n, lost_note, n), True if not lost_pb and not lost_note else 'INFO')
             self.extra.setdefault('clockloss', {})['%s via %s' % (label, self.io.out_name)] = {'pb_lost': lost_pb, 'notes_lost': lost_note, 'n': n}
-        def aimed(label, first):
+        def aimed(label, first, before=False):
             period = 60 / 160 / 24
             lost_pb, lost_note = 0, 0
 
@@ -545,12 +545,20 @@ class Qual:
                 pb = self.msg('A', 'PB', v)
                 on, off = (0x90 | self.tin('H'), note, 90), (0x80 | self.tin('H'), note, 0)
                 m = self.io.mark()
-                at(nxt - (0.0001 + random.random() * 0.0006))
                 self.state['A']['PB'] = v
-                for x in ((pb, on) if first == 'PB' else (on, pb)):
-                    self.io.send(bytes(x))
-                at(nxt)
-                self.io.send(b'\xf8')
+                pair = (pb, on) if first == 'PB' else (on, pb)
+                if before:                      # the clock byte, then the pair 0.02 to 0.25 ms later
+                    at(nxt)
+                    self.io.send(b'\xf8')
+                    at(nxt + 0.00002 + random.random() * 0.00023)
+                    for x in pair:
+                        self.io.send(bytes(x))
+                else:                           # the pair, then the clock byte 0.1 to 0.7 ms later
+                    at(nxt - (0.0001 + random.random() * 0.0006))
+                    for x in pair:
+                        self.io.send(bytes(x))
+                    at(nxt)
+                    self.io.send(b'\xf8')
                 nxt += period
                 at(nxt - period / 2)
                 self.io.send(bytes(off))
@@ -590,10 +598,13 @@ class Qual:
         stop.set()
         th.join()
         # The clock byte on purpose inside a message: sent 0.1 to 0.7 ms after it, so on a DIN
-        # cable it lands among the message's bytes (one byte takes 0.32 ms). Once inside the
-        # pitch bend (the mod's path), once inside the note (stock's alone).
+        # cable it lands among the message's bytes (one byte takes 0.32 ms); then just before
+        # it. Each time once for the pitch bend (the mod's path), once for the note (stock's alone).
         aimed('clock byte inside the pitch bend', 'PB')
         aimed('clock byte inside the note', 'note')
+        # The clock byte just before a message: in the run of 7 Nov this lost 26 of 39 pitch bends.
+        aimed('clock byte just before the pitch bend', 'PB', before=True)
+        aimed('clock byte just before the note', 'note', before=True)
         self.reset_inputs()
 
     def probe(self, P, when):

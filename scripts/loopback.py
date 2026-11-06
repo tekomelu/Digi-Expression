@@ -4,8 +4,9 @@
 No Digitakt: one MIDI cable from the interface's OUT straight to its own IN.
 Sends the same pattern as hwqual.py's clockloss phase (a pitch bend and a note
 back to back), first with no clock, then with a clock byte sent 0.1 to 0.7 ms
-after the pair, so on the cable it lands among the first message's bytes. Every
-message should come back exactly as sent.
+after the pair (on the cable it lands among the first message's bytes), then
+with the clock byte sent 0.02 to 0.25 ms before the pair. Every message should
+come back exactly as sent.
 
     ~/.venvs/dt/bin/python scripts/loopback.py --port "Portti 1"
 """
@@ -50,8 +51,11 @@ def main():
     print('in: %s\nout: %s\ncable from the interface OUT to its own IN, no Digitakt\n' % (
         mi.get_port_name(find(mi.get_ports(), a.port)), mo.get_port_name(find(mo.get_ports(), a.port))))
     total_bad = 0
-    for label, clock, first in (('no clock', False, 'PB'), ('clock byte inside the pitch bend', True, 'PB'),
-                                ('clock byte inside the note', True, 'note')):
+    for label, clock, first, before in (('no clock', False, 'PB', False),
+                                        ('clock byte inside the pitch bend', True, 'PB', False),
+                                        ('clock byte inside the note', True, 'note', False),
+                                        ('clock byte just before the pitch bend', True, 'PB', True),
+                                        ('clock byte just before the note', True, 'note', True)):
         lost = {'PB': 0, 'note': 0}
         clocks_back = 0
         nxt = time.perf_counter() + PERIOD
@@ -61,12 +65,20 @@ def main():
             note = bytes((0x9F, 48 + k % 48, 90))
             with lock:
                 rx.clear()
-            at(nxt - (0.0001 + random.random() * 0.0006))
-            for x in ((pb, note) if first == 'PB' else (note, pb)):
-                mo.send_message(list(x))
-            at(nxt)
-            if clock:
+            pair = (pb, note) if first == 'PB' else (note, pb)
+            if before:                          # the clock byte, then the pair 0.02 to 0.25 ms later
+                at(nxt)
                 mo.send_message([0xF8])
+                at(nxt + 0.00002 + random.random() * 0.00023)
+                for x in pair:
+                    mo.send_message(list(x))
+            else:                               # the pair, then the clock byte 0.1 to 0.7 ms later
+                at(nxt - (0.0001 + random.random() * 0.0006))
+                for x in pair:
+                    mo.send_message(list(x))
+                at(nxt)
+                if clock:
+                    mo.send_message([0xF8])
             nxt += PERIOD
             at(nxt - PERIOD / 2)
             mo.send_message([0x8F, note[1], 0])
@@ -80,7 +92,7 @@ def main():
             clocks_back += sum(1 for m in got if m == b'\xf8')
         bad = lost['PB'] + lost['note']
         total_bad += bad
-        print('%-34s pitch bends lost %d of %d, notes lost %d of %d%s' % (
+        print('%-40s pitch bends lost %d of %d, notes lost %d of %d%s' % (
             label + ':', lost['PB'], a.n, lost['note'], a.n,
             ', clock bytes back %d of %d' % (clocks_back, a.n) if clock else ''))
     mi.close_port()
