@@ -2,7 +2,7 @@
   "schemaVersion": 3,
   "id": "midi-expression",
   "name": "MIDI Expression",
-  "version": "0.12.3-experimental",
+  "version": "0.12.4-experimental",
   "machine": "digitakt",
   "category": "midi-usb",
   "exclusive": false,
@@ -128,7 +128,7 @@
   },
   "evidence": {
     "tier": "none",
-    "moduleVersion": "0.12.3-experimental",
+    "moduleVersion": "0.12.4-experimental",
     "sourceSha256": null,
     "reports": [],
     "hardware": null,

@@ -1,6 +1,6 @@
 # MIDI Expression
 
-Module version `0.12.3-experimental`, for the original Digitakt on OS 1.54, Core 2.1.
+Module version `0.12.4-experimental`, for the original Digitakt on OS 1.54, Core 2.1.
 
 ## Overview
 

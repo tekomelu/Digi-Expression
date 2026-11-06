@@ -1,35 +1,33 @@
 #!/usr/bin/env python3
 """Hardware qualification for MIDI Expression (Digitakt mk1, OS 1.54).
 
-One test project, set up once by hand (about ten minutes, printed by
---setup), then mostly automatic phases: the program plays the keyboard,
-records everything the Digitakt sends back and checks it against a model of
-the firmware's sums (expr.c). Where only your ears or eyes can tell (audio
-tracks, the page, presets, saving), it asks a yes/no question; every answer
-can take a note.
+The test project EXPR TEST (docs/TEST-SETUP.md, or --setup) sets each of the
+eight MIDI tracks up to test a different part of the mod. The program plays
+the keyboard on every track's channel, records everything the Digitakt sends
+back and checks each value against a model of the firmware's sums (expr.c).
+Connected over DIN and USB at once (--in2/--out2), it sends on one, listens on
+both, then swaps: DIN in to DIN and USB out, USB in to both, compared message
+for message. Where only eyes can tell (the page, presets, saving), it asks
+yes / no / skip; every answer can take a note.
 
-    computer MIDI OUT  ->  Digitakt MIDI IN   (or its USB port)
-    Digitakt MIDI OUT  ->  computer MIDI IN
-
-    python3 -m pip install --user python-rtmidi
-    python3 scripts/hwqual.py --setup                 # the test project, step by step
-    python3 scripts/hwqual.py --list                  # the MIDI ports
-    python3 scripts/hwqual.py --in "Interface" --out "Interface" --label din
-    python3 scripts/hwqual.py --in "Digitakt" --out "Digitakt" --label usb --only core
+    python3 -m venv ~/.venvs/dt && ~/.venvs/dt/bin/pip install python-rtmidi
+    hwqual.py --setup                    # the test project (docs/TEST-SETUP.md)
+    hwqual.py --list                     # the MIDI ports
+    hwqual.py --in "Interface" --out "Interface" --in2 "Digitakt" --out2 "Digitakt" --label full
 
 Phases (--only takes a comma list or a group):
-  core     thru, routes, merge, multi, latency
+  core     tracks (every MIDI track, every source), notes, multi, latency
   play     seq, flood (the program starts and stops the sequencer itself)
-  auto     the auto channel and track changes (you select tracks; not in all)
-  persist  power-cycle and reload: the settings come back
-  ears     audio tracks, by ear (not in all)
-  ui       the page, presets and 0.12's changes, by eye
+  persist  loading, a power cycle, an unsaved change, CREATE NEW
+  ui       the page and the presets, by eye
   all      core, play, persist, ui (the default)
+  ears     audio track 1 by ear (not in all)
+  auto     the auto channel (not in all; its own set-up, see docs/TEST-SETUP.md)
 
-Writes results/hardware/qual-<label>-<date-time>/: report.json (every check,
-the timing and your notes), summary.md (for the Modwerk hardware report),
-log.txt, midi.jsonl (every message both ways, timestamped). Ctrl+C stops and
-still saves. Nothing here sends SysEx or writes to the Digitakt's memory.
+Writes results/hardware/qual-<label>-<date-time>/: report.json, summary.md (for
+the Modwerk hardware report), log.txt, midi.jsonl (every message, every port,
+timestamped). Ctrl+C stops and still saves. Nothing here sends SysEx or writes
+to the Digitakt's memory.
 """
 import argparse
 import json
@@ -37,54 +35,17 @@ import os
 import random
 import statistics
 import sys
+import threading
 import time
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
 from hwtest import Io, ask, hexs, wait, ROOT  # noqa: E402
 
-VERSION = '0.12.3-experimental'
-SETTLE = 0.06                   # the Digitakt answers in about 4..40 ms
-
-SETUP = '''
-THE TEST PROJECT (once; save it as EXPR TEST and keep it)
-
-Start from an empty project.
-
-SETTINGS > MIDI CONFIG
-  SYNC:      CLOCK RECEIVE on, TRANSPORT RECEIVE on (the program starts and stops
-             the sequencer and sets its tempo itself), CLOCK SEND as you like.
-  PORT CONFIG: INPUT FROM  MIDI+USB, OUTPUT TO  MIDI+USB,
-             RECEIVE NOTES on, RECEIVE CC/NRPN on.
-  CHANNELS:  AUTO CHANNEL {auto}; TRACK 1 = {audio};
-             TRACK A = {ta}, TRACK B = {tb}, TRACK C = {tc}; other tracks off.
-
-MIDI track A (TRK + trig 9): SRC page CHAN on, channel {oa}.
-  Four trigs on steps 1, 5, 9, 13 (note C4, velocity 100).
-  EXPRESSION page (TRIG, TRIG): the defaults (THRU ON, V.SNS 100 %, no routes).
-
-MIDI track B (TRK + trig 10): CHAN on, channel {ob}.
-  AMP page: SEL1 = 74.
-  EXPRESSION: THRU ON, V.SNS 50 %,
-    MW -> CC:CC1 VAL (shows #74), M.DEP +64.00
-    VEL -> SRC:BC,               V.DEP +32.00
-    AT -> SRC:PITCH BEND,        A.DEP +32.00
-
-MIDI track C (TRK + trig 11): CHAN on, channel {oc}.
-  AMP page: SEL2 = 1 (the mod wheel's CC). FLTR page: VAL2 = 100.
-  EXPRESSION: THRU OFF, V.SNS 100 %,
-    MW -> CC:CC2 VAL (shows #1), M.DEP -32.00
-
-On tracks B and C make sure CC VAL1 / CC VAL2 (FLTR page) are switched on (a value, not --).
-
-Audio track 1: a sample of 3 seconds or more (a pad), or any bright sample with LOOP on;
-  AMP decay long, FLTR frequency low.
-  EXPRESSION: BEND 2.00, V.SNS 100 %,
-    MW -> FLTR:FREQUENCY, M.DEP +64.00 (set the filter low so you hear it open)
-    AT -> AMP:VOLUME,     A.DEP -64.00
-
-Save the project (SAVE PROJECT AS: EXPR TEST). Select MIDI track A.
-'''
+VERSION = '0.12.4-experimental'
+SETTLE = 0.06                   # the Digitakt answers in about 1..40 ms
+SETUP_DOC = os.path.join(ROOT, 'docs', 'TEST-SETUP.md')
+D = 256                         # depths in 1/256: 64.00 = 64 * D
 
 
 def tdiv(a, b):
@@ -102,6 +63,16 @@ def route(src, amount):
     return tdiv(src * amount, 64)
 
 
+def r7(src, depth):
+    """A route's part on a 7-bit value (CC, aftertouch), in MIDI steps."""
+    return round256(route(src, depth * D))
+
+
+def r14(src, depth):
+    """A route's part on pitch bend, in 14-bit steps."""
+    return tdiv(route(src, depth * D) * 16383, 32512)
+
+
 def clamp(v, lo, hi):
     return lo if v < lo else hi if v > hi else v
 
@@ -113,25 +84,59 @@ def sens(v, s):
     return clamp(v + ((127 - v) * (100 - s) + 50) // 100, 1, 127)
 
 
-D = 256                                 # depths in 1/256: 64.00 = 64 * D
+# The eight MIDI tracks of EXPR TEST (docs/TEST-SETUP.md). s is the live input
+# state: PB as an offset from the centre, AT, MW, BC, VEL (the last note's).
+# Each output is what the track adds to its own value; a key not listed must
+# never come out on that track's channel.
+TRACKS = {
+    'A': {'vsens': 100, 'out': {
+        'PB': lambda s: s['PB'], 'AT': lambda s: s['AT'], 'CC1': lambda s: s['MW'], 'CC2': lambda s: s['BC']}},
+    'B': {'vsens': 50, 'vel_cc': 'CC2', 'out': {
+        'CC74': lambda s: r7(s['MW'], 64), 'CC1': lambda s: s['MW'],
+        'PB': lambda s: s['PB'] + r14(s['AT'], 32), 'AT': lambda s: s['AT'],
+        'CC2': lambda s: s['BC'] + r7(s['VEL'], 32)}},
+    'C': {'vsens': 100, 'out': {'CC1': lambda s: r7(s['MW'], -32)}},
+    'D': {'vsens': 0, 'out': {
+        'PB': lambda s: s['PB'] + r14(s['MW'], 64), 'CC1': lambda s: s['MW'],
+        'CC71': lambda s: r7(s['AT'], -64), 'AT': lambda s: s['AT'], 'CC2': lambda s: s['BC']}},
+    'E': {'vsens': 100, 'out': {
+        'AT': lambda s: s['AT'] + r7(s['MW'], 64), 'CC1': lambda s: s['MW'],
+        'PB': lambda s: s['PB'], 'CC2': lambda s: s['BC']}},
+    'F': {'vsens': 25, 'out': {'CC1': lambda s: r7(s['AT'], -64)}},
+    'G': {'vsens': 100, 'out': {
+        'CC2': lambda s: s['BC'] + r7(s['AT'], 32), 'AT': lambda s: s['AT'],
+        'PB': lambda s: s['PB'], 'CC1': lambda s: s['MW']}},
+    'H': {'vsens': 100, 'out': {}},
+}
+NAMES = 'ABCDEFGH'
+INPUTS = ('PB', 'AT', 'MW', 'BC')
+
+
+def locked_send(raw, lock):
+    def send(data):
+        with lock:
+            return raw(data)
+    return send
 
 
 class Qual:
-    def __init__(self, io, cfg, out_dir, label):
-        self.io, self.cfg, self.out_dir, self.label = io, cfg, out_dir, label
+    def __init__(self, io, mirror, cfg, out_dir, label):
+        self.io, self.mirror, self.cfg, self.out_dir, self.label = io, mirror, cfg, out_dir, label
+        self.ports = [p for p in (io, mirror) if p]
         self.results, self.log, self.extra = [], [], {}
         self.t_start = time.time()
-        self.heard = {}                 # (out channel, key) -> last value the synth heard
-        self.own = {}                   # (out channel, key) -> the track's own value, as learned
-        self.seen = 0                   # rx messages already folded into heard
-        import threading
-        self._send_lock = threading.Lock()
-        raw = io.send
-        def locked(data, raw=raw):
-            with self._send_lock:
-                return raw(data)
-        io.send = locked                # the clock thread and the program share the port
+        self.heard = {}                 # (out channel, key) -> last value heard on the listening port
+        self.own = {}                   # (track, key) -> the track's own value, as learned
+        self.state = {t: self.zero() for t in NAMES}
+        self.seen = 0
+        self.fails = []
         self._clock = None
+        for p in self.ports:            # the clock thread and the program share the ports
+            p.send = locked_send(p.send, threading.Lock())
+
+    @staticmethod
+    def zero():
+        return {'PB': 0, 'AT': 0, 'MW': 0, 'BC': 0, 'VEL': 0}
 
     # ---- bookkeeping ---------------------------------------------------------
     def note(self, text):
@@ -139,22 +144,26 @@ class Qual:
         self.log.append(text)
 
     def check(self, phase, name, ok, detail=''):
-        status = 'PASS' if ok is True else 'FAIL' if ok is False else str(ok)
+        status = 'PASS' if ok is True else 'FAIL' if ok is False else str(ok)   # or SKIP, INFO
         self.note('  %-5s %s%s' % (status, name, ('  (' + detail + ')') if detail else ''))
         self.results.append({'phase': phase, 'check': name, 'status': status, 'detail': detail,
-                             'label': self.label, 't': round(time.time() - self.t_start, 1)})
+                             'label': self.label, 'via': self.io.out_name, 't': round(time.time() - self.t_start, 1)})
 
     def answer(self, phase, question):
-        """A yes/no/skip question; any answer may carry a note after a space."""
         while True:
             a = ask(question + '  [y / n / s(kip)] (a note may follow)').strip()
             if a[:1].lower() in ('y', 'n', 's'):
-                k, rest = a[:1].lower(), a[1:].strip()
-                st = {'y': True, 'n': False, 's': 'SKIP'}[k]
-                self.check(phase, question, st, rest)
+                st = {'y': True, 'n': False, 's': 'SKIP'}[a[:1].lower()]
+                self.check(phase, question, st, a[1:].strip())
                 return st
 
     # ---- MIDI ----------------------------------------------------------------
+    def tin(self, t):
+        return self.cfg['in'][NAMES.index(t)]
+
+    def tout(self, t):
+        return self.cfg['out'][NAMES.index(t)]
+
     def send(self, *msgs, gap=0.002):
         for m in msgs:
             self.io.send(bytes(m))
@@ -162,21 +171,23 @@ class Qual:
                 wait(gap)
 
     def fold(self):
-        """Fold everything received since last time into heard; returns the new messages."""
         with self.io.lock:
             new = self.io.rx[self.seen:]
             self.seen += len(new)
-        got = [(t, m) for t, m in new if m[0] not in (0xF8, 0xFE)]
+        got = [(t, m) for t, m in new if m[0] < 0xF0]
         for _, m in got:
             k = self.key(m)
             if k:
                 self.heard[k] = self.value(m)
         return got
 
+    def settle(self, t=SETTLE):
+        wait(t)
+        return self.fold()
+
     @staticmethod
     def key(m):
-        s = m[0] & 0xF0
-        ch = m[0] & 15
+        s, ch = m[0] & 0xF0, m[0] & 15
         if s == 0xE0 and len(m) > 2:
             return (ch, 'PB')
         if s == 0xD0 and len(m) > 1:
@@ -192,11 +203,77 @@ class Qual:
             return m[1] | (m[2] << 7)
         return m[1] if s == 0xD0 else m[2]
 
+    def msg(self, t, kind, v):
+        ch = self.tin(t)
+        if kind == 'PB':
+            v14 = clamp(v + 8192, 0, 16383)
+            return (0xE0 | ch, v14 & 127, v14 >> 7)
+        if kind == 'AT':
+            return (0xD0 | ch, v)
+        return (0xB0 | ch, 1 if kind == 'MW' else 2, v)
+
+    def play(self, t, kind, v, gap=0.002):
+        """One live input to track t: sent, and kept in the model's state."""
+        self.state[t][kind] = v
+        self.send(self.msg(t, kind, v), gap=gap)
+
+    def mark(self):
+        return [p.mark() for p in self.ports]
+
+    def mirrored(self, phase, marks, name, info=False):
+        """Both listening ports heard the same messages (OUTPUT TO MIDI+USB). Under a flood the
+        DIN output (31,250 baud) can fall behind USB: there it is a measurement, not a check."""
+        if not self.mirror:
+            return
+        wait(0.15)
+        a = [m for _, m in self.io.since(marks[0]) if m[0] < 0xF0]
+        b = [m for _, m in self.mirror.since(marks[1]) if m[0] < 0xF0]
+        diff = next((i for i, (x, y) in enumerate(zip(a, b)) if x != y), None)
+        ok = len(a) == len(b) and diff is None
+        detail = '%d messages each' % len(a) if ok else '%d on %s, %d on %s%s' % (
+            len(a), self.io.in_name, len(b), self.mirror.in_name,
+            ', first difference at %d: %s / %s' % (diff, hexs(a[diff]), hexs(b[diff])) if diff is not None else '')
+        self.check(phase, '%s: %s and %s heard the same' % (name, self.io.in_name, self.mirror.in_name),
+                   ok if not info else ('PASS' if ok else 'INFO'), detail)
+
+    # ---- the model -----------------------------------------------------------
+    def want(self, t, k):
+        own = self.own.get((t, k))
+        if own is None:
+            return None
+        lo, hi = (0, 16383) if k == 'PB' else (0, 127)
+        return clamp(own + TRACKS[t]['out'][k](self.state[t]), lo, hi)
+
+    def compare(self, t, label, got=()):
+        """Learn an own value from an unclamped answer; compare every output of track t."""
+        o = self.tout(t)
+        for k, fn in TRACKS[t]['out'].items():
+            lo, hi = (0, 16383) if k == 'PB' else (0, 127)
+            if (t, k) not in self.own:
+                ans = [self.value(m) for _, m in got if self.key(m) == (o, k)]
+                if ans and lo < ans[-1] < hi:
+                    self.own[(t, k)] = ans[-1] - fn(self.state[t])
+                continue
+            w, h = self.want(t, k), self.heard.get((o, k))
+            if h is not None and w != h:
+                self.fails.append('%s %s: want %s, heard %s' % (label, k, w, h))
+
+    def stray(self, t, msgs):
+        """Messages on track t's channel the model says it never sends."""
+        o, keys = self.tout(t), set(TRACKS[t]['out'])
+        return [hexs(m) for _, m in msgs if (m[0] & 15) == o and self.key(m) and self.key(m)[1] not in keys]
+
+    def reset_inputs(self):
+        for t in NAMES:
+            for k in INPUTS:
+                self.play(t, k, 0, gap=0.001)
+        self.settle(0.25)
+
+    # ---- transport -------------------------------------------------------------
     def transport(self, run, bpm=160):
-        """Start (clock at bpm, then START) or stop (STOP, then no clock) the sequencer over MIDI."""
-        import threading
         if run:
             stop = threading.Event()
+
             def tick():
                 nxt = time.perf_counter()
                 while not stop.is_set():
@@ -216,384 +293,233 @@ class Qual:
             self._clock[1].join()
             self._clock = None
 
-    def settle(self, t=SETTLE):
-        wait(t)
-        return self.fold()
-
-    def pb(self, ch, v): return (0xE0 | ch, v & 127, v >> 7)
-    def at(self, ch, v): return (0xD0 | ch, v)
-    def cc(self, ch, n, v): return (0xB0 | ch, n, v)
-    def on(self, ch, n, v): return (0x90 | ch, n, v)
-    def off(self, ch, n): return (0x80 | ch, n, 0)
-
-    def learn(self, phase, out, key, send_fn, live_of, probes):
-        """The track's own value: send a live value, read what comes out, take
-        the live part away. Tries the probes in turn until one comes out unclamped."""
-        lo, hi = (0, 16383) if key == 'PB' else (0, 127)
-        for p in probes:
-            self.fold()
-            mark = self.io.mark()
-            send_fn(p)
-            got = [m for _, m in self.settle(0.12) if self.key(m) == (out, key)]
-            if got:
-                v = self.value(got[-1])
-                if lo < v < hi:
-                    own = v - live_of(p)
-                    self.own[(out, key)] = own
-                    self.note('  own %s on channel %d: %d' % (key, out + 1, own))
-                    return own
-        self.check(phase, 'own %s on channel %d learned' % (key, out + 1), False, 'no unclamped answer')
-        return None
-
-    def expect(self, phase, out, key, want, label):
-        """After a settle: is what the synth last heard the model's value?"""
-        have = self.heard.get((out, key))
-        ok = have == want
-        if not ok:
-            self.fails.append('%s: want %s, heard %s' % (label, want, have))
-        return ok
-
-    def sweep(self, phase, name, out, key, values, send_fn, model):
-        """Send each value, check what the synth heard; one check line per sweep."""
-        self.fails = []
-        for v in values:
-            send_fn(v)
-            self.settle()
-            self.expect(phase, out, key, model(v), '%s %s' % (name, v))
-        self.check(phase, '%s: %d values' % (name, len(values)), not self.fails, '; '.join(self.fails[:4]))
-
-    def quiet(self, phase, chans, mark, kinds, name):
-        bad = [hexs(m) for _, m in self.io.since(mark)
-               if (m[0] & 15) in chans and (m[0] & 0xF0) in kinds]
-        self.check(phase, name, not bad, ' '.join(bad[:6]))
-
-    def valid(self, phase, mark):
-        msgs = self.io.since(mark)
-        bad = [hexs(m) for _, m in msgs if m[0] < 0x80 or any(b > 127 for b in m[1:])]
-        self.check(phase, 'every message well formed (%d)' % len(msgs), not bad, ' '.join(bad[:5]))
-
-    def reset_inputs(self):
-        for ch in (self.cfg['ta'], self.cfg['tb'], self.cfg['tc'], self.cfg['auto']):
-            self.send(self.pb(ch, 8192), self.at(ch, 0), self.cc(ch, 1, 0), self.cc(ch, 2, 0))
-        self.settle(0.2)
-
     # ---- phases --------------------------------------------------------------
-    def intro(self):
+    def intro(self, ask_fw=True):
         c = self.cfg
-        self.note('\n== %s, label %s, ports in %r out %r' % (VERSION, self.label, self.io.in_name, self.io.out_name))
-        self.note('   channels (1-16): auto %d, input A/B/C %d/%d/%d, out A/B/C %d/%d/%d, audio track 1 on %d' % (
-            c['auto'] + 1, c['ta'] + 1, c['tb'] + 1, c['tc'] + 1, c['oa'] + 1, c['ob'] + 1, c['oc'] + 1, c['audio'] + 1))
-        fw = ask('Firmware on the unit (the .syx file name, or Enter for %s):' % VERSION).strip()
-        self.extra['firmware'] = fw or 'midi-expression-%s.syx' % VERSION
-        ask('The EXPR TEST project loaded, sequencer stopped, MIDI track A selected. Enter.')
-        mark = self.io.mark()
-        self.send(self.on(c['ta'], 60, 100))
-        wait(0.15)
-        self.send(self.off(c['ta'], 60))
-        got = [m for _, m in self.settle(0.15) if (m[0] & 0xF0) in (0x90, 0x80)]
-        ok = any((m[0] & 15) == c['oa'] and m[0] & 0xF0 == 0x90 and m[1] == 60 for m in got)
-        self.check('intro', 'a note on track A\'s channel comes out on channel %d' % (c['oa'] + 1), ok,
-                   ' '.join(hexs(m) for m in got[:4]) or 'nothing came back: check the cables and channels')
-        return ok
-
-    def thru(self):
-        """Track A: THRU ON, nothing routed: the input adds to the track's own values."""
-        c, P = self.cfg, 'thru'
-        self.note('\n== thru: track A passes PB, AT, MW and BC, added to its own values')
-        i, o = c['ta'], c['oa']
-        m0 = self.io.mark()
-        own = self.learn(P, o, 'PB', lambda v: self.send(self.pb(i, v)), lambda v: v - 8192, (8192 + 1000, 8192 - 1000, 8192 + 3000))
-        if own is not None:
-            vals = [8192, 0, 16383, 4096, 12288, 8191, 8193] + [random.randrange(16384) for _ in range(40)]
-            self.sweep(P, 'PB thru', o, 'PB', vals, lambda v: self.send(self.pb(i, v)), lambda v: clamp(own + v - 8192, 0, 16383))
-        for key, sendf in (('AT', lambda v: self.send(self.at(i, v))),
-                           ('CC1', lambda v: self.send(self.cc(i, 1, v))),
-                           ('CC2', lambda v: self.send(self.cc(i, 2, v)))):
-            own = self.learn(P, o, key, sendf, lambda v: v, (20, 40, 5))
-            if own is not None:
-                vals = [0, 127, 64, 1, 126] + [random.randrange(128) for _ in range(40)]
-                self.sweep(P, key + ' thru', o, key, vals, sendf, lambda v, own=own: clamp(own + v, 0, 127))
-        self.valid(P, m0)
-        self.quiet(P, (c['ob'], c['oc']), m0, (0xB0, 0xD0, 0xE0), 'nothing on tracks B and C\'s channels')
+        self.note('\n== %s, label %s: sending on %r, listening on %s' % (
+            VERSION, self.label, self.io.out_name, ' and '.join(repr(p.in_name) for p in self.ports)))
+        self.note('   MIDI tracks A-H: input channels %s, out channels %s' % (
+            ','.join(str(x + 1) for x in c['in']), ','.join(str(x + 1) for x in c['out'])))
+        if ask_fw:
+            fw = ask('Firmware on the unit (the .syx file name, or Enter for midi-expression-%s.syx):' % VERSION).strip()
+            self.extra['firmware'] = fw or 'midi-expression-%s.syx' % VERSION
+            ask('EXPR TEST loaded (docs/TEST-SETUP.md), sequencer stopped. Enter.')
         self.reset_inputs()
+        missing = []
+        for t in NAMES:
+            self.state[t]['VEL'] = 100              # a velocity route takes the note's velocity
+            self.send((0x90 | self.tin(t), 60, 100))
+            wait(0.08)
+            self.send((0x80 | self.tin(t), 60, 0))
+            got = [m for _, m in self.settle(0.1) if (m[0] & 0xF0) == 0x90 and m[2]]
+            if not any((m[0] & 15) == self.tout(t) for m in got):
+                missing.append('%s (in %d, out %d)' % (t, self.tin(t) + 1, self.tout(t) + 1))
+        self.check('intro', 'a note into each MIDI track comes out on its channel', not missing,
+                   'no note back from ' + ', '.join(missing) + ': check MIDI CONFIG > CHANNELS and each SRC page'
+                   if missing else '')
+        return not missing
 
-    def routes(self):
-        """Track B: MW -> CC VAL1 on CC 74 +64, AT -> PB +32 (and AT thru), VEL -> BC +32, V.SNS 50 %."""
-        c, P = self.cfg, 'routes'
-        self.note('\n== routes: track B (MW to CC 74, AT to pitch bend, velocity to BC, V.SNS 50 %)')
-        i, o = c['tb'], c['ob']
-        m0 = self.io.mark()
-        mw = lambda v: self.send(self.cc(i, 1, v))
-        own74 = self.learn(P, o, 'CC74', mw, lambda v: round256(route(v, 64 * D)), (20, 40, 5))
-        if own74 is not None:
-            vals = [0, 127, 64, 1] + [random.randrange(128) for _ in range(40)]
-            self.sweep(P, 'MW -> CC 74 +64.00', o, 'CC74', vals, mw, lambda v: clamp(own74 + round256(route(v, 64 * D)), 0, 127))
-        at = lambda v: self.send(self.at(i, v))
-        ownpb = self.learn(P, o, 'PB', at, lambda v: tdiv(route(v, 32 * D) * 16383, 32512), (20, 40, 60))
-        if ownpb is not None:
-            vals = [0, 127, 64, 1] + [random.randrange(128) for _ in range(30)]
-            self.sweep(P, 'AT -> PB +32.00', o, 'PB', vals, at,
-                       lambda v: clamp(ownpb + tdiv(route(v, 32 * D) * 16383, 32512), 0, 16383))
-        ownat = self.own.get((o, 'AT'))
-        if ownat is None:
-            ownat = self.learn(P, o, 'AT', at, lambda v: v, (21, 41, 6))
-        if ownat is not None:
-            vals = [0, 127, 50] + [random.randrange(128) for _ in range(20)]
-            self.sweep(P, 'AT thru beside its route', o, 'AT', vals, at, lambda v: clamp(ownat + v, 0, 127))
-        # velocity: V.SNS 50 % on the note, VEL -> BC +32 before it
-        fails, ownbc = [], None
-        for n, v in enumerate([100, 1, 127, 64, 30] + [random.randrange(1, 128) for _ in range(30)]):
-            mark = self.io.mark()
-            self.send(self.on(i, 48 + n % 24, v), gap=0)
-            got = self.settle(0.08)
-            self.send(self.off(i, 48 + n % 24))
-            notes = [k for k, (_, m) in enumerate(got) if (m[0] & 0xF0) == 0x90 and (m[0] & 15) == o and m[2]]
-            bcs = [k for k, (_, m) in enumerate(got) if self.key(m) == (o, 'CC2')]
-            if not notes:
-                fails.append('vel %d: no note out' % v)
-                continue
-            vel = got[notes[0]][1][2]
-            if vel != sens(v, 50):
-                fails.append('vel %d: out %d, want %d' % (v, vel, sens(v, 50)))
-            part = round256(route(v, 32 * D))
-            if bcs:
-                if bcs[0] > notes[0]:
-                    fails.append('vel %d: BC after its note' % v)
-                bc = got[bcs[-1]][1][2]
-                if ownbc is None and 0 < bc < 127:
-                    ownbc = bc - part
-                elif ownbc is not None and bc != clamp(ownbc + part, 0, 127):
-                    fails.append('vel %d: BC %d, want %d' % (v, bc, clamp(ownbc + part, 0, 127)))
-            elif ownbc is not None and self.heard.get((o, 'CC2')) != clamp(ownbc + part, 0, 127):
-                fails.append('vel %d: no BC (heard %s)' % (v, self.heard.get((o, 'CC2'))))
-            self.settle(0.02)
-        self.check(P, 'notes: V.SNS 50 %% on the velocity, VEL -> BC +32.00 before each note (own BC %s)' % ownbc,
-                   not fails, '; '.join(fails[:4]))
-        self.valid(P, m0)
-        self.quiet(P, (c['oa'], c['oc']), m0, (0xB0, 0xD0, 0xE0, 0x90), 'nothing on tracks A and C\'s channels')
-        self.reset_inputs()
+    def tracks(self, n=30):
+        """Every source into every track, alone, against the model."""
+        P = 'tracks'
+        for t in NAMES:
+            self.note('\n== track %s' % t)
+            marks = self.mark()
+            m0 = self.io.mark()
+            self.fails = []
+            for kind in INPUTS:
+                top, lo = (8191, -8192) if kind == 'PB' else (127, 0)
+                vals = [lo, top, (lo + top) // 2] + [random.randint(lo, top) for _ in range(n)] + [0]
+                for v in vals:
+                    self.play(t, kind, v, gap=0)
+                    self.compare(t, '%s %s' % (kind, v), self.settle())
+            outs = TRACKS[t]['out']
+            missing = [k for k in outs if (t, k) not in self.own]
+            self.check(P, 'track %s: every output exact (%s)' % (t, ', '.join(outs) or 'none'),
+                       not self.fails and not missing,
+                       '; '.join(self.fails[:4]) + ('; own value never learned: ' + ', '.join(missing) if missing else ''))
+            bad = self.stray(t, self.io.since(m0))
+            self.check(P, 'track %s: nothing else on its channel' % t, not bad, ' '.join(bad[:6]))
+            others = [hexs(m) for _, m in self.io.since(m0)
+                      if self.key(m) and (m[0] & 15) != self.tout(t) and (m[0] & 15) in self.cfg['out']]
+            self.check(P, 'track %s: the other tracks stay quiet' % t, not others, ' '.join(others[:6]))
+            self.mirrored(P, marks, 'track %s' % t)
+        self.extra['own'] = {'%s %s' % k: v for k, v in self.own.items()}
 
-    def merge(self):
-        """Track C: THRU OFF, MW -> CC VAL2 on CC 1 -32: one CC 1, the wheel takes away."""
-        c, P = self.cfg, 'merge'
-        self.note('\n== merge: track C (THRU OFF; MW to CC VAL2 on CC 1, -32.00)')
-        i, o = c['tc'], c['oc']
-        m0 = self.io.mark()
-        mw = lambda v: self.send(self.cc(i, 1, v))
-        own1 = self.learn(P, o, 'CC1', mw, lambda v: round256(route(v, -32 * D)), (10, 30, 50, 90))
-        if own1 is None:
-            self.note('  (track C\'s own CC 1 is 0 or near it: set its FLTR page VAL2 to 100, as the setup says)')
-        if own1 is not None:
-            vals = [0, 127, 64, 2] + [random.randrange(128) for _ in range(40)]
-            self.sweep(P, 'MW -> CC 1 -32.00, merged with the track\'s own CC 1', o, 'CC1', vals, mw,
-                       lambda v: clamp(own1 + round256(route(v, -32 * D)), 0, 127))
-        mark = self.io.mark()
-        self.send(self.pb(i, 12000), self.at(i, 90), self.cc(i, 2, 90))
-        self.settle(0.15)
-        self.quiet(P, (o,), mark, (0xE0, 0xD0), 'THRU OFF: pitch bend and aftertouch do not pass')
-        cc2 = [hexs(m) for _, m in self.io.since(mark) if self.key(m) == (o, 'CC2')]
-        self.check(P, 'THRU OFF: breath does not pass', not cc2, ' '.join(cc2[:4]))
-        self.valid(P, m0)
-        self.reset_inputs()
+    def notes(self, n=20):
+        """Notes into every track: V.SNS on the velocity, velocity routes before the note."""
+        P = 'notes'
+        self.note('\n== notes: %d per track' % n)
+        marks = self.mark()
+        for t in NAMES:
+            o, vs, fails = self.tout(t), TRACKS[t]['vsens'], []
+            vcc = TRACKS[t].get('vel_cc')
+            self.fails = []
+            for i, v in enumerate([1, 127, 64] + [random.randint(1, 127) for _ in range(n - 3)]):
+                note = 40 + i % 40
+                self.state[t]['VEL'] = v
+                self.send((0x90 | self.tin(t), note, v), gap=0)
+                got = self.settle(0.05)
+                self.send((0x80 | self.tin(t), note, 0), gap=0)
+                ons = [j for j, (_, m) in enumerate(got) if (m[0] & 0xF0) == 0x90 and (m[0] & 15) == o and m[2]]
+                if not ons:
+                    fails.append('vel %d: no note' % v)
+                    continue
+                out = got[ons[0]][1][2]
+                if out != sens(v, vs):
+                    fails.append('vel %d: out %d, want %d' % (v, out, sens(v, vs)))
+                if vcc:
+                    ccs = [j for j, (_, m) in enumerate(got) if self.key(m) == (o, vcc)]
+                    if ccs and ccs[0] > ons[0]:
+                        fails.append('vel %d: %s after its note' % (v, vcc))
+                    self.compare(t, 'vel %d' % v, got)
+                self.settle(0.01)
+            self.check(P, 'track %s: V.SNS %d %%%s' % (t, vs, ', VEL -> %s before each note' % vcc if vcc else ''),
+                       not fails and not self.fails, '; '.join((fails + self.fails)[:4]))
+        self.mirrored(P, marks, 'notes')
 
-    def multi(self, n=1500):
-        """All three tracks at once, random order, against the model."""
-        c, P = self.cfg, 'multi'
-        self.note('\n== multi: %d random messages to tracks A, B and C interleaved' % n)
-        need = [(c['oa'], 'PB'), (c['oa'], 'CC1'), (c['ob'], 'CC74'), (c['oc'], 'CC1')]
-        if any(k not in self.own for k in need):
-            self.check(P, 'own values known from thru, routes and merge', 'SKIP', 'run core first')
-            return
-        state = {'pa': 8192, 'wa': 0, 'wb': 0, 'wc': 0}
+    def multi(self, n=3000):
+        P = 'multi'
+        self.note('\n== multi: %d random messages to all eight tracks, interleaved' % n)
+        marks = self.mark()
         m0 = self.io.mark()
         for _ in range(n):
-            r = random.randrange(4)
-            if r == 0:
-                state['pa'] = random.randrange(16384)
-                self.send(self.pb(c['ta'], state['pa']), gap=0.001)
-            else:
-                k = 'wa wb wc'.split()[r - 1]
-                state[k] = random.randrange(128)
-                self.send(self.cc((c['ta'], c['tb'], c['tc'])[r - 1], 1, state[k]), gap=0.001)
-        self.settle(0.4)
+            t, kind = random.choice(NAMES), random.choice(INPUTS)
+            top, lo = (8191, -8192) if kind == 'PB' else (127, 0)
+            self.play(t, kind, random.randint(lo, top), gap=0.002)   # within DIN's rate, outputs included
+        self.settle(0.6)
         self.fails = []
-        self.expect(P, c['oa'], 'PB', clamp(self.own[(c['oa'], 'PB')] + state['pa'] - 8192, 0, 16383), 'A PB')
-        self.expect(P, c['oa'], 'CC1', clamp(self.own[(c['oa'], 'CC1')] + state['wa'], 0, 127), 'A CC1')
-        self.expect(P, c['ob'], 'CC74', clamp(self.own[(c['ob'], 'CC74')] + round256(route(state['wb'], 64 * D)), 0, 127), 'B CC74')
-        self.expect(P, c['oc'], 'CC1', clamp(self.own[(c['oc'], 'CC1')] + round256(route(state['wc'], -32 * D)), 0, 127), 'C CC1')
-        self.check(P, 'after the burst each synth heard the model\'s values', not self.fails, '; '.join(self.fails))
-        self.valid(P, m0)
-        outs = (c['oa'], c['ob'], c['oc'])
-        stray = [hexs(m) for _, m in self.io.since(m0) if (m[0] & 15) not in outs and m[0] < 0xF0]
-        self.check(P, 'nothing on other channels', not stray, ' '.join(stray[:6]))
+        for t in NAMES:
+            self.compare(t, '%s after the burst' % t)
+        self.check(P, 'after the burst every track\'s outputs are the model\'s', not self.fails, '; '.join(self.fails[:6]))
+        bad = sum((self.stray(t, self.io.since(m0)) for t in NAMES), [])
+        self.check(P, 'nothing a track should not send', not bad, ' '.join(bad[:6]))
+        self.mirrored(P, marks, 'multi')
         self.reset_inputs()
 
     def latency(self, n=40):
-        c, P = self.cfg, 'latency'
-        self.note('\n== latency: pitch bend through track A, %d round trips' % n)
-        ms = []
+        P = 'latency'
+        self.note('\n== latency: pitch bend through track A, %d round trips to each listening port' % n)
+        res = {p.in_name: [] for p in self.ports}
         for k in range(n):
-            v = 8192 + (k % 2 * 2 - 1) * (500 + k * 37)
+            v = (k % 2 * 2 - 1) * (500 + k * 37)
             self.fold()
-            mark = self.io.mark()
-            t = self.io.send(bytes(self.pb(c['ta'], v)))
-            for _ in range(60):
-                got = [(tt, m) for tt, m in self.io.since(mark) if self.key(m) == (c['oa'], 'PB')]
-                if got:
-                    ms.append((got[0][0] - t) * 1000)
-                    break
-                wait(0.002)
+            marks = self.mark()
+            self.state['A']['PB'] = v
+            t = self.io.send(bytes(self.msg('A', 'PB', v)))
+            deadline = time.perf_counter() + 0.2
+            pending = set(range(len(self.ports)))
+            while pending and time.perf_counter() < deadline:
+                for i in list(pending):
+                    got = [tt for tt, m in self.ports[i].since(marks[i]) if self.key(m) == (self.tout('A'), 'PB')]
+                    if got:
+                        res[self.ports[i].in_name].append((got[0] - t) * 1000)
+                        pending.discard(i)
+                wait(0.001)
             wait(0.03)
         self.fold()
-        if ms:
-            self.extra['latency_ms'] = {'n': len(ms), 'median': round(statistics.median(ms), 2), 'max': round(max(ms), 2)}
-        self.check(P, 'every pitch bend came back (%d of %d)' % (len(ms), n), len(ms) == n,
-                   'median %.1f ms, max %.1f ms (interface included)' % (statistics.median(ms), max(ms)) if ms else '')
+        self.extra.setdefault('latency_ms', {})
+        for name, ms in res.items():
+            key = '%s -> %s' % (self.io.out_name, name)
+            if ms:
+                self.extra['latency_ms'][key] = {'n': len(ms), 'median': round(statistics.median(ms), 2), 'max': round(max(ms), 2)}
+            self.check(P, '%s: every pitch bend came back (%d of %d)' % (key, len(ms), n), len(ms) == n,
+                       'median %.1f ms, max %.1f ms' % (statistics.median(ms), max(ms)) if ms else '')
         self.reset_inputs()
-
-    def auto(self):
-        """The auto channel follows the active track; the old track gets its own value back."""
-        c, P = self.cfg, 'auto'
-        self.note('\n== auto: the auto channel goes to the active track, and leaves it on a track change')
-        ask('Select MIDI track A (TRK + trig 9). Enter.')
-        a, o = c['auto'], c['oa']
-        own = self.own.get((o, 'PB'))
-        if own is None:
-            own = self.learn(P, o, 'PB', lambda v: self.send(self.pb(a, v)), lambda v: v - 8192, (9192, 7192))
-        self.send(self.pb(a, 8192 + 2000))
-        self.settle(0.15)
-        self.check(P, 'auto channel: track A bends', self.heard.get((o, 'PB')) == clamp((own or 0) + 2000, 0, 16383),
-                   'heard %s' % self.heard.get((o, 'PB')))
-        ask('Select MIDI track B (TRK + trig 10). Keep the bend held (the program does). Enter.')
-        self.settle(0.2)
-        self.check(P, 'track change: track A\'s pitch bend back to its own (%s)' % own,
-                   self.heard.get((o, 'PB')) == own, 'heard %s' % self.heard.get((o, 'PB')))
-        self.send(self.pb(a, 8192 + 2000))
-        self.settle(0.15)
-        mark = self.io.mark()
-        self.send(self.cc(a, 1, 33))
-        got = [m for _, m in self.settle(0.15) if (m[0] & 15) == c['ob'] and self.key(m)]
-        self.check(P, 'the auto channel now plays track B', bool(got), ' '.join(hexs(m) for m in got[:4]))
-        self.reset_inputs()
-        ask('Select MIDI track A again. Enter.')
 
     def seq(self):
-        c, P = self.cfg, 'seq'
-        self.note('\n== seq: the sequencer plays track A while the wheel and bend move')
+        P = 'seq'
+        self.note('\n== seq: the sequencer plays track A while its wheel and bend move')
+        marks = self.mark()
         m0 = self.io.mark()
         self.transport(True)
-        own1 = self.own.get((c['oa'], 'CC1'))
         self.fails = []
-        for k in range(60):
-            w = random.randrange(128)
-            self.send(self.cc(c['ta'], 1, w))
-            self.settle(0.05)
-            if own1 is not None:
-                self.expect(P, c['oa'], 'CC1', clamp(own1 + w, 0, 127), 'MW %d' % w)
+        for _ in range(80):
+            kind = random.choice(('MW', 'PB'))
+            self.play('A', kind, random.randint(-4000, 4000) if kind == 'PB' else random.randint(0, 127), gap=0)
+            self.compare('A', 'playing', self.settle(0.04))
         self.transport(False)
-        self.settle(0.2)
-        notes = [m for _, m in self.io.since(m0) if (m[0] & 0xF0) == 0x90 and (m[0] & 15) == c['oa'] and m[2]]
-        self.check(P, 'the sequencer\'s notes went out (%d)' % len(notes), len(notes) >= 2)
-        self.check(P, 'the wheel stayed exact while playing', not self.fails, '; '.join(self.fails[:4]))
+        self.settle(0.3)
+        notes = [m for _, m in self.io.since(m0) if (m[0] & 0xF0) == 0x90 and (m[0] & 15) == self.tout('A') and m[2]]
+        self.check(P, 'started over MIDI, the sequencer\'s notes went out (%d)' % len(notes), len(notes) >= 2)
+        self.check(P, 'the wheel and bend stayed exact while playing', not self.fails, '; '.join(self.fails[:4]))
+        self.mirrored(P, marks, 'seq')
         self.reset_inputs()
 
     def flood(self, seconds=20):
-        c, P = self.cfg, 'flood'
-        self.note('\n== flood: %d s at the MIDI wire rate to tracks A, B and C, clock included, sequencer playing' % seconds)
+        P = 'flood'
+        self.note('\n== flood: %d s at the MIDI wire rate to all eight tracks, sequencer playing at 160 BPM' % seconds)
         ask('For the next %d seconds watch the screen: turn a knob, change a page or two, see that it keeps up. '
-            'Enter to start (the program starts the sequencer).' % seconds)
+            'Enter to start.' % seconds)
+        marks = self.mark()
         m0 = self.io.mark()
         self.transport(True, 160)
-        sent_on, held = {}, {}
-        tin = (c['ta'], c['tb'], c['tc'])
-        t_end = time.time() + seconds
-        count = 0
+        held, count, t_end = {}, 0, time.time() + seconds
         while time.time() < t_end:
-            ch = random.choice(tin)
+            t = random.choice(NAMES)
             r = random.randrange(10)
             if r < 3:
                 n = random.randrange(36, 84)
+                ch = self.tin(t)
                 if (ch, n) in held:
-                    self.io.send(bytes(self.off(ch, n)))
+                    self.send((0x80 | ch, n, 0), gap=0)
                     del held[(ch, n)]
                 else:
-                    self.io.send(bytes(self.on(ch, n, random.randrange(1, 128))))
+                    v = random.randint(1, 127)
+                    self.state[t]['VEL'] = v
+                    self.send((0x90 | ch, n, v), gap=0)
                     held[(ch, n)] = 1
-                    sent_on[ch] = sent_on.get(ch, 0) + 1
-            elif r < 5:
-                self.io.send(bytes(self.pb(ch, random.randrange(16384))))
-            elif r < 7:
-                self.io.send(bytes(self.at(ch, random.randrange(128))))
             else:
-                self.io.send(bytes(self.cc(ch, random.choice((1, 2)), random.randrange(128))))
+                kind = INPUTS[r % 4]
+                top, lo = (8191, -8192) if kind == 'PB' else (127, 0)
+                self.play(t, kind, random.randint(lo, top), gap=0)
             count += 1
-            wait(0.001)                 # about 1000 messages a second, the wire's rate
+            wait(0.001)
         for ch, n in list(held):
-            self.io.send(bytes(self.off(ch, n)))
-        self.extra['flood'] = {'messages_sent': count, 'seconds': seconds}
-        self.settle(0.5)
+            self.send((0x80 | ch, n, 0), gap=0)
         self.transport(False)
-        self.settle(0.5)
+        self.extra['flood'] = {'messages_sent': count, 'seconds': seconds}
+        self.settle(0.8)
         self.answer(P, 'During the flood, did the screen and keys keep up (knobs, page changes)?')
-        self.valid(P, m0)
         live = {}
-        outs = {c['ta']: c['oa'], c['tb']: c['ob'], c['tc']: c['oc']}
         for _, m in self.io.since(m0):
             if (m[0] & 0xF0) in (0x90, 0x80) and len(m) > 2:
                 k = (m[0] & 15, m[1])
                 live[k] = live.get(k, 0) + (1 if (m[0] & 0xF0) == 0x90 and m[2] else -1)
         stuck = sorted(k for k, v in live.items() if v > 0)
         self.check(P, 'every note on got its note off', not stuck, 'stuck (channel, note): %s' % stuck[:8])
-        for ch_in, ch_out in outs.items():
-            got = sum(1 for _, m in self.io.since(m0) if (m[0] & 0xF0) == 0x90 and (m[0] & 15) == ch_out and m[2])
-            self.note('  info  channel %d: %d note-ons sent, %d came out (the sequencer\'s own included on A)' % (
-                ch_in + 1, sent_on.get(ch_in, 0), got))
-        self.reset_inputs()
-        # the model holds again once the flood is over
+        bad = [hexs(m) for _, m in self.io.since(m0) if m[0] < 0x80 or any(b > 127 for b in m[1:])]
+        self.check(P, 'every message well formed', not bad, ' '.join(bad[:5]))
         self.fails = []
-        for key, sendf, mdl in (('CC74', lambda v: self.send(self.cc(c['tb'], 1, v)), lambda v: round256(route(v, 64 * D))),
-                                ('CC1', lambda v: self.send(self.cc(c['tc'], 1, v)), lambda v: round256(route(v, -32 * D)))):
-            out = c['ob'] if key == 'CC74' else c['oc']
-            own = self.own.get((out, key))
-            if own is None:
-                continue
-            for v in (127, 0, 77):
-                sendf(v)
-                self.settle()
-                self.expect(P, out, key, clamp(own + mdl(v), 0, 127), '%s after the flood, %d' % (key, v))
-        self.check(P, 'after the flood the routes are exact again', not self.fails, '; '.join(self.fails[:4]))
+        for t in NAMES:
+            self.compare(t, '%s after the flood' % t)
+        self.check(P, 'after the flood every track\'s outputs are the model\'s', not self.fails, '; '.join(self.fails[:6]))
+        self.mirrored(P, marks, 'flood', info=True)
+        self.reset_inputs()
 
     def probe(self, P, when):
-        """A short check that the test project's settings are what they were set to."""
-        c = self.cfg
-        self.note('  probe %s' % when)
+        """A short check that EXPR TEST's settings are what they were set to."""
         self.fails = []
-        res = {}
-        for name, ch_in, out, key, depth, own_key in (('B: MW -> CC 74 +64', c['tb'], c['ob'], 'CC74', 64, (c['ob'], 'CC74')),
-                                                      ('C: MW -> CC 1 -32', c['tc'], c['oc'], 'CC1', -32, (c['oc'], 'CC1'))):
-            vals = {}
-            for v in (0, 100, 0):
-                self.send(self.cc(ch_in, 1, v))
-                self.settle(0.1)
-                vals[v] = self.heard.get((out, key))
-            got = None if vals.get(100) is None or vals.get(0) is None else vals[100] - vals[0]
-            want = round256(route(100, depth * D))
-            res[name] = got
-            if got is None or abs(got - want) > 1 and not (vals[100] in (0, 127)):
-                self.fails.append('%s: step %s, want %s' % (name, got, want))
-        self.send(self.on(c['tb'], 60, 100), gap=0)
-        got = self.settle(0.1)
-        self.send(self.off(c['tb'], 60))
-        vel = [m[2] for _, m in got if (m[0] & 0xF0) == 0x90 and (m[0] & 15) == c['ob'] and m[2]]
-        if not vel or vel[0] != sens(100, 50):
-            self.fails.append('B: V.SNS 50 %% (velocity 100 -> %s, want %d)' % (vel[:1], sens(100, 50)))
-        mark = self.io.mark()
-        self.send(self.pb(c['tc'], 12000))
+        for t, kind in (('B', 'MW'), ('C', 'MW'), ('D', 'AT'), ('F', 'AT'), ('G', 'AT')):
+            for v in (100, 0, 37):
+                self.play(t, kind, v, gap=0)
+                self.compare(t, '%s %s %d' % (t, kind, v), self.settle(0.08))
+        m1 = self.io.mark()
+        self.play('C', 'PB', 4000)
+        self.play('H', 'MW', 90)
         self.settle(0.1)
-        if [m for _, m in self.io.since(mark) if self.key(m) == (c['oc'], 'PB')]:
-            self.fails.append('C: THRU OFF not kept (pitch bend passed)')
+        leak = self.stray('C', self.io.since(m1)) + self.stray('H', self.io.since(m1))
+        if leak:
+            self.fails.append('THRU OFF not kept: ' + ' '.join(leak[:3]))
+        self.send((0x90 | self.tin('B'), 60, 100), gap=0)
+        got = self.settle(0.1)
+        self.send((0x80 | self.tin('B'), 60, 0))
+        vel = [m[2] for _, m in got if (m[0] & 0xF0) == 0x90 and (m[0] & 15) == self.tout('B') and m[2]]
+        if not vel or vel[0] != sens(100, 50):
+            self.fails.append('B: V.SNS 50 %% (velocity 100 -> %s)' % vel[:1])
+        self.state['B']['VEL'] = 100
         self.reset_inputs()
-        self.check(P, 'track B and C settings as set (%s)' % when, not self.fails, '; '.join(self.fails) or str(res))
+        self.check(P, 'tracks B, C, D, F, G, H as set (%s)' % when, not self.fails, '; '.join(self.fails[:5]))
 
     def persist(self):
         P = 'persist'
@@ -603,103 +529,125 @@ class Qual:
         self.probe(P, 'after loading another project and back')
         ask('Turn the Digitakt off, wait five seconds, turn it on (it opens the last project). Enter when it is up.')
         self.probe(P, 'after a power cycle')
-        ask('On track B\'s EXPRESSION page set M.DEP to +32.00 (do not save). Then LOAD PROJECT: EXPR TEST again '
-            '(it reloads the saved one). Enter.')
-        self.probe(P, 'after an unsaved change and a reload (the saved +64 comes back)')
+        ask('On track B\'s EXPRESSION page set M.DEP to +32.00 (do not save). Then LOAD PROJECT: EXPR TEST again. Enter.')
+        self.probe(P, 'after an unsaved change and a reload (the saved +64.00 back)')
         self.answer(P, 'SAVE PROJECT AS a new name (EXPR COPY); on it change track B\'s M.DEP and save; '
                        'LOAD PROJECT: EXPR TEST: track B shows +64.00 again, and EXPR COPY keeps its own value?')
         self.answer(P, 'Delete a different project (one you do not need, or make one): EXPR TEST still loads with its settings?')
         ask('LOAD PROJECT > CREATE NEW (a new, empty project). Enter.')
-        c = self.cfg
         m1 = self.io.mark()
         for v in (0, 100):
-            self.send(self.cc(c['tb'], 1, v))
+            self.send(self.msg('B', 'MW', v))
             self.settle(0.1)
-        cc74 = [m for _, m in self.io.since(m1) if self.key(m) == (c['ob'], 'CC74')]
-        self.check(P, 'CREATE NEW: track B\'s routing to CC 74 is gone (the default MIDI preset)', not cc74,
-                   ' '.join(hexs(m) for m in cc74[:4]))
-        self.answer(P, 'CREATE NEW: every audio track\'s EXPRESSION page shows the SELECT DEFAULT preset '
-                       '(or the factory settings if none is selected), not the last project\'s?')
-        ask('LOAD PROJECT: EXPR TEST again, select MIDI track A. Enter.')
+        cc74 = [hexs(m) for _, m in self.io.since(m1) if self.key(m) == (self.tout('B'), 'CC74')]
+        self.check(P, 'CREATE NEW: track B\'s route to CC 74 is gone (the default MIDI preset)', not cc74, ' '.join(cc74[:4]))
+        self.answer(P, 'CREATE NEW: every track\'s EXPRESSION page shows the SELECT DEFAULT preset '
+                       '(or the factory settings), not EXPR TEST\'s?')
+        ask('LOAD PROJECT: EXPR TEST again. Enter.')
         self.reset_inputs()
+        self.probe(P, 'EXPR TEST loaded after CREATE NEW')
 
     def ears(self):
-        c, P = self.cfg, 'ears'
+        P = 'ears'
+        ch = 0                                  # audio track 1 on channel 1
         self.note('\n== ears: audio track 1 (BEND 2.00, MW to filter frequency +64, AT to volume -64)')
-        ch = c['audio']
-        ask('Select audio track 1, volume at a comfortable level. Enter; the program plays a note for each sweep.')
+        ask('Select audio track 1, volume at a comfortable level. Enter; a note for each sweep.')
+
         def sweep(msgs, gap):
-            self.send(self.on(ch, 60, 100))         # a fresh note per sweep: an unlooped sample has its length
+            self.send((0x90 | ch, 60, 100))
             wait(0.3)
             for m in msgs:
                 self.send(m, gap=gap)
             wait(0.2)
-            self.send(self.off(ch, 60))
+            self.send((0x80 | ch, 60, 0))
         up = (list(range(8192, 16384, 256)) + [16383] * 40 + list(range(16383, 0, -256)) + [0] * 40
               + list(range(0, 8193, 256)) + [8192] * 20)
-        self.note('  pitch bend: slowly up a whole tone, a second there, down to a whole tone below, a second, back')
-        sweep([self.pb(ch, min(v, 16383)) for v in up], 0.025)
-        self.answer(P, 'The pitch rose about a whole tone (2 semitones), fell a whole tone below, came back?')
-        sweep([self.cc(ch, 1, v) for v in list(range(0, 128, 4)) + list(range(127, -1, -4))], 0.03)
+        sweep([(0xE0 | ch, min(v, 16383) & 127, min(v, 16383) >> 7) for v in up], 0.025)
+        self.answer(P, 'The pitch rose a whole tone, held, fell a whole tone below, held, came back?')
+        sweep([(0xB0 | ch, 1, v) for v in list(range(0, 128, 4)) + list(range(127, -1, -4))], 0.03)
         self.answer(P, 'The mod wheel opened the filter and closed it again?')
-        sweep([self.at(ch, v) for v in list(range(0, 128, 4)) + list(range(127, -1, -4))], 0.03)
+        sweep([(0xD0 | ch, v) for v in list(range(0, 128, 4)) + list(range(127, -1, -4))], 0.03)
         self.answer(P, 'Aftertouch turned the volume down and back up?')
-        self.reset_inputs()
-        ask('On audio track 1\'s EXPRESSION page set V.SNS to 0 %. Enter; the program plays soft and loud notes.')
-        for v in (10, 127, 10, 127):
-            self.send(self.on(ch, 60, v))
-            wait(0.35)
-            self.send(self.off(ch, 60))
-            wait(0.2)
-        self.answer(P, 'With V.SNS 0 %, soft and loud notes sounded the same level?')
-        ask('Set V.SNS back to 100 %. Enter.')
+
+    def auto(self):
+        P = 'auto'
+        a = self.cfg['auto']
+        self.note('\n== auto: channel %d plays the active track and leaves it on a track change' % (a + 1))
+        ask('Track H\'s channel OFF and AUTO CHANNEL %d (docs/TEST-SETUP.md). Select MIDI track A (TRK + trig 9). Enter.'
+            % (a + 1))
+        o = self.tout('A')
+        self.send((0xE0 | a, 0, 64))
+        self.settle(0.15)
+        own = self.own.get(('A', 'PB'))
+        if own is None:
+            self.send((0xE0 | a, (8192 + 1000) & 127, (8192 + 1000) >> 7))
+            self.settle(0.15)
+            h = self.heard.get((o, 'PB'))
+            own = h - 1000 if h is not None else None
+        self.send((0xE0 | a, (8192 + 2000) & 127, (8192 + 2000) >> 7))
+        self.settle(0.15)
+        self.check(P, 'the auto channel bends track A',
+                   own is not None and self.heard.get((o, 'PB')) == clamp(own + 2000, 0, 16383),
+                   'heard %s, own %s' % (self.heard.get((o, 'PB')), own))
+        ask('Select MIDI track B (TRK + trig 10); the program keeps the bend held. Enter.')
+        self.settle(0.2)
+        self.check(P, 'track change: track A\'s pitch bend back to its own (%s)' % own, self.heard.get((o, 'PB')) == own,
+                   'heard %s' % self.heard.get((o, 'PB')))
+        self.send((0xB0 | a, 1, 33))
+        got = [m for _, m in self.settle(0.15) if (m[0] & 15) == self.tout('B') and self.key(m)]
+        self.check(P, 'the auto channel now plays track B', bool(got), ' '.join(hexs(m) for m in got[:4]))
+        self.send((0xE0 | a, 0, 64), (0xB0 | a, 1, 0))
+        self.settle(0.2)
+        ask('Set AUTO CHANNEL back to OFF and track H to 16. Enter.')
 
     def ui(self):
         P = 'ui'
-        self.note('\n== ui: the page, presets and 0.12\'s changes (by eye)')
-        q = [
+        self.note('\n== ui: the page and the presets, by eye')
+        for q in [
             'TRIG, TRIG opens the EXPRESSION page; a tap of TRIG or NO closes it; other page keys work as stock',
-            'TRIG held on the EXPRESSION page: after a moment V.SNS and the depths show values (LEV too), as on the stock pages; letting go keeps the page',
+            'TRIG held on the EXPRESSION page: after a moment V.SNS and the depths show values (LEV too); letting go keeps the page',
             'TRIG held on the TRIG page shows the stock values, and letting go does not open the EXPRESSION page',
-            'BEND turns in fine steps (2.00, 2.01 ...) and its box shows tenths (2.5)',
-            'FUNC + turn on BEND snaps to whole semitones OFF, 1, 2 ... 12',
+            'BEND\'s box is as large as the destination boxes; BEND turns in fine steps; FUNC + turn snaps to whole semitones',
             'Depths turn finely; FUNC + turn jumps in 16s; destination lists open and close with the knob',
             'Holding knob A for a second opens the preset menu; a twist while holding cancels it',
-            'In LOAD / SAVE lists the LEVEL knob moves one row a detent',
+            'In LOAD / SAVE lists the LEVEL knob moves one row a detent; holding UP or DOWN scrolls',
             'SAVE: FUNC, pick a letter, let go writes it and moves on (type FAST)',
-            'SAVE name: holding an arrow repeats; FUNC + NO deletes the letter before the cursor; FUNC + YES inserts a space, as SAVE PROJECT AS',
-            'Holding UP or DOWN scrolls the LOAD / SAVE lists',
+            'SAVE name: holding an arrow repeats; FUNC + NO deletes the letter before the cursor; FUNC + YES inserts a space',
             'SAVE over a used slot asks first; NO goes back without saving',
             'LOAD puts the preset on the current track only; other tracks unchanged',
             'RESET TO DEFAULT asks first and resets only the current track',
             'SELECT DEFAULT then RESET TO DEFAULT: the current track gets the chosen preset',
             'An audio preset is not offered on a MIDI track, and the other way round',
             'A project or preset saved with 0.11 (BEND=5) loads as BEND 5.00',
-            'MIDI track: MW / AT / VEL to the track\'s own LFO (SPD, DEP ...) moves the LFO audibly on the synth',
-            'MIDI track: on the SRC page switch MW off (FUNC + its knob, it shows --): the mod wheel then sends nothing on that track',
+            'Every audio track 1-8 shows its EXPR TEST settings (docs/TEST-SETUP.md) after the power cycle',
+            'MIDI track: MW / AT / VEL to the track\'s own LFO (SPD, DEP ...) moves the LFO audibly on a synth',
+            'MIDI track: on the SRC page switch MW off (FUNC + its knob, it shows --): the mod wheel then sends nothing there',
             'The track\'s own LFO and p-locks on PB/MW still play, with the live input added (no jumps)',
-        ]
-        for t in q:
-            self.answer(P, t + '?')
+        ]:
+            self.answer(P, q + '?')
 
     # ---- report ------------------------------------------------------------------
     def save(self):
         os.makedirs(self.out_dir, exist_ok=True)
         dur = round((time.time() - self.t_start) / 60, 1)
-        rep = {'version': VERSION, 'label': self.label, 'started': time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(self.t_start)),
-               'minutes': dur, 'ports': {'in': self.io.in_name, 'out': self.io.out_name},
-               'channels': {k: v + 1 for k, v in self.cfg.items()},
-               'own': {'%d %s' % (k[0] + 1, k[1]): v for k, v in self.own.items()},
+        rep = {'version': VERSION, 'label': self.label,
+               'started': time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(self.t_start)), 'minutes': dur,
+               'ports': [{'in': p.in_name, 'out': p.out_name} for p in self.ports],
+               'channels': {'in': [x + 1 for x in self.cfg['in']], 'out': [x + 1 for x in self.cfg['out']]},
                'results': self.results, **self.extra}
         with open(os.path.join(self.out_dir, 'report.json'), 'w') as fh:
             json.dump(rep, fh, indent=1)
         with open(os.path.join(self.out_dir, 'log.txt'), 'w') as fh:
             fh.write('\n'.join(self.log) + '\n')
-        t0 = min([t for t, _ in self.io.tx[:1]] + [t for t, _ in self.io.rx[:1]] or [0])
+        ev = []
+        for p in self.ports:
+            ev += [(t, 'out ' + p.out_name, m) for t, m in p.tx if m != b'\xf8']
+            ev += [(t, 'in ' + p.in_name, m) for t, m in p.rx if m != b'\xf8']
+        ev.sort(key=lambda e: e[0])
+        t0 = ev[0][0] if ev else 0
         with open(os.path.join(self.out_dir, 'midi.jsonl'), 'w') as fh:
-            ev = [(t, 'out', m) for t, m in self.io.tx if m != b'\xf8'] + [(t, 'in', m) for t, m in self.io.rx if m != b'\xf8']
-            for t, d, m in sorted(ev):
-                fh.write(json.dumps({'ms': round((t - t0) * 1000, 2), 'dir': d, 'hex': m.hex()}) + '\n')
+            for t, d, m in ev:
+                fh.write(json.dumps({'ms': round((t - t0) * 1000, 2), 'port': d, 'hex': m.hex()}) + '\n')
         p = sum(r['status'] == 'PASS' for r in self.results)
         f = [r for r in self.results if r['status'] == 'FAIL']
         s = sum(r['status'] == 'SKIP' for r in self.results)
@@ -707,65 +655,78 @@ class Qual:
             fh.write('# MIDI Expression %s on a Digitakt mk1, OS 1.54\n\n' % VERSION)
             fh.write('- Run: %s, %s minutes, label `%s`\n' % (rep['started'], dur, self.label))
             fh.write('- Firmware: %s\n' % self.extra.get('firmware', '?'))
-            fh.write('- Ports: in `%s`, out `%s`\n' % (self.io.in_name, self.io.out_name))
+            fh.write('- Ports: %s\n' % '; '.join('in `%s`, out `%s`' % (q.in_name, q.out_name) for q in self.ports))
             fh.write('- Result: %d passed, %d failed, %d skipped\n' % (p, len(f), s))
-            if 'latency_ms' in self.extra:
-                fh.write('- Pitch bend round trip: median %(median)s ms, max %(max)s ms (interface included)\n' % self.extra['latency_ms'])
-            fh.write('\n| Phase | Check | Result | Note |\n| --- | --- | --- | --- |\n')
+            for k, v in self.extra.get('latency_ms', {}).items():
+                fh.write('- Pitch bend round trip %s: median %s ms, max %s ms\n' % (k, v['median'], v['max']))
+            fh.write('\n| Sent on | Phase | Check | Result | Note |\n| --- | --- | --- | --- | --- |\n')
             for r in self.results:
-                fh.write('| %s | %s | %s | %s |\n' % (r['phase'], r['check'].replace('|', '/'), r['status'], r['detail'].replace('|', '/')))
+                fh.write('| %s | %s | %s | %s | %s |\n' % (r['via'], r['phase'], r['check'].replace('|', '/'),
+                                                         r['status'], r['detail'].replace('|', '/')))
         print('\n%d passed, %d failed, %d skipped in %s minutes. Results in %s' % (p, len(f), s, dur, self.out_dir))
         for r in f:
             print('  FAIL %s: %s  %s' % (r['phase'], r['check'], r['detail']))
 
 
-GROUPS = {'core': ['thru', 'routes', 'merge', 'multi', 'latency'], 'play': ['seq', 'flood'],
-          'persist': ['persist'], 'ears': ['ears'], 'ui': ['ui']}
-GROUPS['all'] = GROUPS['core'] + GROUPS['play'] + GROUPS['persist'] + GROUPS['ui']   # ears and auto: --only
+GROUPS = {'core': ['tracks', 'notes', 'multi', 'latency'], 'play': ['seq', 'flood'],
+          'persist': ['persist'], 'ui': ['ui'], 'ears': ['ears'], 'auto': ['auto']}
+GROUPS['all'] = GROUPS['core'] + GROUPS['play'] + GROUPS['persist'] + GROUPS['ui']
+SECOND_PASS = ('tracks', 'notes', 'multi', 'latency', 'seq')     # repeated, sending on the second connection
 
 
 def main():
     ap = argparse.ArgumentParser(description='Hardware qualification for MIDI Expression.')
-    ap.add_argument('--setup', action='store_true', help='print the test project to set up once')
+    ap.add_argument('--setup', action='store_true', help='print the test project (docs/TEST-SETUP.md)')
     ap.add_argument('--list', action='store_true', help='list the MIDI ports')
     ap.add_argument('--in', dest='inp')
     ap.add_argument('--out')
-    ap.add_argument('--label', default='din', help='a name for this run: din, usb ...')
+    ap.add_argument('--in2', help='a second connection to listen on and send from (USB beside DIN)')
+    ap.add_argument('--out2')
+    ap.add_argument('--label', default='full')
     ap.add_argument('--only', default='all', help='phases or groups, comma separated: ' + ', '.join(GROUPS))
-    ap.add_argument('--auto', type=int, default=10, help='AUTO CHANNEL (1-16)')
-    ap.add_argument('--tracks', default='11,12,13', help='TRACK CHANNEL of MIDI tracks A,B,C (1-16)')
-    ap.add_argument('--outs', default='1,2,3', help='CHAN of MIDI tracks A,B,C (1-16)')
-    ap.add_argument('--audio', type=int, default=1, help='TRACK CHANNEL of audio track 1 (1-16)')
+    ap.add_argument('--tracks', default='9,10,11,12,13,14,15,16', help='TRACK A-H CHANNEL (1-16)')
+    ap.add_argument('--outs', default='1,2,3,4,5,6,7,8', help='CHAN of MIDI tracks A-H (1-16)')
+    ap.add_argument('--auto', type=int, default=16, help='AUTO CHANNEL for the auto phase (1-16)')
     ap.add_argument('--seed', type=int, default=None)
     a = ap.parse_args()
-    ta, tb, tc = [int(x) - 1 for x in a.tracks.split(',')]
-    oa, ob, oc = [int(x) - 1 for x in a.outs.split(',')]
-    cfg = {'auto': a.auto - 1, 'ta': ta, 'tb': tb, 'tc': tc, 'oa': oa, 'ob': ob, 'oc': oc, 'audio': a.audio - 1}
     if a.setup:
-        print(SETUP.format(**{k: v + 1 for k, v in cfg.items()}))
+        print(open(SETUP_DOC).read())
         return
     if a.list:
         import rtmidi
         print('inputs: ', rtmidi.MidiIn().get_ports())
         print('outputs:', rtmidi.MidiOut().get_ports())
         return
+    cfg = {'in': [int(x) - 1 for x in a.tracks.split(',')], 'out': [int(x) - 1 for x in a.outs.split(',')],
+           'auto': a.auto - 1}
     phases = []
     for p in a.only.split(','):
         phases += GROUPS.get(p.strip(), [p.strip()])
     seed = a.seed if a.seed is not None else int(time.time())
     random.seed(seed)
     io = Io(a.inp, a.out)
-    run = Qual(io, cfg, os.path.join(ROOT, 'results', 'hardware', 'qual-%s-%s' % (a.label, time.strftime('%Y%m%d-%H%M%S'))), a.label)
+    io2 = Io(a.in2, a.out2 or a.in2) if a.in2 else None
+    out_dir = os.path.join(ROOT, 'results', 'hardware', 'qual-%s-%s' % (a.label, time.strftime('%Y%m%d-%H%M%S')))
+    run = Qual(io, io2, cfg, out_dir, a.label)
     run.extra['seed'] = seed
     try:
         if run.intro():
             for p in phases:
                 getattr(run, p)()
+            again = [p for p in phases if p in SECOND_PASS]
+            if io2 and again:                       # the same, sent on the second connection
+                run.note('\n######## now sending on %s, listening on both' % io2.out_name)
+                run.io, run.mirror, run.ports, run.seen, run.heard = io2, io, [io2, io], len(io2.rx), {}
+                if run.intro(ask_fw=False):
+                    for p in again:
+                        getattr(run, p)()
     except KeyboardInterrupt:
         print('\nstopped')
     finally:
         run.save()
         io.close()
+        if io2:
+            io2.close()
 
 
 if __name__ == '__main__':

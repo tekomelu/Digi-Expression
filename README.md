@@ -3,7 +3,7 @@
 **Mod for the original Digitakt (mk1, OS 1.54) to add support for pitch-bend, modwheel, aftertouch and breath controller messages.**
 
 A module for [Modwerk](https://modwerk.app/),\
-version 0.12.3-experimental.
+version 0.12.4-experimental.
 
 > [!NOTE]
 > **Work in progress.** An independent, experimental module written with the Modwerk SDK. It has not been submitted to or reviewed by Modwerk yet and is not in the Modwerk library, so Modwerk does not support it. Feedback and bug reports are welcome in [Issues](../../issues).

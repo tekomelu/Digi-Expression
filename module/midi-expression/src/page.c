@@ -655,16 +655,16 @@ static void draw_cell(void *bmp, int t, int k)
     case C_NONE:
         dotted(bmp, x, y);
         break;
-    case C_RANGE:                       // a box with the semitones, as LFO MULT shows BPM 16
-        box(bmp, x + 1, y, x + 17, y + 16);
-        centred(bmp, FONT5, x + 9, y + 9, "ST");
+    case C_RANGE:                       // the semitones in a box as wide as the destinations'
+        box(bmp, x - 1, y, x + 19, y + 16);
+        centred(bmp, LABEL_FONT, x + 9, y + 9, "ST");
         {                               // in the box: tenths (2.5, 12.0), the label shows 2.50
             char bx[8];
             int i = 0;
             for (; val[i]; i++)
                 bx[i] = val[i];
             bx[i - (v > 0)] = 0;
-            centred(bmp, FONT5, x + 9, y + 2, bx);
+            centred(bmp, LABEL_FONT, x + 9, y + 2, bx);
         }
         break;
     case C_SENS:

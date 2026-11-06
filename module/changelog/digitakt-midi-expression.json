@@ -1,5 +1,12 @@
 [
   {
+    "version": "0.12.4-experimental",
+    "date": "2026-11-06",
+    "changes": [
+      "BEND's box is as large as the destination boxes beside it, in the same lettering."
+    ]
+  },
+  {
     "version": "0.12.3-experimental",
     "date": "2026-11-06",
     "changes": [
