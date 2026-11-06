@@ -10,7 +10,13 @@
 | load job, where it was passed to the project list's name lookup), then
 | sprintf runs on with the arguments as the firmware passed them and returns
 | to the firmware.
+| CREATE NEW in LOAD PROJECT runs the same job with a slot below zero and takes
+| another branch ("INITIALIZING PROJECT"), which never formats LOADING. A 6-byte
+| jsr site over a call in that branch comes here: store.c is told, then the
+| call runs on as the firmware made it.
+|     4004fcbc  jsr 0x4014f178      (the new project's set-up, after its message)
         .equ    SPRINTF, 0x40000e82
+        .equ    NEW_SETUP, 0x4014f178
 
         .section .run, "ax"
         .balign 2
@@ -21,6 +27,12 @@ me_saving_hook:                         | (sp) return, 4 buf, 8 fmt, 12 name
         jsr     me_project_saving
         addq.l  #8, %sp
         jmp     SPRINTF
+
+        .balign 2
+        .globl  me_creating_hook
+me_creating_hook:                       | the arguments stay on the stack for NEW_SETUP
+        jsr     me_project_creating     | C: keeps d2-d7/a2-a6
+        jmp     NEW_SETUP
 
         .balign 2
         .globl  me_loading_hook

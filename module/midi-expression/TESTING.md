@@ -1,6 +1,6 @@
 # MIDI Expression testing
 
-Version 0.12.1-experimental, Digitakt I OS 1.54 (stock file SHA-256 f78ba80f…3cf6), Core 2.1.
+Version 0.12.2-experimental, Digitakt I OS 1.54 (stock file SHA-256 f78ba80f…3cf6), Core 2.1.
 
 ## Evidence tier
 
@@ -20,7 +20,7 @@ All commands from the source repository's root, with the build environment of it
 | Latency of live pitch bend through MIDI track A | `scripts/emu-latency.py` | on MIDI OUT within 1 ms, 20 of 20 |
 | A track's own value from its parameters before it sends one | `scripts/emu-own-params.py` | MW 10 + wheel 50 = CC 1 60; PB 12288 + 128 |
 | The preset menu on the firmware: a 1-second push of A, SAVE into slot 01 with a name, LOAD's list shows it | `scripts/emu-screens.py` | the screens in `docs/img/menu*.png` |
-| Links with each other Modwerk Digitakt module | `scripts/compat-pairs.sh MODULE ...` | 0.10: every one but Digi Perform; 0.12 with Digi Slicer: links, 1,184 bytes of RAM left |
+| Links with each other Modwerk Digitakt module | `scripts/compat-pairs.sh MODULE ...` | 0.10: every one but Digi Perform; 0.12 with Digi Slicer: links, 1,104 bytes of RAM left |
 | BEND, the LEVEL knob in the preset lists and FUNC typing on the firmware | digiemu, by hand | FUNC + A: 2, 3, 4, 5, 6 semitones; BEND 2.50 drawn as 2.5; LEVEL one row a detent |
 | On a unit: the full qualification (MIDI sums over DIN and USB, auto channel, sequencer, flood, saving and power cycles, audio tracks by ear, the page and presets by eye) | `scripts/hwqual.py` ([docs/HARDWARE-TESTS.md](../../docs/HARDWARE-TESTS.md)) | to be run on 0.12.0 |
 | On a unit: expression, notes and floods into MIDI IN, everything from MIDI OUT recorded and checked | `scripts/hwping.py PORT`, then `scripts/hwstress.py --in PORT --out PORT` | 0.9.2: 25 of 25 (`results/hardware/stress-20261105-135203`) |
@@ -44,7 +44,7 @@ Routing (auto channel, TRACK CHANNEL, CHAN off, audio tracks); sums within the M
 
 ## Measured resources
 
-RAM: in a test image alone, 93.5 KB of the module area stay free (the page, the files' and the MIDI tracks' code are built for size); with Digi Slicer, 1,184 bytes. No memory is allocated at run time. CPU: see the table; the audio render skips a track at once unless a source with a destination is live on it.
+RAM: in a test image alone, 93.5 KB of the module area stay free (the page, the files' and the MIDI tracks' code are built for size); with Digi Slicer, 1,104 bytes. No memory is allocated at run time. CPU: see the table; the audio render skips a track at once unless a source with a destination is live on it.
 
 ## History
 

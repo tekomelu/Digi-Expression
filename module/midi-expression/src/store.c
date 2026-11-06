@@ -713,6 +713,15 @@ void me_project_loading(const char *name, s32 slot)
     load_project_req = 1;
 }
 
+// LOAD PROJECT's CREATE NEW: the same job with no slot ("INITIALIZING PROJECT").
+// The new project starts with the default presets on every track; it has no
+// slot until it is saved.
+void me_project_creating(void)
+{
+    req_slot_load = -2;
+    load_project_req = 1;
+}
+
 // ---- presets, for the page's menu ---------------------------------------------------------
 const char *me_preset_name(int mid, int slot)
 {
@@ -883,7 +892,15 @@ void me_store_tick(void)
     }
     if (load_project_req) {
         load_project_req = 0;
-        if (req_slot_load >= 0) {
+        if (req_slot_load == -2) {             // CREATE NEW: the defaults, no slot yet
+            defaults_snapshot();
+            apply_snapshot();
+            cur_slot = -1;
+            me_store_probe[6] = 0;
+            last_sum = cfg_sum();
+            current_dirty = 1;
+            wait_ticks = 0;
+        } else if (req_slot_load >= 0) {
             if (!read_project_file("projects/", req_slot_load + 1, 3))
                 defaults_snapshot();           // a project without settings: the defaults
             apply_snapshot();

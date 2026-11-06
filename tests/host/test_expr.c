@@ -1192,6 +1192,11 @@ int main(void)
         me_project_loading("NEW", 20);
         TICKS(1);
         CHECK(me_audio_cfg[0].range == 5 * 256 && me_audio_cfg[7].mw_dest == 27 && me_midi_cfg[0].thru == 1, "a new project: Lead on every audio track, factory MIDI");
+        me_audio_cfg[3].range = 9 * 256; me_audio_cfg[3].mw_dest = 30; me_midi_cfg[2].thru = 0;
+        me_project_creating();                             // CREATE NEW: the same job without a slot
+        TICKS(1);
+        CHECK(me_audio_cfg[3].range == 5 * 256 && me_audio_cfg[3].mw_dest == 27 && me_audio_cfg[0].mw_dest == 27
+              && me_midi_cfg[2].thru == 1 && cur_slot == -1, "CREATE NEW: the default preset on every track, no slot yet");
         def_preset[0] = 9; booted = 0;                     // config read back at power-on
         TICKS(1);
         CHECK(def_preset[0] == 4, "config read at power-on: %d", def_preset[0]);

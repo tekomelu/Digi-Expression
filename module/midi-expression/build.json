@@ -136,6 +136,13 @@
           "stockSha256": "89a4609c26f61725941af230de02fab3aa52c859d8fc34108e5b984f0c5046d9",
           "op": "jsr",
           "target": "me_loading_hook"
+        },
+        {
+          "addr": "0x4004fcbc",
+          "len": 6,
+          "stockSha256": "48ab02b8e6eab6b4daf45f62a8c7c3f8afc80bac3fd372599acbd2ec2e108a82",
+          "op": "jsr",
+          "target": "me_creating_hook"
         }
       ]
     }

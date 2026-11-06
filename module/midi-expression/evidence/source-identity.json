@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "algorithm": "sha256 of canonical sorted JSON {sources,build}; UTF-8, compact separators",
-  "sha256": "899ed350dc0e5a793a6842369d6215cf7b5ab6852b6c9d235fa84b8c6624442f",
+  "sha256": "b03943b56a3eafce0c918b6125311179439721c741819bdf4b3ce0bc28c4c200",
   "sources": {
     "src/expr.c": "48d38dd746fa888f0666e215e7f064769c8226a98539e3043e7f9fb19956fd44",
     "src/audio.c": "4b1c4fda024e2d88cb5dd6593ab2d495b21f48aff5adf8eec8bf97d42ce19c37",
@@ -12,8 +12,8 @@
     "src/vel.s": "f966ffddf9de4f5a845d767578069d0cb679324f19e41ccdb31c648433519a34",
     "src/task.s": "e60ed1c2eac194d0512884f9baba068ceaa95509c0514618b8fc9b5249a3f9eb",
     "src/midilfo.s": "baa24165ccf2eed2205143faf802d950aab0ad600275b6be822daa2a2a1aed33",
-    "src/store.c": "f35621d0c66f5628c3cc4843df3252957ba998df96cebcf1997c1204264a4237",
-    "src/store.s": "72e9a1583dbbeb341eda7df09bf10ad38e0c9c786af5c3e8681dd5d1eb7edbdd"
+    "src/store.c": "8bbd5d6b90fcccb89bdff0bae1f48cee74b414982682b8eceb888c909c3a0b42",
+    "src/store.s": "49be85c8107dc0ec1553efbffd5c114d530e27a4d3e0310c631b867fd5e5ced8"
   },
   "build": {
     "schemaVersion": 1,
@@ -153,6 +153,13 @@
             "stockSha256": "89a4609c26f61725941af230de02fab3aa52c859d8fc34108e5b984f0c5046d9",
             "op": "jsr",
             "target": "me_loading_hook"
+          },
+          {
+            "addr": "0x4004fcbc",
+            "len": 6,
+            "stockSha256": "48ab02b8e6eab6b4daf45f62a8c7c3f8afc80bac3fd372599acbd2ec2e108a82",
+            "op": "jsr",
+            "target": "me_creating_hook"
           }
         ]
       }

@@ -14,9 +14,10 @@ Everything to test on a unit before a release, and how. Most of it runs automati
 
 | Run | Command | Time | You do |
 | --- | --- | --- | --- |
-| 1. Everything over DIN | `hwqual.py --in "INTERFACE" --out "INTERFACE" --label din` | about 25 min | select a track a few times, PLAY / STOP, one power cycle, answer the questions |
-| 2. The same over USB MIDI | `hwqual.py --in "Digitakt" --out "Digitakt" --label usb --only core,play` | about 5 min | the computer's USB cable to the Digitakt, PLAY / STOP |
-| 3. With Digi Slicer (optional) | flash a build with both, then `--label slicer --only core,flood` | about 5 min | check Digi Slicer's own page still works |
+| 1. Everything | `hwqual.py --in "PORT" --out "PORT" --label usb` (or `din`) | about 25 min | load projects, one power cycle, answer the questions; the program starts and stops the sequencer |
+| 2. The MIDI parts over the other connection | `--label din --only core,play` (or `usb`) | about 5 min | nothing |
+| 3. The auto channel (optional) | `--label auto --only auto` | 1 min | select tracks when asked |
+| 4. With Digi Slicer (optional) | flash a build with both, then `--label slicer --only core,flood` | about 5 min | check Digi Slicer's own page still works |
 
 Each run writes `results/hardware/qual-LABEL-DATE/`: `summary.md` (the table for the Modwerk hardware report), `report.json`, `log.txt` and `midi.jsonl` (every message both ways). Send the folders back.
 

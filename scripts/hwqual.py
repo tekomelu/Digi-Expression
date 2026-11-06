@@ -19,7 +19,8 @@ can take a note.
 
 Phases (--only takes a comma list or a group):
   core     thru, routes, merge, multi, latency
-  play     auto, seq, flood
+  play     seq, flood (the program starts and stops the sequencer itself)
+  auto     the auto channel and track changes (you select tracks; not in all)
   persist  power-cycle and reload: the settings come back
   ears     audio tracks, by ear
   ui       the page, presets and 0.12's changes, by eye
@@ -42,7 +43,7 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
 from hwtest import Io, ask, hexs, wait, ROOT  # noqa: E402
 
-VERSION = '0.12.1-experimental'
+VERSION = '0.12.2-experimental'
 SETTLE = 0.06                   # the Digitakt answers in about 4..40 ms
 
 SETUP = '''
@@ -51,8 +52,8 @@ THE TEST PROJECT (once; save it as EXPR TEST and keep it)
 Start from an empty project.
 
 SETTINGS > MIDI CONFIG
-  SYNC:      CLOCK RECEIVE off, TRANSPORT RECEIVE off (the program sends clock in
-             the flood only to see it does no harm), CLOCK SEND as you like.
+  SYNC:      CLOCK RECEIVE on, TRANSPORT RECEIVE on (the program starts and stops
+             the sequencer and sets its tempo itself), CLOCK SEND as you like.
   PORT CONFIG: INPUT FROM  MIDI+USB, OUTPUT TO  MIDI+USB,
              RECEIVE NOTES on, RECEIVE CC/NRPN on.
   CHANNELS:  AUTO CHANNEL {auto}; TRACK 1 = {audio};
@@ -70,13 +71,14 @@ MIDI track B (TRK + trig 10): CHAN on, channel {ob}.
     AT -> SRC:PITCH BEND,        A.DEP +32.00
 
 MIDI track C (TRK + trig 11): CHAN on, channel {oc}.
-  AMP page: SEL2 = 1 (the mod wheel's CC).
+  AMP page: SEL2 = 1 (the mod wheel's CC). FLTR page: VAL2 = 100.
   EXPRESSION: THRU OFF, V.SNS 100 %,
     MW -> CC:CC2 VAL (shows #1), M.DEP -32.00
 
 On tracks B and C make sure CC VAL1 / CC VAL2 (FLTR page) are switched on (a value, not --).
 
-Audio track 1: a sample of 3 seconds or more (a pad), or any bright sample with LOOP on.
+Audio track 1: a sample of 3 seconds or more (a pad), or any bright sample with LOOP on;
+  AMP decay long, FLTR frequency low.
   EXPRESSION: BEND 2.00, V.SNS 100 %,
     MW -> FLTR:FREQUENCY, M.DEP +64.00 (set the filter low so you hear it open)
     AT -> AMP:VOLUME,     A.DEP -64.00
@@ -122,6 +124,14 @@ class Qual:
         self.heard = {}                 # (out channel, key) -> last value the synth heard
         self.own = {}                   # (out channel, key) -> the track's own value, as learned
         self.seen = 0                   # rx messages already folded into heard
+        import threading
+        self._send_lock = threading.Lock()
+        raw = io.send
+        def locked(data, raw=raw):
+            with self._send_lock:
+                return raw(data)
+        io.send = locked                # the clock thread and the program share the port
+        self._clock = None
 
     # ---- bookkeeping ---------------------------------------------------------
     def note(self, text):
@@ -181,6 +191,30 @@ class Qual:
         if s == 0xE0:
             return m[1] | (m[2] << 7)
         return m[1] if s == 0xD0 else m[2]
+
+    def transport(self, run, bpm=160):
+        """Start (clock at bpm, then START) or stop (STOP, then no clock) the sequencer over MIDI."""
+        import threading
+        if run:
+            stop = threading.Event()
+            def tick():
+                nxt = time.perf_counter()
+                while not stop.is_set():
+                    self.io.send(b'\xf8')
+                    nxt += 60 / bpm / 24
+                    time.sleep(max(0, nxt - time.perf_counter()))
+            th = threading.Thread(target=tick, daemon=True)
+            self._clock = (stop, th)
+            th.start()
+            wait(0.3)
+            self.io.send(b'\xfa')
+            wait(0.2)
+        elif self._clock:
+            self.io.send(b'\xfc')
+            wait(0.3)
+            self._clock[0].set()
+            self._clock[1].join()
+            self._clock = None
 
     def settle(self, t=SETTLE):
         wait(t)
@@ -347,6 +381,8 @@ class Qual:
         m0 = self.io.mark()
         mw = lambda v: self.send(self.cc(i, 1, v))
         own1 = self.learn(P, o, 'CC1', mw, lambda v: round256(route(v, -32 * D)), (10, 30, 50, 90))
+        if own1 is None:
+            self.note('  (track C\'s own CC 1 is 0 or near it: set its FLTR page VAL2 to 100, as the setup says)')
         if own1 is not None:
             vals = [0, 127, 64, 2] + [random.randrange(128) for _ in range(40)]
             self.sweep(P, 'MW -> CC 1 -32.00, merged with the track\'s own CC 1', o, 'CC1', vals, mw,
@@ -444,8 +480,8 @@ class Qual:
     def seq(self):
         c, P = self.cfg, 'seq'
         self.note('\n== seq: the sequencer plays track A while the wheel and bend move')
-        ask('Press PLAY. Enter.')
         m0 = self.io.mark()
+        self.transport(True)
         own1 = self.own.get((c['oa'], 'CC1'))
         self.fails = []
         for k in range(60):
@@ -454,7 +490,7 @@ class Qual:
             self.settle(0.05)
             if own1 is not None:
                 self.expect(P, c['oa'], 'CC1', clamp(own1 + w, 0, 127), 'MW %d' % w)
-        ask('Press STOP. Enter.')
+        self.transport(False)
         self.settle(0.2)
         notes = [m for _, m in self.io.since(m0) if (m[0] & 0xF0) == 0x90 and (m[0] & 15) == c['oa'] and m[2]]
         self.check(P, 'the sequencer\'s notes went out (%d)' % len(notes), len(notes) >= 2)
@@ -464,19 +500,15 @@ class Qual:
     def flood(self, seconds=20):
         c, P = self.cfg, 'flood'
         self.note('\n== flood: %d s at the MIDI wire rate to tracks A, B and C, clock included, sequencer playing' % seconds)
-        ask('Set the tempo to 160 BPM or more and press PLAY. During the %d seconds, watch the screen: turn a knob, '
-            'change a page or two, see that it keeps up. Enter to start.' % seconds)
+        ask('For the next %d seconds watch the screen: turn a knob, change a page or two, see that it keeps up. '
+            'Enter to start (the program starts the sequencer).' % seconds)
         m0 = self.io.mark()
+        self.transport(True, 160)
         sent_on, held = {}, {}
         tin = (c['ta'], c['tb'], c['tc'])
         t_end = time.time() + seconds
-        nxt_clock = time.time()
         count = 0
         while time.time() < t_end:
-            now = time.time()
-            if now >= nxt_clock:
-                self.io.send(b'\xf8')
-                nxt_clock += 60 / 160 / 24
             ch = random.choice(tin)
             r = random.randrange(10)
             if r < 3:
@@ -500,9 +532,9 @@ class Qual:
             self.io.send(bytes(self.off(ch, n)))
         self.extra['flood'] = {'messages_sent': count, 'seconds': seconds}
         self.settle(0.5)
-        self.answer(P, 'During the flood, did the screen and keys keep up (knobs, page changes)?')
-        ask('Press STOP. Enter.')
+        self.transport(False)
         self.settle(0.5)
+        self.answer(P, 'During the flood, did the screen and keys keep up (knobs, page changes)?')
         self.valid(P, m0)
         live = {}
         outs = {c['ta']: c['oa'], c['tb']: c['ob'], c['tc']: c['oc']}
@@ -574,9 +606,22 @@ class Qual:
         ask('On track B\'s EXPRESSION page set M.DEP to +32.00 (do not save). Then LOAD PROJECT: EXPR TEST again '
             '(it reloads the saved one). Enter.')
         self.probe(P, 'after an unsaved change and a reload (the saved +64 comes back)')
-        self.answer(P, 'SAVE PROJECT AS a new name (EXPR COPY), change track C\'s M.DEP, save; load EXPR TEST: '
-                       'track C still shows -32.00?')
+        self.answer(P, 'SAVE PROJECT AS a new name (EXPR COPY); on it change track B\'s M.DEP and save; '
+                       'LOAD PROJECT: EXPR TEST: track B shows +64.00 again, and EXPR COPY keeps its own value?')
         self.answer(P, 'Delete a different project (one you do not need, or make one): EXPR TEST still loads with its settings?')
+        ask('LOAD PROJECT > CREATE NEW (a new, empty project). Enter.')
+        c = self.cfg
+        m1 = self.io.mark()
+        for v in (0, 100):
+            self.send(self.cc(c['tb'], 1, v))
+            self.settle(0.1)
+        cc74 = [m for _, m in self.io.since(m1) if self.key(m) == (c['ob'], 'CC74')]
+        self.check(P, 'CREATE NEW: track B\'s routing to CC 74 is gone (the default MIDI preset)', not cc74,
+                   ' '.join(hexs(m) for m in cc74[:4]))
+        self.answer(P, 'CREATE NEW: every audio track\'s EXPRESSION page shows the SELECT DEFAULT preset '
+                       '(or the factory settings if none is selected), not the last project\'s?')
+        ask('LOAD PROJECT: EXPR TEST again, select MIDI track A. Enter.')
+        self.reset_inputs()
 
     def ears(self):
         c, P = self.cfg, 'ears'
@@ -590,8 +635,10 @@ class Qual:
                 self.send(m, gap=gap)
             wait(0.2)
             self.send(self.off(ch, 60))
-        up = list(range(8192, 16384, 512)) + [16383] * 5 + list(range(16383, 0, -512)) + [0] * 5 + list(range(0, 8193, 512))
-        sweep([self.pb(ch, min(v, 16383)) for v in up], 0.02)
+        up = (list(range(8192, 16384, 256)) + [16383] * 40 + list(range(16383, 0, -256)) + [0] * 40
+              + list(range(0, 8193, 256)) + [8192] * 20)
+        self.note('  pitch bend: slowly up a whole tone, a second there, down to a whole tone below, a second, back')
+        sweep([self.pb(ch, min(v, 16383)) for v in up], 0.025)
         self.answer(P, 'The pitch rose about a whole tone (2 semitones), fell a whole tone below, came back?')
         sweep([self.cc(ch, 1, v) for v in list(range(0, 128, 4)) + list(range(127, -1, -4))], 0.03)
         self.answer(P, 'The mod wheel opened the filter and closed it again?')
@@ -606,7 +653,6 @@ class Qual:
             wait(0.2)
         self.answer(P, 'With V.SNS 0 %, soft and loud notes sounded the same level?')
         ask('Set V.SNS back to 100 %. Enter.')
-        self.answer(P, 'Another audio track (say 2, on its own channel) does not bend or filter when track 1\'s input moves?')
 
     def ui(self):
         P = 'ui'
@@ -624,14 +670,12 @@ class Qual:
             'SAVE over a used slot asks first; NO goes back without saving',
             'LOAD puts the preset on the current track only; other tracks unchanged',
             'RESET TO DEFAULT asks first and resets only the current track',
-            'SELECT DEFAULT: a new project starts with that preset on every track of its kind',
+            'SELECT DEFAULT then RESET TO DEFAULT: the current track gets the chosen preset',
             'An audio preset is not offered on a MIDI track, and the other way round',
             'A project or preset saved with 0.11 (BEND=5) loads as BEND 5.00',
             'MIDI track: MW / AT / VEL to the track\'s own LFO (SPD, DEP ...) moves the LFO audibly on the synth',
-            'MIDI track: a value switched off on its page (FUNC + knob) is not sent under the live input',
+            'MIDI track: on the SRC page switch MW off (FUNC + its knob, it shows --): the mod wheel then sends nothing on that track',
             'The track\'s own LFO and p-locks on PB/MW still play, with the live input added (no jumps)',
-            'Over USB MIDI (the Digitakt\'s own port) the same: run this program with --label usb --only core',
-            'With Digi Slicer in the same build: both work (skip if not built)',
         ]
         for t in q:
             self.answer(P, t + '?')
@@ -673,7 +717,7 @@ class Qual:
             print('  FAIL %s: %s  %s' % (r['phase'], r['check'], r['detail']))
 
 
-GROUPS = {'core': ['thru', 'routes', 'merge', 'multi', 'latency'], 'play': ['auto', 'seq', 'flood'],
+GROUPS = {'core': ['thru', 'routes', 'merge', 'multi', 'latency'], 'play': ['seq', 'flood'],
           'persist': ['persist'], 'ears': ['ears'], 'ui': ['ui']}
 GROUPS['all'] = GROUPS['core'] + GROUPS['play'] + GROUPS['persist'] + GROUPS['ears'] + GROUPS['ui']
 

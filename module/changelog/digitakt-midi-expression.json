@@ -1,5 +1,12 @@
 [
   {
+    "version": "0.12.2-experimental",
+    "date": "2026-11-06",
+    "changes": [
+      "LOAD PROJECT > CREATE NEW now starts the new project with the default presets (SELECT DEFAULT, or the factory settings) on every track, instead of keeping the last project's EXPRESSION settings."
+    ]
+  },
+  {
     "version": "0.12.1-experimental",
     "date": "2026-11-05",
     "changes": [
