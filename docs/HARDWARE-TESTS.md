@@ -34,7 +34,7 @@ Each run writes `results/hardware/qual-LABEL-DATE/`: `summary.md` (the table for
 
 **Playing (sent over DIN):**
 
-- **clockloss:** 300 pitch bends to track A, each with a note to track H (THRU OFF: only stock passes it), with the clock stopped, running, and with the sequencer playing; then with the clock byte timed to land inside the pitch bend, and inside the note. On a DIN cable a clock byte may arrive in the middle of another message; if the note is lost as often as the pitch bend, the loss is in the interface or the stock input, not in the mod. Run 4 tells the interface apart.
+- **clockloss:** 300 pitch bends to track A, each with a note to track H (THRU OFF: only stock passes it), with the clock stopped, running, and with the sequencer playing; then with the clock byte timed to land inside the pitch bend, and inside the note.
 
 - **flood:** 20 seconds at the MIDI wire rate to all eight tracks with the sequencer playing at 160 BPM: no stuck notes, every message well formed, the model exact again afterwards, and you check the screen keeps up.
 
@@ -45,6 +45,10 @@ Each run writes `results/hardware/qual-LABEL-DATE/`: `summary.md` (the table for
 **By eye:**
 
 - **ui:** opening and closing the page; TRIG held; BEND's box, fine steps and snapping; depths and lists; the preset menu, its lists and the naming screen (repeats, delete, insert, the letter grid); LOAD, RESET, SELECT DEFAULT; old files; every audio track's settings after the power cycle; the MIDI LFO destinations; a value switched off; the track's own LFO and parameter locks.
+
+## The MIDI interface
+
+Check the interface before blaming the Digitakt. Run 4 (`loopback.py`) found that the interface used here (a 4-in, 4-out USB interface) drops on its DIN output any message that follows a clock byte within about 0.3 ms, 300 of 300, with no Digitakt connected. So `hwqual.py` holds every message back until 0.4 ms after a clock byte; with an interface that passes run 4, that guard does nothing. A loose MIDI cable corrupted bytes too (a bit set, or a message lost): `hwcheck.py --out "INTERFACE"` shows it in 10 seconds, so run it after any re-cabling.
 
 ## Not covered by the program
 

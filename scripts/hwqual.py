@@ -112,10 +112,24 @@ NAMES = 'ABCDEFGH'
 INPUTS = ('PB', 'AT', 'MW', 'BC')
 
 
+CLOCK_GUARD = 0.0004     # s after a clock byte before anything else goes out (see locked_send)
+
+
 def locked_send(raw, lock):
+    """The clock thread and the program share a port. Some MIDI interfaces (the 4i4o used on
+    7 Nov 2026, scripts/loopback.py) drop the message that follows a clock byte within about
+    0.3 ms, on their DIN output: so nothing else goes out until CLOCK_GUARD after one."""
+    last = [0.0]
+
     def send(data):
         with lock:
-            return raw(data)
+            if data != b'\xf8':
+                while time.perf_counter() - last[0] < CLOCK_GUARD:
+                    pass
+            r = raw(data)
+            if data == b'\xf8':
+                last[0] = time.perf_counter()
+            return r
     return send
 
 
@@ -287,11 +301,13 @@ class Qual:
             self.io.send(b'\xfa')
             wait(0.2)
         elif self._clock:
-            self.io.send(b'\xfc')
-            wait(0.3)
-            self._clock[0].set()
+            self._clock[0].set()               # the clock first, then STOP (twice: it must not be lost)
             self._clock[1].join()
             self._clock = None
+            for _ in range(2):
+                self.io.send(b'\xfc')
+                wait(0.05)
+            wait(0.25)
 
     # ---- phases --------------------------------------------------------------
     def intro(self, ask_fw=True):
@@ -593,18 +609,19 @@ class Qual:
         self.io.send(b'\xfa')
         wait(0.2)
         run('clock running, sequencer playing')
-        self.io.send(b'\xfc')
-        wait(0.3)
         stop.set()
         th.join()
+        for _ in range(2):
+            self.io.send(b'\xfc')
+            wait(0.05)
+        wait(0.25)
         # The clock byte on purpose inside a message: sent 0.1 to 0.7 ms after it, so on a DIN
-        # cable it lands among the message's bytes (one byte takes 0.32 ms); then just before
-        # it. Each time once for the pitch bend (the mod's path), once for the note (stock's alone).
+        # cable it lands among the message's bytes (one byte takes 0.32 ms). Once inside the
+        # pitch bend (the mod's path), once inside the note (stock's alone).
         aimed('clock byte inside the pitch bend', 'PB')
         aimed('clock byte inside the note', 'note')
-        # The clock byte just before a message: in the run of 7 Nov this lost 26 of 39 pitch bends.
-        aimed('clock byte just before the pitch bend', 'PB', before=True)
-        aimed('clock byte just before the note', 'note', before=True)
+        # A clock byte just before a message: the interface's problem, not the Digitakt's
+        # (scripts/loopback.py tests it); the ports' guard keeps it out of these runs.
         self.reset_inputs()
 
     def probe(self, P, when):
