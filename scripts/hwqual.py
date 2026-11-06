@@ -356,7 +356,7 @@ class Qual:
             vcc = TRACKS[t].get('vel_cc')
             self.fails = []
             for i, v in enumerate([1, 127, 64] + [random.randint(1, 127) for _ in range(n - 3)]):
-                note = 40 + i % 40
+                note = 48 + i % 40           # C3 and up: clear of any low notes the Digitakt uses itself
                 self.state[t]['VEL'] = v
                 self.send((0x90 | self.tin(t), note, v), gap=0)
                 got = self.settle(0.05)
@@ -459,7 +459,7 @@ class Qual:
             t = random.choice(NAMES)
             r = random.randrange(10)
             if r < 3:
-                n = random.randrange(36, 84)
+                n = random.randrange(48, 96)
                 ch = self.tin(t)
                 if (ch, n) in held:
                     self.send((0x80 | ch, n, 0), gap=0)
@@ -511,7 +511,7 @@ class Qual:
                 v = (k % 2 * 2 - 1) * (300 + (k * 53) % 7000)
                 m = self.io.mark()
                 self.play('A', 'PB', v, gap=0)
-                note = 36 + k % 48
+                note = 48 + k % 48
                 self.send((0x90 | self.tin('H'), note, 90), gap=0)
                 wait(0.012 + random.random() * 0.02)
                 self.send((0x80 | self.tin('H'), note, 0), gap=0)
