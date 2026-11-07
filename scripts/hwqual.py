@@ -753,7 +753,7 @@ class Qual:
 
     def v013(self):
         P = 'v013'
-        self.note('\n== v013: what 0.13 changed, on the unit (about 5 minutes; the project is not changed)')
+        self.note('\n== v013: what 0.13 changed, on the unit (about 10 minutes; EXPR TEST is never saved over)')
         ask('Load EXPR TEST if it is not loaded, sequencer stopped. Enter.')
         for q in [
             'Press SETTINGS: EXPRESSION is the last row, below SYSTEM; YES on it opens the EXPRESSION page of the active track',
@@ -763,13 +763,34 @@ class Qual:
             'With the page up, PLAY and STOP still start and stop the sequencer',
         ]:
             self.answer(P, q + '?')
-        ask('Make a new project for the defaults: SETTINGS > PROJECT > LOAD PROJECT > CREATE NEW (EXPR TEST stays saved). '
-            'First set SELECT DEFAULT to FACTORY for audio and MIDI if you changed it (knob A held on the page). Enter when the new project is up.')
-        for q in [
-            'In the new project, MIDI track A shows THRU OFF, and audio track 1 shows BEND OFF, no routes',
-            'Play the keyboard on MIDI track A: notes reach the synth, but no pitch bend, aftertouch or mod wheel (stock behaviour)',
-        ]:
-            self.answer(P, q + '?')
+        # The factory settings change nothing: MIDI track A reset to FACTORY passes notes, nothing else.
+        ask('On MIDI track A (TRK + trig 9) open the page, hold knob A for the preset menu. If SELECT DEFAULT is not FACTORY, '
+            'set it to FACTORY first. Then RESET TO DEFAULT, YES: track A now has THRU OFF. Sequencer stopped. Enter.')
+        a, o = self.tin('A'), self.tout('A')
+        self.settle(0.3)
+        got = []
+        for i in range(8):
+            note = 48 + i
+            self.send((0x90 | a, note, 100), (0xE0 | a, 0, 32 + 8 * i), (0xD0 | a, 20 + 10 * i), (0xB0 | a, 1, 10 + 12 * i), (0xB0 | a, 2, 5 + 9 * i))
+            wait(0.08)
+            self.send((0x80 | a, note, 0))
+            got += self.settle(0.15)
+        on = [m for _, m in got if (m[0] & 0xF0) == 0x90 and (m[0] & 15) == o and m[2]]
+        expr = [m for _, m in got if (m[0] & 15) == o and ((m[0] & 0xF0) in (0xE0, 0xD0) or ((m[0] & 0xF0) == 0xB0 and m[1] in (1, 2)))]
+        self.check(P, 'factory settings on MIDI track A: 8 notes out, no pitch bend, aftertouch, mod wheel or breath',
+                   len(on) == 8 and not expr, 'notes %d, expression %s' % (len(on), ' '.join(hexs(m) for m in expr[:6]) or 'none'))
+        ask('Load EXPR TEST again WITHOUT saving (SETTINGS > PROJECT > LOAD PROJECT, EXPR TEST): track A gets THRU ON back. Enter.')
+        self.settle(0.3)
+        got = []
+        self.send((0xE0 | a, 0, 80))
+        got += self.settle(0.3)
+        self.send((0xE0 | a, 0, 64))
+        got += self.settle(0.3)
+        self.check(P, 'EXPR TEST reloaded: MIDI track A passes pitch bend again (THRU ON as saved)',
+                   any((m[0] & 0xF0) == 0xE0 and (m[0] & 15) == o for _, m in got))
+        ask('Make a new project for the defaults: SETTINGS > PROJECT > LOAD PROJECT > CREATE NEW (EXPR TEST stays saved; '
+            'a new project also starts with its own MIDI channels, so the channels look off there). Enter when the new project is up.')
+        self.answer(P, 'In the new project, MIDI track A shows THRU OFF, and audio track 1 shows BEND OFF, no routes?')
         ask('Power-on file while playing. Press PLAY (an empty pattern is fine). With it playing, open the page on audio track 1 '
             'and turn V.SNS down to 50 %. Keep it playing for 10 seconds, then switch the Digitakt off WITHOUT pressing STOP, '
             'and on again. Enter when it is back.')
