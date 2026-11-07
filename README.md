@@ -139,15 +139,6 @@ Depth
 </tr>
 </table>
 
-### Quick tutorial: a synth with expression
-
-1. Connect your keyboard to the Digitakt's MIDI IN, on its AUTO CHANNEL (SETTINGS > MIDI CONFIG > CHANNELS), and a synth to MIDI OUT. In PORT CONFIG, tick RECEIVE NOTES and RECEIVE CC/NRPN.
-2. Select MIDI track A (TRK + trig 9), switch its CHAN on (SRC page, FUNC + knob A) and set it to the synth's channel.
-3. Play: notes, pitch bend, aftertouch, the mod wheel and breath reach the synth.
-4. For more: on the EXPRESSION page, route the wheel to a CC VAL slot (say the synth's filter, CC 74 on the AMP page's SEL) and velocity to its LFO depth.
-5. For an audio track: select it, open its EXPRESSION page, set BEND and route the wheel to FLTR Frequency.
-6. Save the project as usual: the EXPRESSION settings are saved with it.
-
 ## Presets
 
 Presets keep one track's EXPRESSION settings, so a favourite routing can go on any track or project.
