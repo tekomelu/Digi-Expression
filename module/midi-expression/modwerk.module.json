@@ -139,8 +139,8 @@
       "release": "1.54",
       "testedOn": "2026-11-07",
       "tester": "tekomelu",
-      "durationMinutes": 150,
-      "summary": "The author ran scripts/hwqual.py on 0.12.4 over DIN and USB at once: all eight MIDI tracks exact against a model, notes and V.SNS, 3,000 random messages, latency, the sequencer over MIDI, live input with external clock, a 20 s flood with the sequencer playing, saving, power cycle and CREATE NEW, and the page by eye and ear.",
+      "durationMinutes": 480,
+      "summary": "The author ran scripts/hwqual.py on 0.12.4 over DIN and USB at once: all eight MIDI tracks exact against a model, notes and V.SNS, 3,000 random messages, latency, the sequencer over MIDI, live input with external clock, a 20 s flood with the sequencer playing, saving, power cycle and CREATE NEW, and the page by eye and ear; plus the author's own playing with the mod (about 8 hours in all).",
       "limitations": [
         "The test MIDI interface drops a DIN message that follows a clock byte within about 0.3 ms (scripts/loopback.py: 300 of 300 with no Digitakt connected); DIN losses with clock were traced to it, not the mod.",
         "A loose DIN cable corrupted bytes in one session; those runs were discarded.",
