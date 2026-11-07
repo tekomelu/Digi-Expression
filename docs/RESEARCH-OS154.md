@@ -75,7 +75,7 @@ Every parameter a MIDI track sends goes through it, in the MIDI tracks' task (CC
 | 24 | 2 | CC 2 (breath) | 8.8 | as above |
 | 25–32 | 1 | the CC VAL slots, CC number from CC SEL (parameters 33–40) | 8.8 | as above |
 
-Unless `force` is set it skips a value equal to the cache, then builds the message, adds it with append (0x400e0dac) and updates the cache. Its first two instructions are 8 bytes (link and a register save), the site MIDI Expression 0.2 uses.
+Unless `force` is set it skips a value equal to the cache, then builds the message, adds it with append (0x400e0dac) and updates the cache. Its first two instructions are 8 bytes (link and a register save), the site Digi Expression 0.2 uses.
 
 ## Open
 
@@ -121,7 +121,7 @@ Stock heap addresses are the same from boot to boot in the emulator but are not 
 
 The task (0x400e11e4) waits on its queue at 0x400e11f4 (`queue_receive(0x421b51f0)`, 0x40001c0c), clears its two buffers (notes: length byte 0x421b6620, bytes from 0x421b6621; CCs: 0x421b6a21, bytes from 0x421b6a22), and handles the record by the type in its first long: 1 the sequencer's and the router's events, 3 and 4 note offs, 5 all notes off; any other type does nothing. Then, for every record, `0x400e1122(t)` for t = 0..15 (program changes), and at 0x400e1dbe..0x400e1df0 `midi_out(len, bytes)` (0x400e0992) for each buffer that is not empty. midi_out sends to DIN (0x400028c6) if bit 0 of 0x421c9560 is set and to USB (0x40004990) if bit 1 is. notes_append (0x400e1002) and the CC append (0x400e0dac) do not check the length: it is a byte and wraps. send() (0x400e0ddc) and both appends are called only from inside the task.
 
-`queue_send(queue, item)` (0x40001b7a) masks interrupts, stores the item and signals the queue's semaphore (+8); it does not check that the queue has room. Posters keep their own rings of records (0x421b5210, 64 × 20 bytes, for live notes). MIDI Expression 0.9 posts one static record of its own type (0x6d65), never more than one at a time, and appends at 0x400e1dbe (a 6-byte jsr site; the instruction there, `move.b 0x421b6620,%d0`, is replayed last for the beq after it).
+`queue_send(queue, item)` (0x40001b7a) masks interrupts, stores the item and signals the queue's semaphore (+8); it does not check that the queue has room. Posters keep their own rings of records (0x421b5210, 64 × 20 bytes, for live notes). Digi Expression 0.9 posts one static record of its own type (0x6d65), never more than one at a time, and appends at 0x400e1dbe (a 6-byte jsr site; the instruction there, `move.b 0x421b6620,%d0`, is replayed last for the beq after it).
 
 ## 13. Where per-track settings could be saved (research for saving, 0.9.3)
 
@@ -135,7 +135,7 @@ So: no free saved bytes are left in the audio sounds; a MIDI track has word 0 (2
 
 ## 14. Project save and load (0.10)
 
-The project jobs format their progress messages with sprintf (0x40000e82): "SAVING '%.16s'" (0x401c5c29) once, at 0x4004da62 in the SAVE PROJECT AS job (0x4004da16; its name is the job's second argument's string), and "LOADING '%.16s'" (0x401c5dc1) at 0x4004fe28 in the load job, with the name 0x400e3bc0 returns. Both calls are `jsr 0x40000e82` (6 bytes): MIDI Expression puts a jsr site over each (store.s), takes the name from the call's third argument and jumps on into sprintf. Measured in digiemu (`scripts/emu-store.py`): SAVE PROJECT AS to slot 003 and LOAD PROJECT of it and of the factory project each pass through them once; a load takes about 20 emulated seconds, and the settings are applied at its start. The project menu keeps its cursor between visits (a script must step up to LOAD PROJECT). The current project's header (magic `be ef ba ce`, then its name) is in RAM at 0x419a8244; the project files' list is at 0x42a3e6c4 (56 bytes an entry).
+The project jobs format their progress messages with sprintf (0x40000e82): "SAVING '%.16s'" (0x401c5c29) once, at 0x4004da62 in the SAVE PROJECT AS job (0x4004da16; its name is the job's second argument's string), and "LOADING '%.16s'" (0x401c5dc1) at 0x4004fe28 in the load job, with the name 0x400e3bc0 returns. Both calls are `jsr 0x40000e82` (6 bytes): Digi Expression puts a jsr site over each (store.s), takes the name from the call's third argument and jumps on into sprintf. Measured in digiemu (`scripts/emu-store.py`): SAVE PROJECT AS to slot 003 and LOAD PROJECT of it and of the factory project each pass through them once; a load takes about 20 emulated seconds, and the settings are applied at its start. The project menu keeps its cursor between visits (a script must step up to LOAD PROJECT). The current project's header (magic `be ef ba ce`, then its name) is in RAM at 0x419a8244; the project files' list is at 0x42a3e6c4 (56 bytes an entry).
 
 The settings file uses Digi Slicer's ekFS calls (open 0x400cf3a0, read 0x400cf0e6, write 0x400cf146, close 0x400cf35e, mkdir 0x400ce034, lookup 0x400d0ccc; the filesystem's mutex at 0x42686690, mounted flag 0x420eec50), called from the UI tick only while the mutex is free.
 
