@@ -70,77 +70,70 @@ Every destination adds to the track's own value (its knob, parameter locks and L
 <b>Audio track mod destinations</b><br>
 <img src="docs/img/expression-audio-list.png" alt="The audio destination list"><br>
 <small>
-<ins>SOURCE</ins><br>
-TUNE<br>
-BIT REDUCTION<br>
-START<br>
-LENGTH<br>
-SAMPLE LEVEL<br>
+<ins>Source</ins><br>
+Tune<br>
+Bit reduction<br>
+Start<br>
+Length<br>
+Sample level<br>
 <br>
-<ins>FILTER</ins><br>
-FREQUENCY<br>
-RESONANCE<br>
-ENV. DEPTH<br>
-ATTACK TIME<br>
-DECAY TIME<br>
-SUSTAIN LEVEL<br>
-RELEASE TIME<br>
-BASE<br>
-WIDTH<br>
-ENV. DELAY<br>
-SAMPLE-RATE REDUX<br>
+<ins>Filter</ins><br>
+Frequency<br>
+Resonance<br>
+Env. depth<br>
+Attack time<br>
+Decay time<br>
+Sustain level<br>
+Release time<br>
+Base<br>
+Width<br>
+Env. delay<br>
+Sample-rate redux<br>
 <br>
-<ins>AMP</ins><br>
-ATTACK TIME<br>
-HOLD TIME<br>
-DECAY TIME<br>
-OVERDRIVE<br>
-DELAY SEND<br>
-REVERB SEND<br>
-PAN<br>
-VOLUME<br>
+<ins>Amp</ins><br>
+Attack time<br>
+Hold time<br>
+Decay time<br>
+Overdrive<br>
+Delay send<br>
+Reverb send<br>
+Pan<br>
+Volume<br>
 <br>
-<ins>LFO 1</ins><br>
-SPEED<br>
-MULTIPLIER<br>
-FADE IN/OUT<br>
-START PHASE<br>
-DEPTH<br>
-<br>
-<ins>LFO 2</ins><br>
-SPEED<br>
-MULTIPLIER<br>
-FADE IN/OUT<br>
-START PHASE<br>
-DEPTH
+<ins>LFO 1 + 2</ins><br>
+Speed<br>
+Multiplier<br>
+Fade in/out<br>
+Start phase<br>
+Depth
 </small>
 </td>
 <td width="50%" valign="top">
 <b>MIDI track mod destinations</b><br>
 <img src="docs/img/expression-midi-list-cc.png" alt="The MIDI destination list"><br>
 <small>
-<ins>SOURCE</ins><br>
-PITCH BEND<br>
-AFTERTOUCH<br>
-MOD WHEEL<br>
-BC (breath, CC 2)<br>
+<ins>Source</ins><br>
+Pitch bend<br>
+Aftertouch<br>
+Mod wheel<br>
+Breath controller<br>
 <br>
 <ins>CC</ins><br>
-CC1 VAL<br>
-CC2 VAL<br>
-CC3 VAL<br>
-CC4 VAL<br>
-CC5 VAL<br>
-CC6 VAL<br>
-CC7 VAL<br>
-CC8 VAL<br>
+CC1 Val<br>
+CC2 Val<br>
+CC3 Val<br>
+CC4 Val<br>
+CC5 Val<br>
+CC6 Val<br>
+CC7 Val<br>
+CC8 Val<br>
 <br>
 <ins>LFO</ins><br>
-SPEED<br>
-MULTIPLIER<br>
-FADE IN/OUT<br>
-START PHASE<br>
-DEPTH
+Speed<br>
+Multiplier<br>
+Fade in/out<br>
+Start phase<br>
+Depth
 </small><br><br>
 </td>
 </tr>
