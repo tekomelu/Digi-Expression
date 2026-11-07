@@ -9,7 +9,7 @@
   "stockSha256": "f78ba80fa7b1da5fb0e1ff61ad61e9e71aafe79f4364fc49679f3651353e3cf6",
   "source": {
     "repository": "https://github.com/tekomelu/Digi-Expression",
-    "revision": "uncommitted working tree, branch main (0.13.0-experimental)",
+    "revision": "86c7bd3edbe3c7e9274213ad71f089c724641fd8",
     "path": "module/midi-expression"
   },
   "build": {
