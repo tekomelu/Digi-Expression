@@ -127,16 +127,31 @@
     }
   },
   "evidence": {
-    "tier": "none",
+    "tier": "author-hardware",
     "moduleVersion": "0.12.4-experimental",
-    "sourceSha256": null,
-    "reports": [],
-    "hardware": null,
+    "sourceSha256": "7db7da432b80137dfbb8201b20a8345721ee8d1c9e799de0c263fac27f7f90a9",
+    "reports": [
+      "evidence/hardware-testing.json",
+      "evidence/source-identity.json"
+    ],
+    "hardware": {
+      "model": "Digitakt 1",
+      "release": "1.54",
+      "testedOn": "2026-11-07",
+      "tester": "tekomelu",
+      "durationMinutes": 150,
+      "summary": "The author ran scripts/hwqual.py on 0.12.4 over DIN and USB at once: all eight MIDI tracks exact against a model, notes and V.SNS, 3,000 random messages, latency, the sequencer over MIDI, live input with external clock, a 20 s flood with the sequencer playing, saving, power cycle and CREATE NEW, and the page by eye and ear.",
+      "limitations": [
+        "The test MIDI interface drops a DIN message that follows a clock byte within about 0.3 ms (scripts/loopback.py: 300 of 300 with no Digitakt connected); DIN losses with clock were traced to it, not the mod.",
+        "A loose DIN cable corrupted bytes in one session; those runs were discarded.",
+        "Run on one unit; Digitakt 2 and OS 1.53 not tested."
+      ]
+    },
     "verifiedBy": null
   },
   "tests": {
     "report": "TESTING.md",
-    "summary": "Host unit tests (about 2.4 million checks, also under AddressSanitizer and UBSan, including 3,000 random broken files), the digiemu emulator on the firmware (MIDI-track sums and merging, 330 checks; saving and loading through the firmware's own menus and +Drive code; the preset menu; heap and CPU use), and a link check with every other Modwerk Digitakt module. Hardware, on the author's own Digitakt mk1: every feature over DIN MIDI and USB MIDI, sequencing several synths, saving, presets and the MIDI LFO destinations (0.10-0.12), and the MIDI-track stress test, 25 of 25 (0.9.2)."
+    "summary": "Host unit tests (about 2.4 million checks, also under AddressSanitizer and UBSan, including 3,000 random broken files), the digiemu emulator on the firmware (MIDI-track sums and merging, 330 checks; saving and loading through the firmware's own menus and +Drive code; the preset menu; heap and CPU use), and a link check with every other Modwerk Digitakt module. Hardware, on the author's own Digitakt mk1: every feature over DIN MIDI and USB MIDI, sequencing several synths, saving, presets and the MIDI LFO destinations (0.10-0.12), and the MIDI-track stress test, 25 of 25 (0.9.2); 0.12.4: the full hwqual.py run over DIN and USB (evidence/hardware-testing.json)."
   },
   "license": {
     "spdx": "GPL-3.0-or-later",
