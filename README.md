@@ -145,7 +145,7 @@ Depth
 
 Presets keep one track's EXPRESSION settings, so a favourite routing can go on any track or project.
 
-**The menu.** Hold **knob A pushed for a second** on the EXPRESSION page. The title says which kind of track it is for, `[SND]` (audio tracks) or `[MIDI]`. Move with UP/DOWN or the LEVEL knob, choose with YES (or a push of a knob), go back with NO, as in the stock menus; any page or menu key (SRC, FLTR, AMP, LFO, SETTINGS…) leaves it.
+**The menu.** <ins>Hold **knob A pushed for a second**</ins> on the EXPRESSION page. The title says which kind of track it is for, `[SND]` (audio tracks) or `[MIDI]`. Move with UP/DOWN or the LEVEL knob, choose with YES (or a push of a knob), go back with NO, as in the stock menus; any page or menu key (SRC, FLTR, AMP, LFO, SETTINGS…) leaves it.
 
 | The menu | SAVE: a slot… | …and a name |
 | --- | --- | --- |
