@@ -32,13 +32,13 @@ The program sends on one, listens on both, then swaps. It checks that what goes 
 
 ## MIDI tracks A to H
 
-Select a track with TRK + trig 9 … 16. For each: on the **SRC** page set **CHAN** on and the channel given. The **AMP** page has **SEL1 … SEL8** (the CC numbers), the **FLTR** page **VAL1 … VAL8** (their values). Open the EXPRESSION page with TRIG, then TRIG again.
+Select a track with TRK + trig 9 … 16. For each: on the **SRC** page set **CHAN** on and the channel given. The **AMP** page has **SEL1 … SEL8** (the CC numbers), the **FLTR** page **VAL1 … VAL8** (their values). Open the EXPRESSION page with SETTINGS > EXPRESSION, YES; TRK + trig moves it to the next track.
 
-Anything not listed stays at its default: THRU ON, V.SNS 100 %, every source to None.
+Anything not listed stays at its default: THRU OFF, BEND OFF, V.SNS 100 %, every source to None. (Before 0.13 THRU started ON; a project saved then keeps what it saved.)
 
 | Track | Input channel | CHAN (out) | Other pages | EXPRESSION | What it tests |
 | --- | --- | --- | --- | --- | --- |
-| **A** | 9 | 1 | four trigs on steps 1, 5, 9, 13 (C4, velocity 100) | defaults: THRU ON, V.SNS 100 %, no routes | pass-through of pitch bend, aftertouch, mod wheel and breath; the sequencer |
+| **A** | 9 | 1 | four trigs on steps 1, 5, 9, 13 (C4, velocity 100) | THRU ON, V.SNS 100 %, no routes | pass-through of pitch bend, aftertouch, mod wheel and breath; the sequencer |
 | **B** | 10 | 2 | AMP: SEL1 = 74 | THRU ON, V.SNS 50 %; MW → CC:CC1 VAL (#74) +64.00; VEL → SRC:BC +32.00; AT → SRC:PITCH BEND +32.00 | a CC VAL route, velocity to breath before its note, aftertouch to pitch bend beside its own pass-through, V.SNS 50 % |
 | **C** | 11 | 3 | AMP: SEL2 = 1; FLTR: VAL2 = 100 | THRU OFF; MW → CC:CC2 VAL (#1) −32.00 | a negative route merged with the track's own CC 1; THRU OFF |
 | **D** | 12 | 4 | AMP: SEL3 = 71; FLTR: VAL3 = 100 | THRU ON, V.SNS 0 %; MW → SRC:PITCH BEND +64.00; AT → CC:CC3 VAL (#71) −64.00 | the wheel to pitch bend at full depth, a full negative route, V.SNS 0 % |

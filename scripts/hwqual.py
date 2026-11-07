@@ -42,7 +42,7 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
 from hwtest import Io, ask, hexs, wait, ROOT  # noqa: E402
 
-VERSION = '0.12.4-experimental'
+VERSION = '0.13.0-experimental'
 SETTLE = 0.06                   # the Digitakt answers in about 1..40 ms
 SETUP_DOC = os.path.join(ROOT, 'docs', 'TEST-SETUP.md')
 D = 256                         # depths in 1/256: 64.00 = 64 * D
@@ -731,9 +731,7 @@ class Qual:
         P = 'ui'
         self.note('\n== ui: the page and the presets, by eye')
         for q in [
-            'TRIG, TRIG opens the EXPRESSION page; a tap of TRIG or NO closes it; other page keys work as stock',
-            'TRIG held on the EXPRESSION page: after a moment V.SNS and the depths show values (LEV too); letting go keeps the page',
-            'TRIG held on the TRIG page shows the stock values, and letting go does not open the EXPRESSION page',
+            'SETTINGS > EXPRESSION, YES opens the page; TRK + trig moves it to another track; NO goes back to SETTINGS; a page key closes it and works as stock',
             'BEND\'s box is as large as the destination boxes; BEND turns in fine steps; FUNC + turn snaps to whole semitones',
             'Depths turn finely; FUNC + turn jumps in 16s; destination lists open and close with the knob',
             'Holding knob A for a second opens the preset menu; a twist while holding cancels it',
@@ -752,6 +750,33 @@ class Qual:
             'The track\'s own LFO and p-locks on PB/MW still play, with the live input added (no jumps)',
         ]:
             self.answer(P, q + '?')
+
+    def v013(self):
+        P = 'v013'
+        self.note('\n== v013: what 0.13 changed, on the unit (about 5 minutes; the project is not changed)')
+        ask('Load EXPR TEST if it is not loaded, sequencer stopped. Enter.')
+        for q in [
+            'Press SETTINGS: EXPRESSION is the last row, below SYSTEM; YES on it opens the EXPRESSION page of the active track',
+            'With the page up, TRK + trig 9 shows MID A, and TRK + trig 1 shows SMP 1 (the page follows the track)',
+            'NO goes back to SETTINGS with the EXPRESSION row still selected; NO again closes SETTINGS as stock',
+            'Open the page again and press TRIG: the page closes and the TRIG page shows, as stock',
+            'With the page up, PLAY and STOP still start and stop the sequencer',
+        ]:
+            self.answer(P, q + '?')
+        ask('Make a new project for the defaults: SETTINGS > PROJECT > LOAD PROJECT > CREATE NEW (EXPR TEST stays saved). '
+            'First set SELECT DEFAULT to FACTORY for audio and MIDI if you changed it (knob A held on the page). Enter when the new project is up.')
+        for q in [
+            'In the new project, MIDI track A shows THRU OFF, and audio track 1 shows BEND OFF, no routes',
+            'Play the keyboard on MIDI track A: notes reach the synth, but no pitch bend, aftertouch or mod wheel (stock behaviour)',
+        ]:
+            self.answer(P, q + '?')
+        ask('Power-on file while playing. Press PLAY (an empty pattern is fine). With it playing, open the page on audio track 1 '
+            'and turn V.SNS down to 50 %. Keep it playing for 10 seconds, then switch the Digitakt off WITHOUT pressing STOP, '
+            'and on again. Enter when it is back.')
+        self.answer(P, 'After that power cycle, audio track 1 shows V.SNS 100 % again (the change was not written while playing)?')
+        ask('Now turn V.SNS down to 50 % again, press STOP, wait 5 seconds, then switch off and on. Enter when it is back.')
+        self.answer(P, 'After this power cycle, audio track 1 shows V.SNS 50 % (written once stopped)?')
+        ask('Load EXPR TEST again (LOAD PROJECT). Enter.')
 
     # ---- report ------------------------------------------------------------------
     def save(self):
@@ -796,7 +821,7 @@ class Qual:
 
 
 GROUPS = {'core': ['tracks', 'notes', 'multi', 'latency'], 'play': ['seq', 'clockloss', 'flood'],
-          'persist': ['persist'], 'ui': ['ui'], 'ears': ['ears'], 'auto': ['auto']}
+          'persist': ['persist'], 'ui': ['ui'], 'ears': ['ears'], 'auto': ['auto'], 'v013': ['v013']}
 GROUPS['all'] = GROUPS['core'] + GROUPS['play'] + GROUPS['persist'] + GROUPS['ui']
 SECOND_PASS = ('tracks', 'notes', 'multi', 'latency', 'seq', 'clockloss')     # repeated, sending on the second connection
 

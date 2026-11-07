@@ -74,3 +74,6 @@ static void h_put_text(const char *p, const char *text)
 #define EK_OWNER   h_owner
 #define EK_MOUNTED h_mounted
 #define NOT_FOUND  0x19
+
+extern volatile uint8_t h_seq_playing;
+#define SEQ_PLAYING h_seq_playing

@@ -1,3 +1,4 @@
+# 0.10-0.12 (the first rows), then 0.13.0 below its heading. RAM left in a test image with both.
 digislicer: links, ramSpare:5568
 cc-names (+dt-support): links, ramSpare:45332
 digimono (+digichain): links, ramSpare:63368
@@ -19,3 +20,7 @@ midi-retrig: links, ramSpare:96220
 note-accumulator: links, ramSpare:94512
 ram-machines (+machine-pages): links, ramSpare:88648
 sample-tools: links, ramSpare:89988
+# 0.13.0-experimental (the SETTINGS row; no TRIG claim):
+digiperform: links, ramSpare:74716
+digimatrix: links, ramSpare:88940
+digislicer: links, ramSpare:1168

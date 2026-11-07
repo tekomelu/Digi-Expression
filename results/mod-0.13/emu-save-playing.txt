@@ -1,0 +1,6 @@
+PASS the sequencer runs (flag 1)
+PASS V.SNS turned down on the page (75 %)
+PASS playing: current.txt not written (0 writes)
+PASS stopped (flag 0)
+PASS stopped: current.txt written once (1 writes)
+0 failures

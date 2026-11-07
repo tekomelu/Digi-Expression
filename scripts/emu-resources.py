@@ -19,6 +19,15 @@ import dtsession
 from emu.session import Session, run_script
 from unicorn import UC_HOOK_CODE
 
+def _cfg_tables(mem):
+    # 0.13: the factory settings change nothing (BEND and THRU OFF), so audio and MIDI look alike: 16 in a row
+    blank = bytes([0, 0, 0, 0, 0, 100, 0, 0, 0, 0, 0, 0])
+    if mem.find(blank * 16) >= 0:
+        m = 0x47be0000 + mem.find(blank * 16)       # the compiler puts the MIDI table first
+        return m + 12 * 8, m
+    return (0x47be0000 + mem.find(bytes([2, 0, 0, 0, 0, 100, 0, 0, 0, 0, 0, 0]) * 8),
+            0x47be0000 + mem.find(bytes([0, 1, 0, 0, 0, 100, 0, 0, 0, 0, 0, 0]) * 8))
+
 syx = os.environ['DT2_SYX']; snap = os.path.abspath(os.environ['DT2_SNAPSHOT'])
 os.chdir(os.path.dirname(syx))
 io = dtsession.Midi()
@@ -60,8 +69,7 @@ def do(text):
 s.run_ms(300)
 mem = bytes(uc.mem_read(0x47be0000, 0x20000))
 probe = 0x47be0000 + mem.find(struct.pack('>I', 0x4d455850))
-audio = 0x47be0000 + mem.find(bytes([2, 0, 0, 0, 0, 100, 0, 0, 0, 0, 0, 0]) * 8)
-midi = 0x47be0000 + mem.find(bytes([0, 1, 0, 0, 0, 100, 0, 0, 0, 0, 0, 0]) * 8)
+audio, midi = _cfg_tables(mem)
 assert probe > 0x47be0000 and audio > 0x47be0000 and midi > 0x47be0000
 
 

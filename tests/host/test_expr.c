@@ -13,6 +13,7 @@ static int16_t h_os_vel[8];
 
 volatile int32_t h_auto_channel = 13, h_active_track = 8, h_track_channel[16], h_receive_cc = 1;
 volatile uint32_t h_output_to = 3;
+volatile uint8_t h_seq_playing;
 volatile uint8_t h_notes[1 + 1024], h_ccs[1 + 1024];
 volatile int8_t h_params[8 * 106];
 
@@ -118,9 +119,9 @@ static void reset(void)
         me_midi_cfg[m].mw_dest = me_midi_cfg[m].at_dest = me_midi_cfg[m].vel_dest = 0;
         me_midi_cfg[m].mw_amount = me_midi_cfg[m].at_amount = me_midi_cfg[m].vel_amount = 0;
     }
-    me_page_open = 0; recompose = 0; pend = 0; hold = 0; list_cell = -1; list_t = 0; acc_track = -1;
+    me_page_open = 0; recompose = 0; no_up = 0; list_cell = -1; list_t = 0; acc_track = -1;
     for (int k = 0; k < CELLS; k++) { acc[k] = 0; shown[k] = 0; idle_counts[k] = 0; snap_rest[k] = 0; }
-    h_trig_page = 0; h_func_held = 0;
+    h_func_held = 0;
 }
 
 // A render block's parameter words: 18 bytes, then 8 tracks x 53 slots.
@@ -233,6 +234,7 @@ int main(void)
     h_active_track = 9;
     me_tick(0);
     CHECK(nsent == before, "selecting B sends nothing until the next move: %d", nsent - before);
+    me_midi_cfg[1].thru = 1;                     // B passes the wheel (the factory setting is OFF)
     mw_in(13, 10, AUTO);
     CHECK(nsent == before + 1 && sent[nsent - 1][0] == 0xB3 && sent[nsent - 1][2] == 10, "B gets the wheel on the next move");
 
@@ -617,30 +619,43 @@ int main(void)
     int ev[8];
     #define KEY(id_, down, rep) (memset(ev, 0, sizeof ev), ev[3] = (id_), ev[4] = (down) | ((rep) ? 8 : 0), me_page_key(0, ev))
     #define ENC(id_, n) (memset(ev, 0, sizeof ev), ev[3] = (id_), ev[4] = (n), me_page_enc(0, ev))
-    #define OPEN() (h_trig_page = 1, KEY(19, 1, 0), KEY(19, 0, 0))
+    void *settings_view = (void *)0x1000;
+    #define OPEN() me_settings_select(&settings_view)
 
-    // 25. A tap of TRIG on the TRIG page opens it; a hold, TRIG + a key, FUNC + TRIG or another page do not.
+    // 25. SETTINGS > EXPRESSION, YES opens it; NO goes back to SETTINGS and its release stays ours;
+    //     TRK + trig keeps its stock job (the page follows the active track); TRIG is a page key.
     reset();
-    h_trig_page = 1;
-    CHECK(KEY(19, 1, 0) == 0 && KEY(19, 0, 0) == 0, "TRIG reaches the stock page");
-    CHECK(me_page_open, "tap of TRIG on the TRIG page: open");
-    reset();
-    h_trig_page = 1;
-    KEY(19, 1, 0);
-    for (int i = 0; i < TAP_TICKS; i++) me_page_tick(0);
-    KEY(19, 0, 0);
-    CHECK(!me_page_open, "a hold of TRIG: the stock page's");
-    reset();
-    h_trig_page = 1;
-    KEY(19, 1, 0); KEY(9, 1, 0); KEY(9, 0, 0); KEY(19, 0, 0);
-    CHECK(!me_page_open, "TRIG + REC: the stock copy, no page");
-    reset();
-    h_trig_page = 1; h_func_held = 1;
-    KEY(19, 1, 0); KEY(19, 0, 0);
-    CHECK(!me_page_open, "FUNC + TRIG: the quantize page");
-    reset();
-    KEY(19, 1, 0); h_trig_page = 1; KEY(19, 0, 0);
-    CHECK(!me_page_open, "TRIG pressed on another page only brings the TRIG page");
+    h_invalidated = 0;
+    OPEN();
+    CHECK(me_page_open && h_invalidated == 1, "YES on the EXPRESSION row: open, the menu redrawn");
+    CHECK(KEY(2, 1, 0) == 0 && KEY(30, 1, 0) == 0 && me_page_open, "TRK + trig reach stock, the page stays");
+    CHECK(KEY(10, 1, 0) == 0 && me_page_open, "PLAY reaches stock, the page stays");
+    CHECK(ENC(9, 4) == 1, "LEVEL: kept from the menu under the page");
+    CHECK(KEY(13, 1, 0) == 1 && !me_page_open, "NO: back to SETTINGS");
+    CHECK(KEY(13, 0, 0) == 1, "its release does not reach SETTINGS");
+    CHECK(KEY(13, 1, 0) == 0 && KEY(13, 0, 0) == 0, "the next NO is SETTINGS' own");
+    OPEN();
+    CHECK(KEY(19, 1, 0) == 0 && !me_page_open, "TRIG: the stock page, the page closes");
+    h_active_track = 9;
+    OPEN();
+    drawn[0] = 0; me_page_draw((void *)1, (void *)1);
+    CHECK(strstr(drawn, "MID") && strstr(drawn, "|B|") && strstr(drawn, "Expression"), "the track box shows MID B: %s", drawn);
+    h_active_track = 2;
+    drawn[0] = 0; me_page_draw((void *)1, (void *)1);
+    CHECK(strstr(drawn, "SMP") && strstr(drawn, "|3|"), "it follows the active track: SMP 3: %s", drawn);
+
+    // 25b. The factory settings change nothing: THRU and BEND OFF.
+    {
+        struct me_cfg f;
+        me_factory(&f, 1);
+        CHECK(f.range == 0 && f.vel_sens == VEL_SENS_MAX && !f.mw_dest && !f.at_dest && !f.vel_dest, "factory MIDI: THRU OFF, nothing routed");
+        me_factory(&f, 0);
+        CHECK(f.range == 0, "factory audio: BEND OFF");
+        h_active_track = 9;
+        CHECK(me_page_default(9, 0) == 0, "THRU's default on the page: OFF");
+        h_active_track = 0;
+        CHECK(me_page_default(0, 0) == 0, "BEND's default on the page: OFF");
+    }
 
     // 26. Audio cells: each knob its own setting, stepped through the accelerator
     //     (the stand-in gives 256 words a raw count: a whole step, or 1.00 of a depth).
@@ -748,7 +763,7 @@ int main(void)
     CHECK(me_audio_cfg[0].mw_dest == 0, "and none: %d", me_audio_cfg[0].mw_dest);
     h_func_held = 0;
 
-    CHECK(ENC(9, 3) == 0, "LEVEL stays the track level");
+    CHECK(ENC(9, 3) == 1, "LEVEL: kept from the SETTINGS list under the page");
     CHECK(KEY(30, 1, 0) == 0 && KEY(10, 1, 0) == 0 && KEY(2, 1, 0) == 0, "trig keys, PLAY and TRK go to the stock page");
     CHECK(KEY(14, 1, 0) == 1 && KEY(12, 1, 0) == 1, "arrows and YES: taken, nothing happens");
     CHECK(me_page_open, "still open");
@@ -1047,44 +1062,11 @@ int main(void)
                me_sent - sent0, me_filtered - filt0, taken_over, merged);
     }
 
-    // 28. Leaving: another page key, the page gone from under it, TRIG again.
+    // 28. Leaving: another page key closes it and does its stock job.
     reset();
     OPEN();
     CHECK(KEY(21, 1, 0) == 0 && !me_page_open, "FLTR: stock takes it, the page closes");
-    OPEN();
-    CHECK(me_page_open, "open again");
-    h_trig_page = 0;
-    me_page_draw((void *)1, (void *)1);
-    CHECK(!me_page_open, "the TRIG page gone: closed");
-    reset();
-    OPEN();
-    CHECK(KEY(19, 1, 0) == 0 && me_page_open && KEY(19, 0, 0) == 0 && !me_page_open, "TRIG tapped again: back to the first page (stock sees TRIG too)");
     CHECK(ENC(1, 1) == 0, "closed: knobs are stock's");
-    // TRIG held, as on a stock page: the knobs' values in place of their labels, and letting go stays
-    reset();
-    h_active_track = 0;
-    OPEN();
-    me_audio_cfg[0].vel_sens = 80; me_audio_cfg[0].mw_amount = 12 * 256 + 128;
-    KEY(19, 1, 0);
-    h_trig_held = 1;                                   // the stock page shows its values now
-    drawn[0] = 0; me_page_draw((void *)1, (void *)1);
-    CHECK(strstr(drawn, "80%") && strstr(drawn, "+12.50") && strstr(drawn, "BEND") && strstr(drawn, "MW"),
-          "TRIG held: V.SNS and depths show values, boxes keep labels: %s", drawn);
-    KEY(19, 0, 0);
-    CHECK(me_page_open, "let go after the values showed: the page stays");
-    h_trig_held = 0;
-    drawn[0] = 0; me_page_draw((void *)1, (void *)1);
-    CHECK(strstr(drawn, "V.SNS") && strstr(drawn, "M.DEP"), "let go: the labels again: %s", drawn);
-    KEY(19, 1, 0);
-    for (int i = 0; i < TAP_TICKS + 2; i++) me_page_tick(0);
-    KEY(19, 0, 0);
-    CHECK(me_page_open, "a long hold (no values seen) also stays");
-    KEY(19, 1, 0); KEY(19, 0, 0);
-    CHECK(!me_page_open, "a tap closes");
-    h_trig_held = 1;                                   // on the TRIG page: a hold that showed the values opens nothing
-    KEY(19, 1, 0); KEY(19, 0, 0);
-    CHECK(!me_page_open, "TRIG page: a hold that showed stock's values does not open the page");
-    h_trig_held = 0;
 
     // 40. Kept with the project (store.c): text files on the +Drive.
     {
@@ -1097,7 +1079,7 @@ int main(void)
         h_mounted = 1; h_owner = 1; me_tick(0);
         CHECK(!booted, "drive busy: waits");
         h_owner = 0; me_tick(0);
-        CHECK(booted && me_midi_cfg[0].thru == 1 && me_audio_cfg[0].range == 2 * 256, "first power-on: nothing on the card, the factory settings");
+        CHECK(booted && me_midi_cfg[0].thru == 0 && me_audio_cfg[0].range == 0, "first power-on: nothing on the card, the factory settings");
         // a change: current.txt a second later, in _temp first
         me_midi_cfg[0].mw_dest = 7; me_midi_cfg[0].mw_amount = 20 * 256; me_audio_cfg[3].range = 7 * 256;
         TICKS(SAVE_WAIT);
@@ -1127,13 +1109,13 @@ int main(void)
         // a project without a file: the defaults
         me_project_loading("OTHER", 9);
         TICKS(1);
-        CHECK(me_midi_cfg[0].mw_dest == 0 && me_audio_cfg[3].range == 2 * 256 && me_midi_cfg[0].thru == 1, "slot 010 without a file: the factory defaults");
+        CHECK(me_midi_cfg[0].mw_dest == 0 && me_audio_cfg[3].range == 0 && me_midi_cfg[0].thru == 0, "slot 010 without a file: the factory defaults");
         // power-on: as at power-off
         me_midi_cfg[5].vel_sens = 40;
         TICKS(40);
         booted = 0; me_midi_cfg[5].vel_sens = 100; me_audio_cfg[0].range = 9 * 256;
         TICKS(1);
-        CHECK(me_midi_cfg[5].vel_sens == 40 && me_audio_cfg[0].range == 2 * 256 && cur_slot == 9, "power-on: as at power-off (%d), slot kept %d", me_midi_cfg[5].vel_sens, cur_slot);
+        CHECK(me_midi_cfg[5].vel_sens == 40 && me_audio_cfg[0].range == 0 && cur_slot == 9, "power-on: as at power-off (%d), slot kept %d", me_midi_cfg[5].vel_sens, cur_slot);
         // a torn current.txt: the copy in _temp is read
         int ci = h_find("/cfw/expression/current.txt");
         h_fs[ci].len = 300;                               // cut short: no END
@@ -1145,7 +1127,7 @@ int main(void)
         h_fs[ci].len = 300; h_fs[h_find("/cfw/expression/_temp/current.txt")].len = 10;
         booted = 0;
         TICKS(1);
-        CHECK(me_midi_cfg[5].vel_sens == 100 && me_midi_cfg[0].thru == 1, "both broken: the defaults");
+        CHECK(me_midi_cfg[5].vel_sens == 100 && me_midi_cfg[0].thru == 0, "both broken: the defaults");
         // nothing is written while notes play
         me_midi_cfg[6].vel_sens = 33;
         { u32 w = n_written;
@@ -1153,6 +1135,17 @@ int main(void)
           CHECK(n_written == w, "playing: current.txt waits (%u)", n_written - w);
           TICKS(QUIET + 2);
           CHECK(n_written == w + 1, "then written once quiet"); }
+        // nor while the sequencer runs, even with no notes at all (an empty pattern, clock to other gear)
+        me_midi_cfg[6].vel_sens = 44;
+        { u32 w = n_written;
+          h_seq_playing = 1;
+          TICKS(20 * QUIET);
+          CHECK(n_written == w, "sequencer running, nothing played: current.txt waits (%u)", n_written - w);
+          h_seq_playing = 0;
+          TICKS(QUIET - 2);
+          CHECK(n_written == w, "stopped: 2 s more first");
+          TICKS(4);
+          CHECK(n_written == w + 1, "then written once, stopped"); }
         me_midi_cfg[6].vel_sens = 100;
         TICKS(12 + SAVE_WAIT + QUIET);
         // a hand-edited project file: odd spacing, comments, CRLF, out of range, junk lines, missing keys
@@ -1167,7 +1160,7 @@ int main(void)
               me_audio_cfg[0].mw_amount, me_audio_cfg[0].vel_dest, me_audio_cfg[0].vel_amount);
         CHECK(me_midi_cfg[1].thru == 0 && me_midi_cfg[1].at_dest == 17 && me_midi_cfg[1].at_amount == -AMOUNT_MAX && me_midi_cfg[1].mw_dest == MIDI_DESTS - 1,
               "MIDI B from [b]: THRU off, AT -> LFO depth -64, MW held (%d)", me_midi_cfg[1].mw_dest);
-        CHECK(me_audio_cfg[2].range == 2 * 256 && me_midi_cfg[0].thru == 1, "untouched tracks: factory");
+        CHECK(me_audio_cfg[2].range == 0 && me_midi_cfg[0].thru == 0, "untouched tracks: factory");
         // presets: save, list, load, reset, default
         me_audio_cfg[0].range = 5 * 256; me_audio_cfg[0].mw_dest = 27; me_audio_cfg[0].mw_amount = 10 * 256;
         CHECK(me_preset_save(0, 4, "Lead  ", 0), "save audio preset 05");
@@ -1191,19 +1184,19 @@ int main(void)
         CHECK(me_audio_cfg[2].range == 5 * 256 && me_audio_cfg[2].mw_dest == 27, "RESET: the default preset, Lead");
         me_project_loading("NEW", 20);
         TICKS(1);
-        CHECK(me_audio_cfg[0].range == 5 * 256 && me_audio_cfg[7].mw_dest == 27 && me_midi_cfg[0].thru == 1, "a new project: Lead on every audio track, factory MIDI");
+        CHECK(me_audio_cfg[0].range == 5 * 256 && me_audio_cfg[7].mw_dest == 27 && me_midi_cfg[0].thru == 0, "a new project: Lead on every audio track, factory MIDI");
         me_audio_cfg[3].range = 9 * 256; me_audio_cfg[3].mw_dest = 30; me_midi_cfg[2].thru = 0;
         me_project_creating();                             // CREATE NEW: the same job without a slot
         TICKS(1);
         CHECK(me_audio_cfg[3].range == 5 * 256 && me_audio_cfg[3].mw_dest == 27 && me_audio_cfg[0].mw_dest == 27
-              && me_midi_cfg[2].thru == 1 && cur_slot == -1, "CREATE NEW: the default preset on every track, no slot yet");
+              && me_midi_cfg[2].thru == 0 && cur_slot == -1, "CREATE NEW: the default preset on every track, no slot yet");
         def_preset[0] = 9; booted = 0;                     // config read back at power-on
         TICKS(1);
         CHECK(def_preset[0] == 4, "config read at power-on: %d", def_preset[0]);
         h_fs[h_find("/cfw/expression/audio/05.txt")].len = 5; h_fs[h_find("/cfw/expression/_temp/audio/05.txt")].len = 5;
         me_track_reset(0, 1);
         TICKS(1);
-        CHECK(me_audio_cfg[1].range == 2 * 256, "the default preset broken: factory");
+        CHECK(me_audio_cfg[1].range == 0, "the default preset broken: factory");
         me_default_set(0, -1);
         TICKS(1);
         CHECK(strstr(h_ftext("/cfw/expression/config.txt"), "DEFAULT AUDIO=0"), "default back to Factory");
@@ -1289,7 +1282,7 @@ int main(void)
         CHECK(me_menu == M_RESET, "RESET asks first");
         KEY(K_YES, 1, 0);
         TICKS(1);
-        CHECK(me_audio_cfg[0].range == 2 * 256 && me_menu == M_MAIN, "RESET: the default (Factory) on track 1");
+        CHECK(me_audio_cfg[0].range == 0 && me_menu == M_MAIN, "RESET: the default (Factory) on track 1");
         menu_cur[M_MAIN] = 3;
         KEY(K_YES, 1, 0);                                    // DEFAULT
         TICKS(10);

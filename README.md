@@ -3,7 +3,7 @@
 **Mod for the original Digitakt (mk1, OS 1.54) to add support for pitch-bend, modwheel, aftertouch and breath controller messages.**
 
 A module for [Modwerk](https://modwerk.app/),\
-version 0.12.4-experimental.
+version 0.13.0-experimental.
 
 > [!NOTE]
 > **Work in progress.** An independent, experimental module written with the Modwerk SDK. Submitted to Modwerk for review; not in the Modwerk library yet, so Modwerk does not support it. Feedback and bug reports are welcome in [Issues](../../issues).
@@ -25,10 +25,7 @@ Modwerk is an independent project, not affiliated with or endorsed by Elektron. 
 
 ## Known limits
 
-**Other mods.** It links with every other Modwerk Digitakt module except:
-
-* **Digi Perform**: it opens its own page with the same gesture (TRIG again on the TRIG page), so the two cannot be installed together.
-* **Digi Slicer**: works, but only 1.0 KB of RAM is left with both, so no third mod of any size fits beside them.
+**Other mods.** It links with every other Modwerk Digitakt module, Digi Perform included. With **Digi Slicer** it works, but only about 1.1 KB of RAM is left with both, so no third mod of any size fits beside them.
 
 The others were linked with it one at a time ([results/compat/pairs.txt](results/compat/pairs.txt)); RAM decides which combinations of three or more fit. FX Track sees its CCs, and CC Recall's sends and Digi Matrix's routings add up with it.
 
@@ -38,24 +35,26 @@ The others were linked with it one at a time ([results/compat/pairs.txt](results
 * Live only: the sequencer never records the added expressions.
 * Settings belong to the project's slot and the track's place (1–8, A–H): copying a sound or a track does not copy them; a preset carries them.
 * A project put into a slot from outside (with Transfer) takes that slot's old settings file, if one is left.
-* Writing a settings file holds the screen and the MIDI output for a moment (about 0.1 s in the emulator), so the power-on file is written only once nothing has played for 2 seconds.
+* Writing a settings file holds the screen and the MIDI output for a moment (about 0.1 s in the emulator), so the power-on file is written only while the sequencer is stopped and nothing has been played for 2 seconds.
 * The track's PB, AT and MW knobs on screen show the track's own value, not the sum.
 
 ## How to use it
 
 ### Open the page
 
-Select a track, press **TRIG** for its TRIG page, then **tap TRIG again**: the EXPRESSION page. A tap of TRIG or NO goes back; holding TRIG shows the knobs' values in place of their labels, as on the stock pages, and letting go then keeps the page. Every other key keeps its stock job.
+Press **SETTINGS**, go down to **EXPRESSION** (below SYSTEM) and press **YES**: the EXPRESSION page of the active track. **TRK + trig** picks another track with the page up, and the page follows it. **NO** goes back to SETTINGS; a page key such as TRIG or FLTR closes it and does its stock job.
 
-| The TRIG page… | …tap TRIG again |
+**Nothing is switched on at first.** Every track starts with THRU OFF, BEND OFF and no routes, so a fresh install plays exactly as stock. Switch on what you want per track, then save it as a preset and make that your default with SELECT DEFAULT, so new projects start that way.
+
+| SETTINGS… | …EXPRESSION, YES |
 | --- | --- |
-| ![The stock TRIG page](docs/img/trig-page.png) | ![The EXPRESSION page of an audio track](docs/img/expression-audio.png) |
+| ![SETTINGS with the EXPRESSION row selected](module/midi-expression/media/settings-row.png) | ![The EXPRESSION page of MIDI track A with THRU ON](module/midi-expression/media/page-midi.png) |
 
 ### The knobs
 
 | Knob | Audio track | MIDI track | Default |
 | --- | --- | --- | --- |
-| A | **BEND**: how far pitch bend moves TUNE, OFF to 12.00 semitones in fine steps | **THRU**: pitch bend, aftertouch, mod wheel and breath pass to the synth (ON/OFF) | 2 / ON |
+| A | **BEND**: how far pitch bend moves TUNE, OFF to 12.00 semitones in fine steps | **THRU**: pitch bend, aftertouch, mod wheel and breath pass to the synth (ON/OFF) | OFF / OFF |
 | B | **V.SNS**: velocity sensitivity, 0–100 % | **V.SNS** | 100 % |
 | C, D | **MW** and its depth **M.DEP** | **MW** and **M.DEP** | none, 0 |
 | E, F | **VEL** and **V.DEP** | **VEL** and **V.DEP** | none, 0 |

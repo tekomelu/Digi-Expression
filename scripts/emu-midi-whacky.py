@@ -133,8 +133,13 @@ def main():
     try:
         s.run_ms(200)
         mem = bytes(uc.mem_read(0x47be0000, 0x20000))
-        audio = 0x47be0000 + mem.find(bytes([2, 0, 0, 0, 0, 100, 0, 0, 0, 0, 0, 0]) * 8)
-        midi_cfg = 0x47be0000 + mem.find(bytes([0, 1, 0, 0, 0, 100, 0, 0, 0, 0, 0, 0]) * 8)
+        blank = bytes([0, 0, 0, 0, 0, 100, 0, 0, 0, 0, 0, 0])
+        if mem.find(blank * 16) >= 0:           # 0.13: every track's factory settings change nothing (BEND and THRU OFF)
+            midi_cfg = 0x47be0000 + mem.find(blank * 16)   # the compiler puts the MIDI table first
+            audio = midi_cfg + 12 * 8
+        else:
+            audio = 0x47be0000 + mem.find(bytes([2, 0, 0, 0, 0, 100, 0, 0, 0, 0, 0, 0]) * 8)
+            midi_cfg = 0x47be0000 + mem.find(bytes([0, 1, 0, 0, 0, 100, 0, 0, 0, 0, 0, 0]) * 8)
         print('settings: audio %08x, MIDI %08x' % (audio, midi_cfg))
 
         def cfg(m, thru=1, mw=0, mwa=0, at=0, ata=0, vel=0, vela=0, sens=100):

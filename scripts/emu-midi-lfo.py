@@ -25,10 +25,19 @@ s.run_ms(200)
 for st in dtsession.parse('press TRK 100\ntap 9\nrelease TRK 100\nwait 200\npress FUNC 100\ntap A\nrelease FUNC 100\nwait 300\n'):
     run_script(s, [st])
 mem = bytes(uc.mem_read(0x47be0000, 0x20000))
-midi_cfg = 0x47be0000 + mem.find(bytes([0, 1, 0, 0, 0, 100, 0, 0, 0, 0, 0, 0]) * 8)
+midi_cfg = _cfg_tables(mem)[1]
 uc.mem_write(midi_cfg, struct.pack('>hbbbbhhh', 1, 13, 0, 0, 100, 16 * 256, 0, 0))   # THRU, MW -> LFO SPD +16
 import unicorn.m68k_const as K
 from unicorn.m68k_const import UC_M68K_REG_PC, UC_M68K_REG_SR
+
+def _cfg_tables(mem):
+    # 0.13: the factory settings change nothing (BEND and THRU OFF), so audio and MIDI look alike: 16 in a row
+    blank = bytes([0, 0, 0, 0, 0, 100, 0, 0, 0, 0, 0, 0])
+    if mem.find(blank * 16) >= 0:
+        m = 0x47be0000 + mem.find(blank * 16)       # the compiler puts the MIDI table first
+        return m + 12 * 8, m
+    return (0x47be0000 + mem.find(bytes([2, 0, 0, 0, 0, 100, 0, 0, 0, 0, 0, 0]) * 8),
+            0x47be0000 + mem.find(bytes([0, 1, 0, 0, 0, 100, 0, 0, 0, 0, 0, 0]) * 8))
 REGS = [getattr(K, n) for n in dir(K) if n.startswith('UC_M68K_REG_') and n[12:13] in 'AD' and len(n) == 14] + [K.UC_M68K_REG_SR]
 ENTRY, MAGIC = 0x400ed438, 0x40000400
 

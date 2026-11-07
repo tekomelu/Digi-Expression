@@ -12,6 +12,15 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import dtsession
 from emu.session import Session, run_script
 
+def _cfg_tables(mem):
+    # 0.13: the factory settings change nothing (BEND and THRU OFF), so audio and MIDI look alike: 16 in a row
+    blank = bytes([0, 0, 0, 0, 0, 100, 0, 0, 0, 0, 0, 0])
+    if mem.find(blank * 16) >= 0:
+        m = 0x47be0000 + mem.find(blank * 16)       # the compiler puts the MIDI table first
+        return m + 12 * 8, m
+    return (0x47be0000 + mem.find(bytes([2, 0, 0, 0, 0, 100, 0, 0, 0, 0, 0, 0]) * 8),
+            0x47be0000 + mem.find(bytes([0, 1, 0, 0, 0, 100, 0, 0, 0, 0, 0, 0]) * 8))
+
 syx = os.environ['DT2_SYX']; snap = os.path.abspath(os.environ['DT2_SNAPSHOT'])
 os.chdir(os.path.dirname(syx))
 io = dtsession.Midi()
@@ -35,7 +44,7 @@ s.run_ms(300)
 mem = bytes(uc.mem_read(0x47be0000, 0x20000))
 probe = 0x47be0000 + mem.find(struct.pack('>I', 0x4d455850))
 assert probe > 0x47be0000, 'the probe not found'
-midi_cfg = 0x47be0000 + mem.find(bytes([0, 1, 0, 0, 0, 100, 0, 0, 0, 0, 0, 0]) * 8)
+midi_cfg = _cfg_tables(mem)[1]
 
 
 def pr():   # marker, booted, written, failed, read, bad, slot + 1
@@ -81,7 +90,7 @@ do('tap NO\nwait 300\ntap NO\nwait 300\ntap GLOBAL\nwait 500\ntap YES\nwait 500\
 do('tap YES\nwait 800\n')
 do('tap YES\nwait 30000\n')
 c = cfg(0)
-check(c[1] == 0 and c[0] == 1 and c[4] == 100, 'LOAD PROJECT 001 (never saved with the mod): the defaults %s' % (c,))
+check(c[1] == 0 and c[0] == 0 and c[4] == 100, 'LOAD PROJECT 001 (never saved with the mod): the defaults (THRU OFF) %s' % (c,))
 check(pr()[6] == 1, 'the load job gave slot 001 (%d)' % pr()[6])
 # an edit, then a power-on
 set_cfg(5, sens=40)

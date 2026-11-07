@@ -44,7 +44,7 @@ Each run writes `results/hardware/qual-LABEL-DATE/`: `summary.md` (the table for
 
 **By eye:**
 
-- **ui:** opening and closing the page; TRIG held; BEND's box, fine steps and snapping; depths and lists; the preset menu, its lists and the naming screen (repeats, delete, insert, the letter grid); LOAD, RESET, SELECT DEFAULT; old files; every audio track's settings after the power cycle; the MIDI LFO destinations; a value switched off; the track's own LFO and parameter locks.
+- **ui:** opening the page from SETTINGS > EXPRESSION, following the track with TRK + trig, NO back to SETTINGS; BEND's box, fine steps and snapping; depths and lists; the preset menu, its lists and the naming screen (repeats, delete, insert, the letter grid); LOAD, RESET, SELECT DEFAULT; old files; every audio track's settings after the power cycle; the MIDI LFO destinations; a value switched off; the track's own LFO and parameter locks.
 
 ## The MIDI interface
 
